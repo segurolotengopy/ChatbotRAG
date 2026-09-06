@@ -1,0 +1,31 @@
+{
+  "name": "chatbotrag",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Agente conversacional genérico con RAG, configurable por JSON y agnóstico de nube (Vertex, Bedrock) y de canal.",
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@11.25.0",
+  "engines": { "node": ">=22" },
+  "type": "module",
+  "scripts": {
+    "construir": "pnpm -r --filter './paquetes/**' --filter ./servicio run construir",
+    "tipos": "pnpm -r run tipos",
+    "lint": "eslint .",
+    "pruebas": "vitest run",
+    "pruebas:cobertura": "vitest run --coverage",
+    "verificar": "pnpm tipos && pnpm lint && pnpm pruebas",
+    "esquema": "node --import tsx paquetes/nucleo/scripts/generar-esquema.ts",
+    "validar-config": "node --import tsx paquetes/nucleo/scripts/validar-configuracion.ts",
+    "servicio:dev": "pnpm --filter servicio run dev"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.0",
+    "@types/node": "^22.19.0",
+    "@vitest/coverage-v8": "^3.2.4",
+    "eslint": "^9.39.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.46.0",
+    "vitest": "^3.2.4"
+  }
+}

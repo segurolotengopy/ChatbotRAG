@@ -1,0 +1,16 @@
+node_modules/
+dist/
+dist-web/
+coverage/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+.deploy-log/
+.security-reports/
+*.pem
+*.key
+*.p12
+credenciales*.json
+CONFIGURACION.local.md
+configuraciones/*.local.json

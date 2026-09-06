@@ -1,0 +1,18 @@
+{
+  "name": "@chatbotrag/nucleo",
+  "version": "0.1.0",
+  "description": "Núcleo de ChatbotRAG: configuración, prompt, compuertas de seguridad, orquestador, memoria e índice en memoria. Sin dependencias de nube.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/indice.js",
+  "types": "./dist/indice.d.ts",
+  "exports": { ".": { "types": "./dist/indice.d.ts", "import": "./dist/indice.js" } },
+  "files": ["dist", "esquemas"],
+  "scripts": {
+    "construir": "tsc -p tsconfig.json",
+    "tipos": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.1.0"
+  }
+}

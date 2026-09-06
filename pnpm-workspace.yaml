@@ -1,0 +1,7 @@
+packages:
+  - paquetes/*
+  - servicio
+# Cadena de suministro: solo estos paquetes pueden ejecutar scripts de instalación.
+# (pnpm 11: cualquier otro script de instalación se ignora y bloquea la instalación.)
+allowBuilds:
+  esbuild: true
