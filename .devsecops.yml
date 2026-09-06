@@ -1,0 +1,29 @@
+# Manifiesto del estándar DevSecOps (esquema: 02-pipelines/config/devsecops.schema.json;
+# convenciones: 00-gobernanza/00-convenciones.md; generado por bootstrap-repo.sh v2.0)
+version: 1
+proyecto: chatbotrag
+modo: A            # A | B | B0 (ver 00-gobernanza/03-ambientes-modos-y-aprobaciones.md)
+cobertura_minima: 70
+componentes:
+  - nombre: chatbotrag
+    ruta: ./
+    stack: node
+    proveedor: cloudrun
+    ambientes:
+      staging:
+        proyecto: chatbotrag-staging   # A CONFIRMAR por el propietario (ID real del proyecto GCP)
+        url: https://chatbotrag-staging.example.com   # A CONFIRMAR: URL de Cloud Run de staging
+        region: us-central1
+        servicio: chatbotrag
+        repositorio: chatbotrag
+      production:
+        proyecto: chatbotrag-prod   # A CONFIRMAR
+        url: https://chatbotrag.example.com   # A CONFIRMAR
+        region: us-central1
+        servicio: chatbotrag
+        repositorio: chatbotrag
+seguridad:
+  dast: true
+  zap_reglas: .github/zap-rules.tsv
+  bloquear_en: [CRITICAL, HIGH]   # se puede endurecer (añadir MEDIUM), nunca relajar
+  excepciones: []                 # id, herramienta, componente, justificacion, aprobado_por, creado, vence

@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./CONFIGURACION.local.md)",
+      "Bash(./deploy.sh prod*)",
+      "Bash(git push --force*)"
+    ]
+  }
+}
