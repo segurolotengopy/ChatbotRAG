@@ -15,6 +15,7 @@ const SDKS_DE_NUBE = [
 export default tseslint.config(
   { ignores: ['**/dist/**', '**/node_modules/**', 'coverage/**', 'integraciones/**', 'paquetes/canal-web/dist-web/**'] },
   js.configs.recommended,
+  { files: ['**/*.mjs', '**/*.js'], languageOptions: { globals: { console: 'readonly', process: 'readonly' } } },
   ...tseslint.configs.recommended,
   {
     files: ['**/*.ts'],

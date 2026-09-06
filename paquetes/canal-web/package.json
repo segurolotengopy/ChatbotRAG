@@ -1,0 +1,16 @@
+{
+  "name": "@chatbotrag/canal-web",
+  "version": "0.1.0",
+  "description": "Canal web de ChatbotRAG: contrato HTTP tipado, cliente ligero y widget embebible sin dependencias.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/indice.js",
+  "types": "./dist/indice.d.ts",
+  "exports": { ".": { "types": "./dist/indice.d.ts", "import": "./dist/indice.js" } },
+  "files": ["dist", "dist-web"],
+  "scripts": {
+    "construir": "tsc -b tsconfig.json && node construir-widget.mjs",
+    "tipos": "tsc -b tsconfig.json"
+  },
+  "devDependencies": { "esbuild": "^0.28.0" }
+}
