@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": { "rootDir": "src", "outDir": "dist", "types": ["node"], "tsBuildInfoFile": "dist/.tsbuildinfo", "composite": false },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.prueba.ts"],
+  "references": [
+    { "path": "../paquetes/nucleo" },
+    { "path": "../paquetes/proveedor-vertex" },
+    { "path": "../paquetes/proveedor-bedrock" },
+    { "path": "../paquetes/conocimiento-pgvector" }
+  ]
+}

@@ -17,7 +17,16 @@ import type { Embebedor } from '../puertos/proveedor-llm.js';
 import type { Fragmento, FragmentoRecuperado, IndiceConocimiento, OpcionesBusqueda } from '../puertos/indice-conocimiento.js';
 import { normalizar } from '../compuertas/vocabulario.js';
 
-const VACIAS = new Set(['de', 'la', 'el', 'los', 'las', 'que', 'y', 'en', 'un', 'una', 'por', 'para', 'con', 'del', 'al', 'es', 'se', 'su', 'lo', 'a', 'o', 'e', 'si', 'no', 'mi', 'me', 'como', 'mas', 'muy', 'sobre', 'este', 'esta', 'esto', 'ese', 'esa', 'hay', 'ser', 'son', 'tiene', 'tengo', 'puedo', 'quiero', 'cual', 'cuales', 'cuanto', 'cuanta', 'donde', 'cuando', 'quien']);
+// Palabras vacías: artículos, preposiciones y los verbos genéricos con que se
+// formulan preguntas («¿hacen envíos?», «¿puedo pagar…?»). Un verbo genérico que
+// no aparece en el corpus castigaría el puntaje sin aportar información.
+const VACIAS = new Set([
+  'de', 'la', 'el', 'los', 'las', 'que', 'y', 'en', 'un', 'una', 'unos', 'unas', 'por', 'para', 'con', 'sin', 'del', 'al', 'es', 'se', 'su', 'sus', 'lo', 'le', 'les',
+  'a', 'o', 'e', 'u', 'si', 'no', 'mi', 'mis', 'me', 'te', 'tu', 'tus', 'vos', 'usted', 'ustedes', 'como', 'mas', 'muy', 'sobre', 'este', 'esta', 'esto', 'estos', 'estas', 'ese', 'esa', 'eso',
+  'hay', 'ser', 'son', 'era', 'fue', 'esta', 'estan', 'estoy', 'tiene', 'tienen', 'tengo', 'tenes', 'tienes', 'puedo', 'puede', 'pueden', 'podes', 'puedes', 'podria', 'podrian',
+  'quiero', 'quisiera', 'gustaria', 'necesito', 'saber', 'hace', 'hacen', 'hacer', 'hago', 'hacemos', 'dan', 'dar', 'tambien', 'favor', 'hola', 'gracias', 'buenas', 'buenos',
+  'cual', 'cuales', 'cuanto', 'cuanta', 'cuantos', 'cuantas', 'donde', 'cuando', 'quien', 'quienes', 'que', 'porque', 'para', 'algo', 'alguna', 'alguno', 'otra', 'otro',
+]);
 
 export function terminos(texto: string): string[] {
   return normalizar(texto)
@@ -129,7 +138,7 @@ export class IndiceEnMemoria implements IndiceConocimiento {
       // Los términos raros pesan más; la fracción respecto al máximo da 0..1. La
       // proporción de términos conocidos penaliza consultas que solo comparten una
       // palabra genérica con el corpus («¿cubre granizo?» contra un seguro de vida).
-      return Math.min(1, (s / maximo) * (presentes.length / q.length));
+      return Math.min(1, (s / maximo) * Math.sqrt(presentes.length / q.length));
     });
   }
 

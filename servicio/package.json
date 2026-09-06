@@ -1,0 +1,25 @@
+{
+  "name": "servicio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Servicio HTTP de ChatbotRAG (Fastify) para Cloud Run / contenedores: expone los agentes configurados por JSON.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/principal.js",
+  "scripts": {
+    "construir": "tsc -b tsconfig.json",
+    "tipos": "tsc -b tsconfig.json",
+    "dev": "CHATBOTRAG_PROVEEDOR_FORZADO=simulado CHATBOTRAG_CLIENTES='[{\"id\":\"local\",\"agenteId\":\"segurolotengo\",\"claveSha256\":\"5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03\"}]' node --import tsx src/principal.ts",
+    "iniciar": "node dist/principal.js"
+  },
+  "dependencies": {
+    "@chatbotrag/conocimiento-pgvector": "workspace:*",
+    "@chatbotrag/nucleo": "workspace:*",
+    "@chatbotrag/proveedor-bedrock": "workspace:*",
+    "@chatbotrag/proveedor-vertex": "workspace:*",
+    "@fastify/cors": "^11.3.0",
+    "@fastify/rate-limit": "^11.2.0",
+    "fastify": "^5.12.0",
+    "zod": "^4.5.4"
+  }
+}

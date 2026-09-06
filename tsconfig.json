@@ -12,6 +12,9 @@
     },
     {
       "path": "paquetes/conocimiento-pgvector"
+    },
+    {
+      "path": "servicio"
     }
   ]
 }
