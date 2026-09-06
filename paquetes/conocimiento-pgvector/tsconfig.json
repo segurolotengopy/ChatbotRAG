@@ -13,5 +13,10 @@
   ],
   "exclude": [
     "src/**/*.prueba.ts"
+  ],
+  "references": [
+    {
+      "path": "../nucleo"
+    }
   ]
 }

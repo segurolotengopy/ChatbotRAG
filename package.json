@@ -5,11 +5,13 @@
   "description": "Agente conversacional genérico con RAG, configurable por JSON y agnóstico de nube (Vertex, Bedrock) y de canal.",
   "license": "Apache-2.0",
   "packageManager": "pnpm@11.25.0",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "type": "module",
   "scripts": {
-    "construir": "pnpm -r --filter './paquetes/**' --filter ./servicio run construir",
-    "tipos": "pnpm -r run tipos",
+    "construir": "tsc -b tsconfig.json",
+    "tipos": "tsc -b tsconfig.json",
     "lint": "eslint .",
     "pruebas": "vitest run",
     "pruebas:cobertura": "vitest run --coverage",

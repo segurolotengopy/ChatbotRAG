@@ -2,6 +2,11 @@ packages:
   - paquetes/*
   - servicio
 # Cadena de suministro: solo estos paquetes pueden ejecutar scripts de instalación.
-# (pnpm 11: cualquier otro script de instalación se ignora y bloquea la instalación.)
+# (pnpm 11: cualquier otro script de instalación se ignora y bloquea la instalación
+# hasta que se declare explícitamente true o false.)
 allowBuilds:
   esbuild: true
+  # Declarados como NO permitidos: funcionan sin su postinstall y así ningún script
+  # de terceros se ejecuta al instalar.
+  "@google/genai": false
+  protobufjs: false

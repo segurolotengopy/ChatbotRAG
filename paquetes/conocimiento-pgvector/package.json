@@ -1,7 +1,7 @@
 {
-  "name": "@chatbotrag/nucleo",
+  "name": "@chatbotrag/conocimiento-pgvector",
   "version": "0.1.0",
-  "description": "Núcleo de ChatbotRAG: configuración, prompt, compuertas de seguridad, orquestador, memoria e índice en memoria. Sin dependencias de nube.",
+  "description": "Índice de conocimiento persistente de ChatbotRAG sobre PostgreSQL + pgvector (Cloud SQL, RDS, o cualquier Postgres).",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/indice.js",
@@ -14,13 +14,17 @@
   },
   "files": [
     "dist",
-    "esquemas"
+    "sql"
   ],
   "scripts": {
     "construir": "tsc -b tsconfig.json",
     "tipos": "tsc -b tsconfig.json"
   },
   "dependencies": {
-    "zod": "^4.1.0"
+    "@chatbotrag/nucleo": "workspace:*",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.15.0"
   }
 }
