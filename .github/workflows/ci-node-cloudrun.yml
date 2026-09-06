@@ -181,7 +181,12 @@ jobs:
       bloquear_en: ${{ vars.BLOQUEAR_EN || 'CRITICAL,HIGH' }}
       subir_sarif: ${{ github.event.repository.visibility == 'public' || vars.GHAS_ENABLED == 'true' }}
       ref: ${{ inputs.tag || '' }}
-    secrets: inherit
+    # Mínimo privilegio: se mapean solo los dos secretos que el reusable declara
+    # en `on.workflow_call.secrets` (ambos opcionales). `secrets: inherit` pasaba
+    # también los de despliegue (WIF, Cloud Run), que ningún escáner necesita.
+    secrets:
+      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
   # ---------------------------------------------------------------------------
   # Fase 3 — construir: imagen → registro → escaneo → SBOM → firma → attestation.
