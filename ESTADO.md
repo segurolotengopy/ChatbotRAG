@@ -2,6 +2,28 @@
 
 Se actualiza al final de cada sesión. **Nunca contiene secretos.** Lo más reciente arriba.
 
+## 2026-09-06 · Puesta en marcha local y cadena de suministro
+
+### Qué se hizo
+
+- **Repositorio operativo en `~/ChatBotRAG`**: historial restaurado desde `chatbotrag.bundle` con `./iniciar.sh` (8 commits, ramas `main` y `chore/estandar-devsecops`, remoto `origin`). Se recuperaron los 24 archivos que la copia no pudo escribir (`.claude/`, `.github/`, `.npmrc`, `.pre-commit-config.yaml`). Dependencias instaladas; `pnpm verificar` y `validar-config` en verde.
+- **Corregido el HIGH de `secrets: inherit`** (`ci-node-cloudrun.yml`, commit `7f00a09`): el reusable de seguridad recibe ahora solo `GITLEAKS_LICENSE` y `SNYK_TOKEN`, los dos que declara en `on.workflow_call.secrets`; ya no se le pasan los secretos de despliegue (WIF, Cloud Run).
+- **Endurecida la cadena de suministro de pnpm** (`pnpm-workspace.yaml`, commit `003d2e5`): `blockExoticSubdeps: true` y `trustPolicy: no-downgrade`.
+  - `trustPolicyExclude` exime a `undici-types@6.21.0` **con versión exacta** (un nombre a secas eximiría a todas las versiones). Lo fija `@types/node@22.20.1` (rango `~6.21.0`) y no lleva atestación de provenance por ser anterior a la publicación por OIDC del paquete (7.x en adelante). Verificado contra el registro: lo publicó `matteo.collina`, mantenedor legítimo de undici; **no es una toma de control**. Se retira al subir `@types/node` a una versión que use `undici-types` 7.x.
+
+### Verificaciones
+
+- `pnpm install --frozen-lockfile` ✓ (política de cadena de suministro: 384 entradas) · `pnpm verificar` ✓ (tipos, lint, **74 pruebas**) · `pnpm validar-config` ✓.
+- `security-local.sh`: **CRITICAL 0 · HIGH 0 · MEDIUM 3**. A diferencia de la sesión fundacional, **semgrep y trivy sí corrieron completos** en este equipo; por eso apareció el HIGH de `secrets: inherit`, que aquel informe no podía ver. La cifra «MEDIUM 1» de la entrada anterior queda superada por esta.
+- `actionlint`, `gitleaks` y `yamllint` ✓ mediante `pre-commit run --files` sobre los archivos tocados. **Los hooks no están instalados en `.git/hooks`** (el bundle no los trae): se ejecutaron a mano. Para automatizarlos: `pre-commit install --install-hooks`.
+
+### Pendientes (por orden)
+
+1. 🔑 Sigue pendiente todo lo 🔑 de la sesión fundacional: publicar el repositorio, abrir el PR del estándar, secretos/variables de Actions y proyectos GCP.
+2. **A partir del 2026-09-11**: activar `minimumReleaseAge: 10080` en `pnpm-workspace.yaml`. Hoy rompe `pnpm install --frozen-lockfile` porque 26 entradas del lockfile son más nuevas que la ventana de 7 días (la más reciente es del 2026-09-04). Pasada esa fecha se activa agregando la línea, sin regenerar el lockfile ni mover dependencias. Es uno de los 3 MEDIUM abiertos, junto con el `min-release-age` de `.npmrc` y CKV_GHA_7 en `release.yml`.
+3. Propagar al estándar compartido (`SeguridadGeneral/02-pipelines/workflows/`) el reemplazo de `secrets: inherit` por el mapeo explícito: afecta a `ci-aws-ecs`, `ci-multicloud`, `ci-node-firebase`, `ci-oci-terraform` y `ci-python-cloudrun`. `_reusable-dast.yml` no declara secretos y no se toca. Decisión del propietario.
+4. Evaluar si la exención de `undici-types@6.21.0` debe registrarse además en `seguridad.excepciones` de `.devsecops.yml` con vencimiento, o si basta el comentario en `pnpm-workspace.yaml` por tratarse de configuración de pnpm y no de una supresión de escáner.
+
 ## 2026-09-06 · Sesión fundacional
 
 ### Qué existe
