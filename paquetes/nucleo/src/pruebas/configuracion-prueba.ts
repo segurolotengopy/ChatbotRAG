@@ -19,7 +19,7 @@ export const CONFIG_PRUEBA: ConfiguracionAgenteEntrada = {
     temasBloqueados: ['otras aseguradoras'],
     accionesProhibidas: ['emitir pólizas', 'cobrar', 'firmar'],
   },
-  conocimiento: { modo: 'rag', topK: 3, umbral: 0.2, exigirRespaldo: true, fuentes: [
+  conocimiento: { modo: 'rag', topK: 3, umbral: 0.3, exigirRespaldo: true, fuentes: [
     { id: 'coberturas', titulo: 'Coberturas del plan', version: 'v1', ruta: 'coberturas.md' },
     { id: 'interno', titulo: 'Tarifario interno', version: 'v1', visibilidad: 'interno', ruta: 'interno.md' },
   ] },

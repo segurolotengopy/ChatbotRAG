@@ -216,10 +216,14 @@ export class Agente {
       return respuesta(config.mensajes.errorTemporal, { avisos: [...avisos, 'error_modelo'] }, iteraciones, tokens);
     }
 
-    // Sin respaldo y con exigencia: si el modelo igual afirmó algo, lo reemplazamos por el mensaje fijo,
-    // salvo que sea cortesía u orientación (hay herramienta de recomendación en juego).
+    // SIN RESPALDO Y CON EXIGENCIA: si no hubo fragmentos, el modelo no llamó a ninguna
+    // herramienta y su texto no es una pregunta (una pregunta de orientación o de
+    // aclaración no afirma nada), lo que haya dicho se reemplaza por el mensaje fijo.
+    // Es una heurística deliberadamente conservadora: prefiere derivar a inventar.
     let textoFinal = textoModelo;
-    if (config.conocimiento.modo === 'rag' && config.conocimiento.exigirRespaldo && fragmentos.length === 0 && !esCortesia(texto) && !recomendacion && config.orientacion.facetas.length === 0) {
+    const huboHerramienta = contadorHerramientas.size > 0;
+    const esPregunta = /\?\s*$/.test(textoModelo.trim());
+    if (config.conocimiento.modo === 'rag' && config.conocimiento.exigirRespaldo && fragmentos.length === 0 && !esCortesia(texto) && !huboHerramienta && !esPregunta) {
       textoFinal = mensajeSinRespaldo(config);
       avisos.push('sin_respaldo');
       this.deps.bitacora.registrar({ ...base, tipo: 'sin_respaldo' });

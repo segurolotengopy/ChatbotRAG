@@ -113,7 +113,12 @@ export class IndiceEnMemoria implements IndiceConocimiento {
     const df = new Map<string, number>();
     for (const t of q) df.set(t, lista.filter((e) => e.tf.has(t)).length);
     const idf = (t: string) => Math.log(1 + (N - (df.get(t) ?? 0) + 0.5) / ((df.get(t) ?? 0) + 0.5));
-    const maximo = q.reduce((s, t) => s + idf(t) * (k1 + 1), 0) || 1;
+    // El máximo se calcula solo con los términos que existen en la colección: una
+    // palabra que no aparece en ningún fragmento («cuesta» cuando el corpus dice
+    // «premio») no aporta información y no debe castigar el puntaje.
+    const presentes = q.filter((t) => (df.get(t) ?? 0) > 0);
+    if (presentes.length === 0) return lista.map(() => 0);
+    const maximo = presentes.reduce((s, t) => s + idf(t) * (k1 + 1), 0) || 1;
     return lista.map((e) => {
       let s = 0;
       for (const t of q) {
@@ -121,8 +126,10 @@ export class IndiceEnMemoria implements IndiceConocimiento {
         if (f === 0) continue;
         s += idf(t) * ((f * (k1 + 1)) / (f + k1 * (1 - b + (b * e.largo) / largoMedio)));
       }
-      // Los términos raros pesan más; la fracción respecto al máximo da 0..1.
-      return Math.min(1, s / maximo);
+      // Los términos raros pesan más; la fracción respecto al máximo da 0..1. La
+      // proporción de términos conocidos penaliza consultas que solo comparten una
+      // palabra genérica con el corpus («¿cubre granizo?» contra un seguro de vida).
+      return Math.min(1, (s / maximo) * (presentes.length / q.length));
     });
   }
 

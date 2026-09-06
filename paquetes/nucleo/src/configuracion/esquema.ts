@@ -37,7 +37,7 @@ export const ID_PERFIL = /^[A-Za-z0-9][A-Za-z0-9_-]{1,59}$/;
 const textoCorto = (max: number) => z.string().trim().max(max);
 const textoOpcional = (max: number) => z.string().trim().max(max).optional();
 
-export const TRATAMIENTOS = ['usted', 'tu', 'neutro'] as const;
+export const TRATAMIENTOS = ['usted', 'tu', 'vos', 'neutro'] as const;
 export const EMOJIS = ['ninguno', 'pocos', 'muchos'] as const;
 export const LONGITUDES = ['breve', 'media', 'amplia'] as const;
 export const REGISTROS = ['formal', 'cercano'] as const;
@@ -282,6 +282,8 @@ export const esquemaPerfil = z
 
 export const esquemaConfiguracionAgente = z
   .object({
+    /** Referencia al esquema para los editores; se ignora. */
+    $schema: z.string().optional(),
     version: z.literal(1),
     id: z.string().regex(ID_AGENTE),
     identidad: esquemaIdentidad,

@@ -1,0 +1,1275 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chatbotrag/esquemas/configuracion-agente.schema.json",
+  "title": "Configuración de agente ChatbotRAG (v1)",
+  "description": "Documento JSON que describe un agente conversacional: identidad, voz, alcance, conocimiento (RAG), seguridad, herramientas, orientación, mensajes, modelo y perfiles.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "type": "number",
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{2,59}$"
+    },
+    "identidad": {
+      "type": "object",
+      "properties": {
+        "nombreAsistente": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "organizacion": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "descripcion": {
+          "type": "string",
+          "maxLength": 400
+        },
+        "idioma": {
+          "default": "es",
+          "type": "string",
+          "pattern": "^es(-[A-Z]{2})?$"
+        },
+        "zonaHoraria": {
+          "default": "America/La_Paz",
+          "type": "string",
+          "pattern": "^[A-Za-z_]+\\/[A-Za-z_]+$"
+        },
+        "moneda": {
+          "default": "BOB",
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      },
+      "required": [
+        "nombreAsistente",
+        "organizacion"
+      ],
+      "additionalProperties": false
+    },
+    "voz": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "tratamiento": {
+          "default": "usted",
+          "type": "string",
+          "enum": [
+            "usted",
+            "tu",
+            "vos",
+            "neutro"
+          ]
+        },
+        "emojis": {
+          "default": "pocos",
+          "type": "string",
+          "enum": [
+            "ninguno",
+            "pocos",
+            "muchos"
+          ]
+        },
+        "longitud": {
+          "default": "breve",
+          "type": "string",
+          "enum": [
+            "breve",
+            "media",
+            "amplia"
+          ]
+        },
+        "registro": {
+          "default": "formal",
+          "type": "string",
+          "enum": [
+            "formal",
+            "cercano"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "operacion": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "estado": {
+          "default": "operativo",
+          "type": "string",
+          "enum": [
+            "operativo",
+            "suspendido"
+          ]
+        },
+        "horarios": {
+          "default": {},
+          "type": "object",
+          "properties": {
+            "lun": {
+              "type": "string",
+              "pattern": "^(\\d{2}:\\d{2}-\\d{2}:\\d{2}|cerrado)$"
+            },
+            "mar": {
+              "type": "string",
+              "pattern": "^(\\d{2}:\\d{2}-\\d{2}:\\d{2}|cerrado)$"
+            },
+            "mie": {
+              "type": "string",
+              "pattern": "^(\\d{2}:\\d{2}-\\d{2}:\\d{2}|cerrado)$"
+            },
+            "jue": {
+              "type": "string",
+              "pattern": "^(\\d{2}:\\d{2}-\\d{2}:\\d{2}|cerrado)$"
+            },
+            "vie": {
+              "type": "string",
+              "pattern": "^(\\d{2}:\\d{2}-\\d{2}:\\d{2}|cerrado)$"
+            },
+            "sab": {
+              "type": "string",
+              "pattern": "^(\\d{2}:\\d{2}-\\d{2}:\\d{2}|cerrado)$"
+            },
+            "dom": {
+              "type": "string",
+              "pattern": "^(\\d{2}:\\d{2}-\\d{2}:\\d{2}|cerrado)$"
+            }
+          },
+          "additionalProperties": false
+        },
+        "prefijosPermitidos": {
+          "default": [],
+          "maxItems": 10,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9]{1,4}$"
+          }
+        },
+        "contactoHumano": {
+          "default": {},
+          "type": "object",
+          "properties": {
+            "whatsapp": {
+              "type": "string",
+              "pattern": "^[0-9]{8,15}$"
+            },
+            "correo": {
+              "type": "string",
+              "maxLength": 254,
+              "format": "email",
+              "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+            },
+            "telefono": {
+              "type": "string",
+              "pattern": "^[0-9+ ()-]{6,24}$"
+            },
+            "texto": {
+              "type": "string",
+              "maxLength": 300
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "datos": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "direccion": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "politicas": {
+          "default": {},
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_]{1,40}$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 600
+          }
+        },
+        "datosQueNoTenemos": {
+          "default": [],
+          "maxItems": 20,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 80
+          }
+        },
+        "hechos": {
+          "default": [],
+          "maxItems": 40,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 300
+          }
+        },
+        "instruccionesExtra": {
+          "type": "string",
+          "maxLength": 1500
+        }
+      },
+      "additionalProperties": false
+    },
+    "alcance": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "temasPermitidos": {
+          "default": [],
+          "maxItems": 40,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 120
+          }
+        },
+        "temasBloqueados": {
+          "default": [],
+          "maxItems": 40,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 120
+          }
+        },
+        "accionesProhibidas": {
+          "default": [],
+          "maxItems": 30,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 160
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "conocimiento": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "modo": {
+          "default": "rag",
+          "type": "string",
+          "enum": [
+            "rag",
+            "solo_prompt"
+          ]
+        },
+        "coleccion": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{1,79}$"
+        },
+        "topK": {
+          "default": 5,
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        },
+        "umbral": {
+          "default": 0.35,
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "exigirRespaldo": {
+          "default": true,
+          "type": "boolean"
+        },
+        "tamanoFragmento": {
+          "default": 900,
+          "type": "integer",
+          "minimum": 200,
+          "maximum": 4000
+        },
+        "solapamiento": {
+          "default": 120,
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "fuentes": {
+          "default": [],
+          "maxItems": 200,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{1,79}$"
+              },
+              "titulo": {
+                "type": "string",
+                "maxLength": 160
+              },
+              "version": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "visibilidad": {
+                "default": "publico",
+                "type": "string",
+                "enum": [
+                  "publico",
+                  "interno"
+                ]
+              },
+              "ruta": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_./-]+$"
+              }
+            },
+            "required": [
+              "id",
+              "titulo",
+              "version",
+              "ruta"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "seguridad": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "bloquearEntrada": {
+          "default": [
+            "cedula",
+            "tarjeta",
+            "otp",
+            "clave",
+            "inyeccion"
+          ],
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "cedula",
+              "tarjeta",
+              "salud",
+              "pep",
+              "otp",
+              "clave",
+              "inyeccion"
+            ]
+          }
+        },
+        "compuertasSalida": {
+          "default": [
+            "niega_ia",
+            "dato_confidencial",
+            "marca_no_declarada"
+          ],
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "niega_ia",
+              "promesa_indemnizacion",
+              "decision_elegibilidad",
+              "dato_confidencial",
+              "marca_no_declarada",
+              "afirma_cobro_real"
+            ]
+          }
+        },
+        "terminosConfidenciales": {
+          "default": [],
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 80
+          }
+        },
+        "maxCaracteresEntrada": {
+          "default": 2000,
+          "type": "integer",
+          "minimum": 50,
+          "maximum": 8000
+        },
+        "marcasPermitidas": {
+          "default": [
+            "DERIVAR"
+          ],
+          "maxItems": 10,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z_]{3,30}$"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "herramientas": {
+      "default": [],
+      "maxItems": 12,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "nombre": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{2,40}$"
+          },
+          "descripcion": {
+            "type": "string",
+            "maxLength": 400
+          },
+          "parametros": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "pattern": "^[a-z][a-zA-Z0-9_]{0,40}$"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "tipo": {
+                  "type": "string",
+                  "enum": [
+                    "string",
+                    "number",
+                    "boolean"
+                  ]
+                },
+                "descripcion": {
+                  "type": "string",
+                  "maxLength": 300
+                },
+                "opciones": {
+                  "maxItems": 50,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 80
+                  }
+                },
+                "requerido": {
+                  "default": false,
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "tipo",
+                "descripcion"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "tipo": {
+            "default": "interna",
+            "type": "string",
+            "enum": [
+              "interna",
+              "http"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "pattern": "^https:\\/\\/.*"
+          },
+          "maxPorTurno": {
+            "default": 1,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3
+          }
+        },
+        "required": [
+          "nombre",
+          "descripcion"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "orientacion": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "facetas": {
+          "default": [],
+          "maxItems": 8,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]{1,40}$"
+              },
+              "pregunta": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "opciones": {
+                "minItems": 2,
+                "maxItems": 12,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 80
+                }
+              }
+            },
+            "required": [
+              "id",
+              "pregunta",
+              "opciones"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "reglas": {
+          "default": [],
+          "maxItems": 60,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "si": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "recomendar": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "texto": {
+                "type": "string",
+                "maxLength": 600
+              }
+            },
+            "required": [
+              "si",
+              "recomendar",
+              "texto"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "aclaracion": {
+          "type": "string",
+          "maxLength": 400
+        }
+      },
+      "additionalProperties": false
+    },
+    "mensajes": {
+      "type": "object",
+      "properties": {
+        "bienvenida": {
+          "type": "string",
+          "maxLength": 600
+        },
+        "errorTemporal": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "fueraDeAlcance": {
+          "type": "string",
+          "maxLength": 400
+        },
+        "sinRespaldo": {
+          "type": "string",
+          "maxLength": 400
+        },
+        "derivacion": {
+          "type": "string",
+          "maxLength": 400
+        },
+        "entradaBloqueada": {
+          "type": "string",
+          "maxLength": 400
+        },
+        "suspendido": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "cierre": {
+          "type": "string",
+          "maxLength": 300
+        }
+      },
+      "required": [
+        "bienvenida",
+        "errorTemporal",
+        "fueraDeAlcance",
+        "sinRespaldo",
+        "derivacion",
+        "entradaBloqueada",
+        "suspendido"
+      ],
+      "additionalProperties": false
+    },
+    "modelo": {
+      "type": "object",
+      "properties": {
+        "proveedor": {
+          "type": "string",
+          "enum": [
+            "vertex",
+            "bedrock",
+            "simulado"
+          ]
+        },
+        "nombre": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "modeloEmbeddings": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "temperatura": {
+          "default": 0.3,
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "maxTokensSalida": {
+          "default": 1024,
+          "type": "integer",
+          "minimum": 64,
+          "maximum": 8192
+        },
+        "maxIteraciones": {
+          "default": 3,
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 6
+        },
+        "ventanaMemoria": {
+          "default": 10,
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 40
+        },
+        "ttlConversacionSeg": {
+          "default": 3600,
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 86400
+        }
+      },
+      "required": [
+        "proveedor",
+        "nombre"
+      ],
+      "additionalProperties": false
+    },
+    "perfiles": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{1,59}$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "nombre": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "descripcion": {
+            "type": "string",
+            "maxLength": 400
+          },
+          "identidad": {
+            "type": "object",
+            "properties": {
+              "nombreAsistente": {
+                "type": "string",
+                "maxLength": 60
+              },
+              "organizacion": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "descripcion": {
+                "type": "string",
+                "maxLength": 400
+              },
+              "idioma": {
+                "type": "string",
+                "pattern": "^es(-[A-Z]{2})?$"
+              },
+              "zonaHoraria": {
+                "type": "string",
+                "pattern": "^[A-Za-z_]+\\/[A-Za-z_]+$"
+              },
+              "moneda": {
+                "type": "string",
+                "pattern": "^[A-Z]{3}$"
+              }
+            },
+            "additionalProperties": false
+          },
+          "voz": {
+            "type": "object",
+            "properties": {
+              "tratamiento": {
+                "type": "string",
+                "enum": [
+                  "usted",
+                  "tu",
+                  "vos",
+                  "neutro"
+                ]
+              },
+              "emojis": {
+                "type": "string",
+                "enum": [
+                  "ninguno",
+                  "pocos",
+                  "muchos"
+                ]
+              },
+              "longitud": {
+                "type": "string",
+                "enum": [
+                  "breve",
+                  "media",
+                  "amplia"
+                ]
+              },
+              "registro": {
+                "type": "string",
+                "enum": [
+                  "formal",
+                  "cercano"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "operacion": {
+            "type": "object",
+            "properties": {
+              "estado": {
+                "type": "string",
+                "enum": [
+                  "operativo",
+                  "suspendido"
+                ]
+              },
+              "horarios": {
+                "type": "object",
+                "properties": {
+                  "lun": {
+                    "type": "string",
+                    "pattern": "^(\\d{2}:\\d{2}-\\d{2}:\\d{2}|cerrado)$"
+                  },
+                  "mar": {
+                    "type": "string",
+                    "pattern": "^(\\d{2}:\\d{2}-\\d{2}:\\d{2}|cerrado)$"
+                  },
+                  "mie": {
+                    "type": "string",
+                    "pattern": "^(\\d{2}:\\d{2}-\\d{2}:\\d{2}|cerrado)$"
+                  },
+                  "jue": {
+                    "type": "string",
+                    "pattern": "^(\\d{2}:\\d{2}-\\d{2}:\\d{2}|cerrado)$"
+                  },
+                  "vie": {
+                    "type": "string",
+                    "pattern": "^(\\d{2}:\\d{2}-\\d{2}:\\d{2}|cerrado)$"
+                  },
+                  "sab": {
+                    "type": "string",
+                    "pattern": "^(\\d{2}:\\d{2}-\\d{2}:\\d{2}|cerrado)$"
+                  },
+                  "dom": {
+                    "type": "string",
+                    "pattern": "^(\\d{2}:\\d{2}-\\d{2}:\\d{2}|cerrado)$"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "prefijosPermitidos": {
+                "maxItems": 10,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[0-9]{1,4}$"
+                }
+              },
+              "contactoHumano": {
+                "type": "object",
+                "properties": {
+                  "whatsapp": {
+                    "type": "string",
+                    "pattern": "^[0-9]{8,15}$"
+                  },
+                  "correo": {
+                    "type": "string",
+                    "maxLength": 254,
+                    "format": "email",
+                    "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  },
+                  "telefono": {
+                    "type": "string",
+                    "pattern": "^[0-9+ ()-]{6,24}$"
+                  },
+                  "texto": {
+                    "type": "string",
+                    "maxLength": 300
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          },
+          "datos": {
+            "type": "object",
+            "properties": {
+              "direccion": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "politicas": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z][a-zA-Z0-9_]{1,40}$"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "maxLength": 600
+                }
+              },
+              "datosQueNoTenemos": {
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 80
+                }
+              },
+              "hechos": {
+                "maxItems": 40,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 300
+                }
+              },
+              "instruccionesExtra": {
+                "type": "string",
+                "maxLength": 1500
+              }
+            },
+            "additionalProperties": false
+          },
+          "alcance": {
+            "type": "object",
+            "properties": {
+              "temasPermitidos": {
+                "maxItems": 40,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 120
+                }
+              },
+              "temasBloqueados": {
+                "maxItems": 40,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 120
+                }
+              },
+              "accionesProhibidas": {
+                "maxItems": 30,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 160
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "conocimiento": {
+            "type": "object",
+            "properties": {
+              "modo": {
+                "type": "string",
+                "enum": [
+                  "rag",
+                  "solo_prompt"
+                ]
+              },
+              "coleccion": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{1,79}$"
+              },
+              "topK": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "umbral": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "exigirRespaldo": {
+                "type": "boolean"
+              },
+              "tamanoFragmento": {
+                "type": "integer",
+                "minimum": 200,
+                "maximum": 4000
+              },
+              "solapamiento": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000
+              },
+              "fuentes": {
+                "maxItems": 200,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9][a-z0-9-]{1,79}$"
+                    },
+                    "titulo": {
+                      "type": "string",
+                      "maxLength": 160
+                    },
+                    "version": {
+                      "type": "string",
+                      "maxLength": 40
+                    },
+                    "visibilidad": {
+                      "default": "publico",
+                      "type": "string",
+                      "enum": [
+                        "publico",
+                        "interno"
+                      ]
+                    },
+                    "ruta": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_./-]+$"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "titulo",
+                    "version",
+                    "ruta"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "seguridad": {
+            "type": "object",
+            "properties": {
+              "bloquearEntrada": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "cedula",
+                    "tarjeta",
+                    "salud",
+                    "pep",
+                    "otp",
+                    "clave",
+                    "inyeccion"
+                  ]
+                }
+              },
+              "compuertasSalida": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "niega_ia",
+                    "promesa_indemnizacion",
+                    "decision_elegibilidad",
+                    "dato_confidencial",
+                    "marca_no_declarada",
+                    "afirma_cobro_real"
+                  ]
+                }
+              },
+              "terminosConfidenciales": {
+                "maxItems": 100,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 80
+                }
+              },
+              "maxCaracteresEntrada": {
+                "type": "integer",
+                "minimum": 50,
+                "maximum": 8000
+              },
+              "marcasPermitidas": {
+                "maxItems": 10,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Z_]{3,30}$"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "herramientas": {
+            "maxItems": 12,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "nombre": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]{2,40}$"
+                },
+                "descripcion": {
+                  "type": "string",
+                  "maxLength": 400
+                },
+                "parametros": {
+                  "default": {},
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-zA-Z0-9_]{0,40}$"
+                  },
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "tipo": {
+                        "type": "string",
+                        "enum": [
+                          "string",
+                          "number",
+                          "boolean"
+                        ]
+                      },
+                      "descripcion": {
+                        "type": "string",
+                        "maxLength": 300
+                      },
+                      "opciones": {
+                        "maxItems": 50,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 80
+                        }
+                      },
+                      "requerido": {
+                        "default": false,
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "tipo",
+                      "descripcion"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "tipo": {
+                  "default": "interna",
+                  "type": "string",
+                  "enum": [
+                    "interna",
+                    "http"
+                  ]
+                },
+                "url": {
+                  "type": "string",
+                  "format": "uri",
+                  "pattern": "^https:\\/\\/.*"
+                },
+                "maxPorTurno": {
+                  "default": 1,
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 3
+                }
+              },
+              "required": [
+                "nombre",
+                "descripcion"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "orientacion": {
+            "type": "object",
+            "properties": {
+              "facetas": {
+                "maxItems": 8,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_]{1,40}$"
+                    },
+                    "pregunta": {
+                      "type": "string",
+                      "maxLength": 200
+                    },
+                    "opciones": {
+                      "minItems": 2,
+                      "maxItems": 12,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "maxLength": 80
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "pregunta",
+                    "opciones"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "reglas": {
+                "maxItems": 60,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "si": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "recomendar": {
+                      "type": "string",
+                      "maxLength": 80
+                    },
+                    "texto": {
+                      "type": "string",
+                      "maxLength": 600
+                    }
+                  },
+                  "required": [
+                    "si",
+                    "recomendar",
+                    "texto"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "aclaracion": {
+                "type": "string",
+                "maxLength": 400
+              }
+            },
+            "additionalProperties": false
+          },
+          "mensajes": {
+            "type": "object",
+            "properties": {
+              "bienvenida": {
+                "type": "string",
+                "maxLength": 600
+              },
+              "errorTemporal": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "fueraDeAlcance": {
+                "type": "string",
+                "maxLength": 400
+              },
+              "sinRespaldo": {
+                "type": "string",
+                "maxLength": 400
+              },
+              "derivacion": {
+                "type": "string",
+                "maxLength": 400
+              },
+              "entradaBloqueada": {
+                "type": "string",
+                "maxLength": 400
+              },
+              "suspendido": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "cierre": {
+                "type": "string",
+                "maxLength": 300
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "nombre"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "perfilPorDefecto": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{1,59}$"
+    }
+  },
+  "required": [
+    "version",
+    "id",
+    "identidad",
+    "mensajes",
+    "modelo"
+  ],
+  "additionalProperties": false
+}

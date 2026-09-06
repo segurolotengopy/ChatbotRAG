@@ -130,8 +130,9 @@ describe('orquestador de punta a punta (proveedor simulado)', () => {
     expect(r.avisos).toEqual([]);
   });
 
-  it('sin respaldo ni orientación: mensaje fijo y derivación (perfil AUTO)', async () => {
+  it('sin respaldo: el texto del modelo se reemplaza por el mensaje fijo (perfil AUTO)', async () => {
     const r = await agente.responder({ conversacionId: 'conv_00000005', perfilId: 'AUTO', texto: '¿Cubre granizo en el auto?', canal: 'web' });
+    expect(r.respaldo).toEqual([]);
     expect(r.texto).toContain(config.mensajes.sinRespaldo);
     expect(r.avisos).toContain('sin_respaldo');
   });
@@ -160,6 +161,9 @@ describe('orquestador de punta a punta (proveedor simulado)', () => {
   });
 
   it('las compuertas de salida corrigen al modelo en todos los caminos', async () => {
+    // Sin exigencia de respaldo, para que el texto simulado llegue a las compuertas.
+    const sinExigencia = validarConfiguracion({ ...CONFIG_PRUEBA, conocimiento: { ...CONFIG_PRUEBA.conocimiento, exigirRespaldo: false } });
+    const agente = new Agente({ config: sinExigencia, proveedor: new ProveedorSimulado(), indice: null, memoria: new MemoriaEnProceso(), herramientas: new RegistroHerramientas(), bitacora });
     const casos: Array<[string, string, string]> = [
       ['#simular:niega_ia', 'niega_ia', 'asistente virtual'],
       ['#simular:promesa', 'promesa_indemnizacion', config.mensajes.fueraDeAlcance],
@@ -176,6 +180,8 @@ describe('orquestador de punta a punta (proveedor simulado)', () => {
   });
 
   it('la marca [DERIVAR] del modelo produce derivación', async () => {
+    const sinExigencia = validarConfiguracion({ ...CONFIG_PRUEBA, conocimiento: { ...CONFIG_PRUEBA.conocimiento, exigirRespaldo: false } });
+    const agente = new Agente({ config: sinExigencia, proveedor: new ProveedorSimulado(), indice: null, memoria: new MemoriaEnProceso(), herramientas: new RegistroHerramientas(), bitacora });
     const r = await agente.responder({ conversacionId: 'conv_00000020', texto: '#simular:marca', canal: 'web' });
     expect(r.derivacion).not.toBeNull();
   });

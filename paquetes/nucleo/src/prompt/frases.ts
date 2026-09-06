@@ -11,6 +11,7 @@ import type { Voz } from '../configuracion/esquema.js';
 export const FRASE_TRATAMIENTO: Record<Voz['tratamiento'], string> = {
   usted: 'Trate a la persona de USTED en todo momento, sin excepción.',
   tu: 'Trate a la persona de TÚ en todo momento, sin excepción. No use voseo («vos», «tenés», «podés»).',
+  vos: 'Trate a la persona de VOS en todo momento (voseo del Paraguay y el Río de la Plata: «vos tenés», «podés», «elegí»), sin mezclarlo con «tú» ni con «usted».',
   neutro: 'Evite el trato directo: use formas impersonales en lugar de «usted» o «tú».',
 };
 
