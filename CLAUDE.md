@@ -35,7 +35,7 @@ Flujo: trabajo en ramas `feat/*`, `fix/*`, `chore/*`, `hotfix/*` → PR hacia `m
 | Regenerar el JSON Schema de la configuración | `pnpm esquema` (escribe `paquetes/nucleo/esquemas/configuracion-agente.schema.json`; se versiona) |
 | Validar configuraciones de agentes | `pnpm validar-config configuraciones/*.json` |
 | Simular una conversación sin nube | `node --import tsx scripts/simular-conversacion.mts` |
-| Servicio local con proveedor simulado | `pnpm servicio:dev` (puerto 8080; clave de prueba en el script) |
+| Servicio local con proveedor simulado | `pnpm servicio:dev` (puerto 8080, proveedor simulado; clave Bearer de desarrollo: `clave-local-de-desarrollo-2026`, cuyo SHA-256 está en el script) |
 | Widget web | `pnpm --filter @chatbotrag/canal-web run construir` → `paquetes/canal-web/dist-web/` |
 | Imagen | `docker build -t chatbotrag .` |
 | Seguridad estática local | `./security-local.sh` (informe en `.security-reports/ultimo/resumen.md`) |
