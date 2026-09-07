@@ -26,4 +26,19 @@ seguridad:
   dast: true
   zap_reglas: .github/zap-rules.tsv
   bloquear_en: [CRITICAL, HIGH]   # se puede endurecer (añadir MEDIUM), nunca relajar
-  excepciones: []                 # id, herramienta, componente, justificacion, aprobado_por, creado, vence
+  # id, herramienta, componente, justificacion, aprobado_por, creado, vence
+  excepciones:
+    - id: undici-types@6.21.0
+      herramienta: pnpm
+      componente: pnpm-workspace.yaml
+      justificacion: >-
+        Exención de trustPolicy con version exacta (un nombre a secas eximiria a
+        todas las versiones del paquete, presentes y futuras). La fija
+        @types/node@22.20.1 mediante el rango ~6.21.0 y carece de atestacion de
+        provenance por ser anterior a la publicacion por OIDC del paquete, que
+        rige desde la linea 7.x. Verificado contra el registro npm: la publico
+        matteo.collina, mantenedor legitimo de undici; no es una toma de control.
+        Se retira al subir @types/node a una version que use undici-types 7.x.
+      aprobado_por: Andres Alberdi (propietario)
+      creado: "2026-09-07"
+      vence: "2026-12-06"
