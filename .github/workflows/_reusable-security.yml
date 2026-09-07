@@ -12,7 +12,13 @@
 #   seguridad-estatica:
 #     uses: ./.github/workflows/_reusable-security.yml
 #     with: { ruta: ., stack: auto, subir_sarif: <bool>, ref: <tag o vacío> }
-#     secrets: inherit
+#     secrets:
+#       GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+#       SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+#
+# No use `secrets: inherit`: pasaría al reusable todos los secretos del caller,
+# incluidos los de despliegue, que ningún escáner necesita (mínimo privilegio;
+# semgrep yaml.github-actions.security.secrets-inherit lo reporta como HIGH).
 #
 # Jobs (paralelos): preparar → secretos | sast | sca | iac | snyk → resumen
 # Bloquea el pipeline cuando encuentra hallazgos de severidad >= bloquear_en.
