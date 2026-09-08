@@ -28,6 +28,25 @@ seguridad:
   bloquear_en: [CRITICAL, HIGH]   # se puede endurecer (añadir MEDIUM), nunca relajar
   # id, herramienta, componente, justificacion, aprobado_por, creado, vence
   excepciones:
+    - id: CKV_GHA_7
+      herramienta: checkov
+      justificacion: >-
+        Regla SLSA sobre .github/workflows/release.yml: exige que
+        workflow_dispatch no tenga inputs. Los dos que declara son de tipo
+        cerrado, no texto libre: `tipo` es un choice de [auto, patch, minor,
+        major] y `prerelease` un boolean, asi que no admiten un valor
+        arbitrario. `tipo` llega al shell por variable de entorno
+        (TIPO_ENTRADA) y no interpolado en el script, que es el patron que
+        evita la inyeccion. El workflow no produce el artefacto de build: solo
+        crea el tag y la release; la imagen la construye ci-node-cloudrun.yml
+        disparado por ese tag. Ademas corre solo desde main
+        (if: github.ref == refs/heads/main) y con permissions contents: read.
+        Quitar los inputs eliminaria la eleccion del incremento de version y la
+        marca de pre-release. Es una regla del estandar compartido: la solucion
+        de fondo corresponde a SeguridadGeneral, no a este repositorio.
+      aprobado_por: Andres Alberdi (propietario)
+      creado: "2026-09-07"
+      vence: "2026-12-06"
     - id: undici-types@6.21.0
       herramienta: pnpm
       componente: chatbotrag
