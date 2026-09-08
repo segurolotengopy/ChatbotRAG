@@ -10,3 +10,24 @@ allowBuilds:
   # de terceros se ejecuta al instalar.
   "@google/genai": false
   protobufjs: false
+
+# Cadena de suministro (semgrep package_managers.pnpm.*): un paquete recién
+# publicado es el vector típico del secuestro de cuenta de un mantenedor, y una
+# subdependencia servida fuera del registro escapa a toda revisión.
+# - blockExoticSubdeps: ninguna dependencia transitiva desde git/tarball/URL.
+# - trustPolicy: una actualización no puede degradar estos ajustes.
+# Pendiente `minimumReleaseAge: 10080`: el lockfile vigente (resuelto el
+# 2026-09-06) tiene 26 entradas publicadas dentro de esa ventana, así que
+# activarlo hoy rompe `pnpm install --frozen-lockfile` en CI. Se activa cuando
+# el lockfile envejezca o al regenerarlo contra versiones con 7 días.
+blockExoticSubdeps: true
+trustPolicy: no-downgrade
+# Excepción única y con versión exacta (un nombre a secas eximiría a TODAS las
+# versiones del paquete). undici-types@6.21.0 lo fija @types/node@22.20.1
+# (rango ~6.21.0) y no lleva atestación de provenance: se publicó a mano en
+# 2024, antes de que el paquete pasara a publicarse por OIDC (7.x en adelante).
+# Verificado: lo publicó matteo.collina, mantenedor legítimo de undici; no es
+# una toma de control. Se retira al subir @types/node a una versión que use
+# undici-types 7.x o superior.
+trustPolicyExclude:
+  - undici-types@6.21.0

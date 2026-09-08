@@ -1,0 +1,1691 @@
+From 372bfce069262f5cfb09d8fba964279a1da69cb8 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 6 Sep 2026 00:58:44 +0000
+Subject: [PATCH] =?UTF-8?q?feat(asistente):=20puerto=20AsistenteProvider?=
+ =?UTF-8?q?=20sobre=20ChatbotRAG=20(mock=20y=20live),=20rutas=20/api/asist?=
+ =?UTF-8?q?ente,=20widget=20ChatFlotante=20y=20documentaci=C3=B3n=20(?=
+ =?UTF-8?q?=C3=ADtem=2035)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01UPkm2E3nVB7Y5aU2snLHee
+---
+ CLAUDE.md                                     |  26 +-
+ amplify.yml                                   |   8 +-
+ docs/BITACORA.md                              |  42 +++
+ docs/Integraciones/CHATBOTRAG.md              |  58 ++++
+ ...abla de Integraciones externas - Tabla.csv |   1 +
+ src/adapters/index.ts                         |   5 +-
+ .../__tests__/asistente-chatbotrag.test.ts    |  77 +++++
+ src/adapters/live/asistente-chatbotrag.ts     | 121 ++++++++
+ .../mock/__tests__/asistente-provider.test.ts |  42 +++
+ src/adapters/mock/asistente-provider.ts       | 129 +++++++++
+ src/adapters/registro.ts                      |  25 +-
+ ...sistente-no-filtra-datos-sensibles.test.ts |  89 ++++++
+ .../derivado-manual-sin-salida.test.ts        |   5 +
+ src/app/api/asistente/_dependencias.ts        |  14 +
+ src/app/api/asistente/_habilitado.ts          |   9 +
+ src/app/api/asistente/agente/route.ts         |  16 ++
+ src/app/api/asistente/mensaje/route.ts        |  76 +++++
+ src/app/layout.tsx                            |   6 +
+ src/components/shared/ChatFlotante.tsx        | 263 ++++++++++++++++++
+ src/components/shared/index.ts                |   2 +
+ src/domain/__tests__/asistente.test.ts        |  80 ++++++
+ src/domain/asistente.ts                       | 147 ++++++++++
+ src/domain/rate-limit.ts                      |  11 +
+ .../__tests__/asistente-provider.contract.ts  |  33 +++
+ src/ports/asistente-provider.ts               |  69 +++++
+ src/repositories/secrets-client.ts            |  24 +-
+ 26 files changed, 1363 insertions(+), 15 deletions(-)
+ create mode 100644 docs/Integraciones/CHATBOTRAG.md
+ create mode 100644 src/adapters/live/__tests__/asistente-chatbotrag.test.ts
+ create mode 100644 src/adapters/live/asistente-chatbotrag.ts
+ create mode 100644 src/adapters/mock/__tests__/asistente-provider.test.ts
+ create mode 100644 src/adapters/mock/asistente-provider.ts
+ create mode 100644 src/app/api/__tests__/asistente-no-filtra-datos-sensibles.test.ts
+ create mode 100644 src/app/api/asistente/_dependencias.ts
+ create mode 100644 src/app/api/asistente/_habilitado.ts
+ create mode 100644 src/app/api/asistente/agente/route.ts
+ create mode 100644 src/app/api/asistente/mensaje/route.ts
+ create mode 100644 src/components/shared/ChatFlotante.tsx
+ create mode 100644 src/domain/__tests__/asistente.test.ts
+ create mode 100644 src/domain/asistente.ts
+ create mode 100644 src/ports/__tests__/asistente-provider.contract.ts
+ create mode 100644 src/ports/asistente-provider.ts
+
+diff --git a/CLAUDE.md b/CLAUDE.md
+index c24852b..eb54c41 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -96,7 +96,7 @@ Además de `ESPECIFICACION_PANTALLAS.md`, estos documentos en `docs/` son fuente
+ | `Tabla de Integraciones externas - Tabla.csv` y `SeguroLoTengo-integraciones-externas-alta-resolucion.pdf`                                                                  | Catálogo de las integraciones externas reales que los adaptadores `live/` deberán implementar algún día (Bancard, Code100, SEBAOT, Infobip, Entrust, ComplyAdvantage, etc.), agrupadas en 30 procesos / 6 categorías, con proveedor y estado de decisión de cada una. Ver "Reglas transversales de integraciones" más abajo para el resumen no negociable.   |
+ | `Cumplimiento SeguroLoTengo.pdf`                                                                                                                                            | Versión narrativa de la matriz de cumplimiento; usar como respaldo textual cuando el CSV no alcance el detalle necesario.                                                                                                                                                                                                                                    |
+ | `CONFIGURACION_SES.md`                                                                                                                                                      | Guía operativa del OTP de correo (P4) sobre Amazon SES: sandbox y sus tres límites, verificación de remitente y destinatarios, salida a producción, deliverability con dominio propio, y el reparto de permisos entre el rol de cómputo y el usuario local. Leela antes de tocar `INTEGRATION_OTP_EMAIL` o `infra/ses-correo-otp.tf`.                        |
+-| `SeguroLoTengo_Asistente_IA_y_Configuracion.pdf`                                                                                                                            | Especificación del asistente Terra — **fuera de alcance de esta demo por ahora**, ver sección "Asistente IA (Terra)" más abajo.                                                                                                                                                                                                                              |
++| `SeguroLoTengo_Asistente_IA_y_Configuracion.pdf` + `Integraciones/CHATBOTRAG.md`                                                                                            | Especificación del asistente Terra y su implementación como puerto `AsistenteProvider` sobre el servicio ChatbotRAG (ítem 35). Ver sección "Asistente IA (Terra)" más abajo.                                                                                                                                                                              |
+ | `MATRIZ_LEGAL_V4.md` + `MATRIZ_LEGAL_V4_2026-08-16.pdf` | **Matriz de referencia regulatoria (V4, corte 16-ago-2026).** Se declara prevalente sobre la versión anterior y corrige errores de cita verificables del CSV. Ante conflicto entre el CSV y la V4, manda la V4. |
+ | `normativa/` + `normativa/CATALOGO.md` | Las normas mismas, en PDF, con el nombre derivado de su contenido — verificado abriendo cada una. Antes de citar un artículo, comprobá que la norma esté acá y leída: el catálogo dice cuáles se leyeron de primera mano y cuáles vienen de fuentes secundarias. Las dos centrales del canal son la **Res. SS.SG. 210/2025** (art. 4: firma simple del proponente con OTP; art. 5: firma cualificada obligatoria del corredor; art. 9: conservación) y la **231/2025** (pólizas electrónicas). |
+ | `VALIDACION_LEGAL_FIRMA_INTERNA.md` | Por qué SeguroLoTengo puede generar la firma no cualificada del cliente sin ser prestador registrado, qué exigiría serlo, y la convergencia en dos fases con el proyecto Firmas-NoCualificadas. |
+@@ -256,9 +256,9 @@ Toda transición pasa por `src/domain/expediente.ts`. **Ningún Route Handler mo
+ 
+ ## Arquitectura de puertos y adaptadores
+ 
+-Los 9 proveedores externos viven detrás de interfaces en `src/ports/`:
++Los 10 proveedores externos viven detrás de interfaces en `src/ports/`:
+ 
+-`OtpProvider` · `IdentityProvider` · `ComplianceProvider` · `PaymentProvider` · `SignatureProvider` · `PolicyIssuer` · `EvidenceStore` · `RegistroCivilProvider` · `MessagingProvider`
++`OtpProvider` · `IdentityProvider` · `ComplianceProvider` · `PaymentProvider` · `SignatureProvider` · `PolicyIssuer` · `EvidenceStore` · `RegistroCivilProvider` · `MessagingProvider` · `AsistenteProvider`
+ 
+ `MessagingProvider` (CHG-44) es el noveno y **no es el del OTP**, aunque compartan proveedor real: aquel entrega un código de seis dígitos y gestiona su ciclo de vida; este entrega **archivos ya emitidos** a alguien que ya está identificado. Solo tiene mock, y el `live` no es una tarea pendiente cualquiera: WhatsApp-Modular expone hoy un `otp-service` y ningún endpoint de documentos, así que no hay contrato que implementar — inventarlo sería inventar la integración, el mismo criterio que dejó el webhook de Code100 declarado y sin implementar (PEN-02).
+ 
+@@ -515,16 +515,20 @@ Stack de proveedores reales previsto para cuando existan adaptadores `live/` (no
+ 
+ ---
+ 
+-## Asistente IA (Terra) — fuera de alcance por ahora
++## Asistente IA (Terra) — implementado como puerto, apagado por defecto
+ 
+-`docs/SeguroLoTengo_Asistente_IA_y_Configuracion.pdf` especifica un asistente conversacional ("Terra") para el sitio público. **No está implementado ni planificado para esta sesión ni las próximas** — no es una de las 12 pantallas ni forma parte del flujo de contratación. Se documenta acá solo como referencia para cuando se confirme como requerimiento:
++Desde el 06-sep-2026 el asistente conversacional existe en el código, como el **décimo puerto** (`AsistenteProvider`, ítem 35 de la tabla de integraciones), y sigue **fuera del flujo de contratación**: no es una de las 12 pantallas, no recibe el expediente y no tiene camino hacia Bancard, Code100 ni SEBAOT. Documentación de la integración en `docs/Integraciones/CHATBOTRAG.md`; el servicio vive en el repositorio `segurolotengopy/ChatbotRAG`.
+ 
+-- Solo respondería con respaldo documental aprobado y versionado (File Search / vector store); sin respaldo, deriva a un asesor humano — nunca inventa.
+-- Podría responder: planes, premios, coberturas, sumas, carencias, exclusiones, edades, beneficiarios, proceso de contratación/pago/firma/entrega, procedimiento de siniestros aprobado.
+-- No podría responder ni procesar: elegibilidad o cobertura de un caso particular, diagnósticos/pronósticos médicos, promesas de indemnización, datos de salud/PEP/tarjeta, ni ejecutar pago, firma, emisión o modificación de pólizas.
+-- Debería quedar desacoplado en código del flujo transaccional (Bancard, Code100, SEBAOT): ninguna función del asistente podría invocar esos servicios.
++Lo que se implementó y cómo se cumple la especificación original (`docs/SeguroLoTengo_Asistente_IA_y_Configuracion.pdf`):
+ 
+-No crear código, pantallas ni dependencias para esto sin que se pida explícitamente como una tarea nueva.
++- **Solo responde con respaldo documental aprobado y versionado.** El servicio hace recuperación (RAG) sobre un corpus derivado de los textos versionados de este repo (`catalogo.ts`, `textos-aclaraciones.ts`, `textos-legales.ts`, `entidades.ts`), un perfil por producto del selector. Sin respaldo, responde un texto fijo y deriva a Interseguros; **nunca inventa**.
++- **No recibe cédula, salud, PEP, tarjeta ni códigos.** Dos filtros en serie: `src/domain/asistente.ts` (este repo, regla inviolable #7) y las compuertas de entrada del servicio. Un texto bloqueado no viaja a la IA, no se recuerda y no se registra: solo la categoría.
++- **No decide casos.** Las compuertas de salida del servicio reemplazan respuestas que nieguen ser IA, prometan indemnización o afirmen elegibilidad.
++- **Desacoplado en código.** `dependenciasAsistente()` no pide repositorios; el caso de uso no conoce `transicionarExpediente`; la conversación no genera evidencia.
++
++Operación: `ASISTENTE_ENABLED=true` monta el widget (`ChatFlotante`, último en el `layout`, oculto en las pantallas transaccionales) y abre `/api/asistente/*`; apagado, 404. `INTEGRATION_ASISTENTE=mock` (por defecto) responde desde `catalogo.ts`; `live` exige `CHATBOTRAG_URL` y el bearer `CHATBOTRAG_TOKEN` en Secrets Manager.
++
++Reglas al tocarlo: el widget **no usa cookies ni almacenamiento** (fila 85 sigue siendo verdad); cualquier texto nuevo que el asistente pueda citar sale de un documento versionado del corpus, no se escribe en el prompt; y ninguna pantalla del flujo lo monta por su cuenta.
+ 
+ ---
+ 
+@@ -539,7 +543,7 @@ Además de `npm run typecheck && npm run lint && npm test`:
+ 5. ¿Se generan y persisten las evidencias probatorias correspondientes (hash, timestamp, IP, canal, resultado) vía `EvidenceStore`?
+ 6. ¿La firma, si aplica, va sobre el documento único y con los firmantes que declara `firmantes-documento.ts` (D-13)?
+ 7. ¿El pago, si aplica, ocurre **después** de la firma (D-08) y es idempotente? ¿El único estado de origen es `FIRMADO`? ¿El Certificado de Cobertura Provisional se emite en la misma escritura que el cobro (D-12, CMP-07)? ¿La emisión exige el cobro confirmado (fila 44)?
+-8. ¿Ningún dato de salud, PEP, tarjeta o cédula quedó expuesto en logs no cifrados, analítica, o (a futuro) al asistente IA?
++8. ¿Ningún dato de salud, PEP, tarjeta o cédula quedó expuesto en logs no cifrados, analítica o al asistente IA? (El asistente tiene su propio test de no filtración: `src/app/api/__tests__/asistente-no-filtra-datos-sensibles.test.ts`.)
+ 
+ ---
+ 
+diff --git a/amplify.yml b/amplify.yml
+index b18c514..d948e6f 100644
+--- a/amplify.yml
++++ b/amplify.yml
+@@ -63,8 +63,14 @@ frontend:
+         # bearer del otp-service vive en Secrets Manager bajo la clave
+         # `WHATSAPP_MODULAR_TOKEN`, justamente porque acá terminaría escrito en
+         # `.env.production` dentro del artefacto de build.
++        #
++        # Las tres del asistente (Terra, ítem 35): `ASISTENTE_ENABLED=true`
++        # monta el widget y abre `/api/asistente/*` (apagado: 404, como la
++        # consola); `INTEGRATION_ASISTENTE=live` enchufa el servicio ChatbotRAG
++        # cuyo origen dice `CHATBOTRAG_URL`. El bearer del servicio vive en
++        # Secrets Manager bajo `CHATBOTRAG_TOKEN`, nunca acá.
+         - |
+-          for var in FLUJO_V3 DEMO_MODE ADMIN_CONSOLE_ENABLED DYNAMODB_TABLE S3_BUCKET APP_SECRETS_ARN INTEGRATION_IDENTITY INTEGRATION_IDENTITY_SELFIE IDENTITY_PAISES_CEDULA INTEGRATION_OTP WHATSAPP_MODULAR_URL INTEGRATION_OTP_EMAIL OTP_EMAIL_FROM; do
++          for var in FLUJO_V3 DEMO_MODE ADMIN_CONSOLE_ENABLED DYNAMODB_TABLE S3_BUCKET APP_SECRETS_ARN INTEGRATION_IDENTITY INTEGRATION_IDENTITY_SELFIE IDENTITY_PAISES_CEDULA INTEGRATION_OTP WHATSAPP_MODULAR_URL INTEGRATION_OTP_EMAIL OTP_EMAIL_FROM ASISTENTE_ENABLED INTEGRATION_ASISTENTE CHATBOTRAG_URL; do
+             if [ -n "${!var:-}" ]; then echo "$var=${!var}" >> .env.production; fi
+           done
+         - npm run build
+diff --git a/docs/BITACORA.md b/docs/BITACORA.md
+index 059814b..c10f26f 100644
+--- a/docs/BITACORA.md
++++ b/docs/BITACORA.md
+@@ -38,6 +38,48 @@ Dos reglas que hacen que esto sirva:
+ 
+ ---
+ 
++## 2026-09-06 · El asistente Terra entra como décimo puerto, sobre el servicio ChatbotRAG
++
++### El caso
++
++Andres pidió (06-sep-2026) aplicar al demo un chatbot que dependa enteramente de los parámetros de cada seguro (eligiendo el tipo de seguro), con RAG, sin revelar información confidencial y que oriente según cada persona. La especificación de Terra (`docs/SeguroLoTengo_Asistente_IA_y_Configuracion.pdf`) llevaba desde agosto marcada «fuera de alcance»; este es el pedido explícito que CLAUDE.md exigía para tocarla. La decisión de arquitectura fue **no embeber un modelo en este repo** sino consumir un servicio propio, `ChatbotRAG` (repo `segurolotengopy/ChatbotRAG`, Cloud Run, Vertex AI como nube de ejemplo con Bedrock intercambiable), por el patrón ports/adapters que el repo ya usa. Así las reglas de este repo (SDKs solo en adapters, `fetch` solo en adapters) se respetan, y el mismo servicio sirve después a WhatsApp o a la app.
++
++### Qué cambió
++
++- **Puerto nuevo** `src/ports/asistente-provider.ts` (`AsistenteProvider`: `describir`, `responder`). La firma no tiene dónde poner el expediente, la cédula, la salud ni la tarjeta: la regla #7 es estructural, no una validación.
++- **Caso de uso** `src/domain/asistente.ts`: valida forma, exige que `perfilId` sea un producto de `PRODUCTOS`, y **filtra localmente** cédula (con y sin puntos, por contexto), tarjeta (Luhn), salud y PEP en primera persona, y códigos. Un texto bloqueado no viaja al proveedor ni a la bitácora. El filtro se repite acá aunque el servicio tenga el suyo: la regla #7 es de este repositorio.
++- **Adaptador mock** `src/adapters/mock/asistente-provider.ts`: responde desde `catalogo.ts`, `ACLARACION_COBERTURAS` y `textos-plan.ts` por palabras clave. Los productos «próximamente» no reciben precios. **Adaptador live** `src/adapters/live/asistente-chatbotrag.ts`: único `fetch` al servicio, bearer resuelto desde Secrets Manager (`CHATBOTRAG_TOKEN`, opcional en `SecretosApp` como el de WhatsApp-Modular), sin reintentos, sin logs del texto.
++- `registro.ts`: `obtenerAsistenteProvider()` (`INTEGRATION_ASISTENTE`; `live` exige `CHATBOTRAG_URL` o tira). `adapters/index.ts`: puerto `ASISTENTE`.
++- **Rutas** `/api/asistente/agente` (GET) y `/api/asistente/mensaje` (POST), ambas 404 sin `ASISTENTE_ENABLED=true`. Límite por IP `LIMITE_ASISTENTE` (30 / 10 min) en `rate-limit.ts`. Registradas como `SOLO_LECTURA` en `derivado-manual-sin-salida.test.ts`: no tocan el expediente.
++- **Widget** `src/components/shared/ChatFlotante.tsx`, montado al final del `layout` (convención: no por pantalla). Selector del seguro (un perfil por producto), tokens semánticos + `naranja-600` con `dark:`, `min-h-tap`, `role="dialog"`, Escape, foco. Sin cookies ni `localStorage` (fila 85 intacta); id de conversación en el estado de React. Oculto en `/identidad`, `/declaraciones`, `/pago`, `/firma`, `/pago-y-firma`, `/whatsapp`, `/demo-panel`, `/admin-consola`. z-index 70 bajo la píldora de CTA (80).
++- `amplify.yml`: `ASISTENTE_ENABLED`, `INTEGRATION_ASISTENTE`, `CHATBOTRAG_URL` en el bucle de `.env.production`.
++- Documentación: fila 35 en `Tabla de Integraciones externas - Tabla.csv`, `docs/Integraciones/CHATBOTRAG.md` (contrato, variables, mapa de archivos, corpus), sección «Asistente IA (Terra)» de `CLAUDE.md` reescrita (ya no «fuera de alcance»), lista de puertos a 10, checklist punto 8.
++- **Corpus del servicio** derivado de textos versionados de este repo: OFERTA-CONFIO-v2, coberturas v1.0, T&C v1.1, documentación precontractual v1.1, consultas y reclamos v1.1, entidades (D-19: sin inventar teléfonos ni correos). El plazo de retracto viaja como «pendiente de definición legal», igual que acá.
++
++### Qué hizo Andres
++
++- Decidió la topología (servicio independiente, no librería embebida), el alcance de la primera entrega y aplicar el estándar DevSecOps al repo nuevo (respuestas a las tres preguntas de la sesión, 06-sep-2026).
++- No ejecutó nada en este repo: la sesión trabajó sobre una copia y entrega la rama `feat/asistente-chatbotrag` para su revisión.
++
++### Verificaciones
++
++- `npm run typecheck`: limpio. `npm run lint`: 0 errores (los 6 warnings preexistentes).
++- `FLUJO_V3=false npx vitest run`: **1282 tests, 96 archivos, todo en verde** (baseline de la sesión: 1257 / 92; el higiene-de-citas fallaba en la copia solo porque faltaba el CSV de cumplimiento, que se agregó a la copia).
++- Tests nuevos: `domain/__tests__/asistente.test.ts` (filtros: cédula 4.523.118 / CI 4523118 / Gs. 319.000 no es cédula; «¿cubre cáncer?» pasa, «tengo cáncer» no), `adapters/mock/__tests__/asistente-provider.test.ts` (+ contrato), `adapters/live/__tests__/asistente-chatbotrag.test.ts` (bearer, perfil, canal; 429/404/5xx; red caída), `app/api/__tests__/asistente-no-filtra-datos-sensibles.test.ts` (dato sensible no llega al proveedor ni a `console.*`; 404 apagado; 429 al mensaje 31). `contratos-cableados.test.ts` reconoce el contrato nuevo.
++- Contra el servicio con proveedor simulado (repo ChatbotRAG): «¿Cuánto cuesta el plan CONFÍO+?» → Gs. 522.500 citando OFERTA-CONFIO-v2; «¿carencia por cáncer?» → 180 días citando coberturas v1.0; «Tengo cáncer» → bloqueado (`entrada:salud`); «¿margen interno?» → sin respaldo (la fuente interna no se indexa); «me importa más el menor premio» → recomendación determinista CONFÍO con aclaración.
++- **No se ejecutó E2E ni build de Next en esta sesión** (la copia no tiene las fotos de `public/v3` ni `.next`).
++
++### Queda abierto
++
++1. **Desplegar el servicio ChatbotRAG** (Cloud Run, proyecto GCP a definir por Andres) y crear el cliente `segurolotengo-web` con su clave; cargar `CHATBOTRAG_TOKEN` en `slt-demo-app-secrets` y `CHATBOTRAG_URL`, `INTEGRATION_ASISTENTE=live`, `ASISTENTE_ENABLED=true` en Amplify. Hasta entonces el demo funciona en mock.
++2. **Registrar en `infra/`** la variable `CHATBOTRAG_TOKEN` del secret (Terraform tiene `ignore_changes`; se agrega a mano como el de WhatsApp-Modular).
++3. **Aprobación de contenido**: el corpus del servicio se derivó de los textos de este repo; Interseguros/Alianza deben aprobarlo como «fuentes aprobadas» (Fase 1 de la especificación) y repetir la aprobación en cada cambio de versión.
++4. **200 casos de prueba** (Fase 4 de la especificación) contra el servicio con Vertex real, incluidos ataques de instrucciones; hoy solo hay pruebas unitarias y simuladas.
++5. **E2E**: agregar un escenario Playwright del widget (abrir, preguntar, dato sensible bloqueado) cuando `ASISTENTE_ENABLED` esté encendido en el entorno de pruebas.
++6. Decidir si el widget debe verse en `/confirmacion` (hoy sí) y en la landing v2 `/plan` (hoy sí).
++
++---
++
+ ## 2026-09-05 (c) · La 071/2019 entra al repo, y D-24 queda enmendada: CONFÍO va por régimen normal
+ 
+ **Rama:** `docs/d24-regimen-normal-y-seprelad-71` · **Pedido de Andres:** leer la
+diff --git a/docs/Integraciones/CHATBOTRAG.md b/docs/Integraciones/CHATBOTRAG.md
+new file mode 100644
+index 0000000..90371f7
+--- /dev/null
++++ b/docs/Integraciones/CHATBOTRAG.md
+@@ -0,0 +1,58 @@
++# ChatbotRAG — asistente conversacional (Terra) · ítem 35
++
++Servicio propio de AAB1 (repositorio `segurolotengopy/ChatbotRAG`), agnóstico de nube y de canal, que atiende al asistente informativo del sitio. Este documento describe **lo que este repositorio consume**; la arquitectura del servicio está en `docs/ARQUITECTURA.md` de aquel repo.
++
++## Qué hace y qué no
++
++| Sí responde (con respaldo documental) | No responde ni procesa |
++| :-- | :-- |
++| Planes, premios, coberturas y sumas aseguradas del producto elegido | Elegibilidad, aceptación o cobertura de un caso particular |
++| Carencias, exclusiones, edades, beneficiarios | Diagnósticos, pronósticos o interpretación médica |
++| Cómo funciona la contratación, el pago, la firma y la entrega documental | Promesas de indemnización o decisiones de siniestros |
++| Procedimiento de consultas y reclamos, canales de atención | Cédula, salud, PEP, tarjetas, códigos de verificación (se bloquean antes del modelo) |
++| Orientación general sobre qué plan mirar primero (regla configurada, no el modelo) | Contratar, cobrar, firmar, emitir o modificar pólizas |
++
++Sin respaldo documental suficiente el servicio **no inventa**: responde el mensaje fijo de «sin respaldo» y deriva a Interseguros.
++
++## Contrato consumido
++
++```
++GET  /v1/agente                                    → { ok, agente:{nombreAsistente…}, perfilPorDefecto, perfiles:[{id,nombre,bienvenida}], bienvenida }
++POST /v1/conversaciones/{conversacionId}/mensajes  → { ok, texto, respaldo:[{fuenteId,titulo,version,puntaje}], avisos:[…], derivacion, recomendacion, uso }
++      cuerpo: { perfilId, texto, canal:"web" }
++```
++
++Autenticación `Authorization: Bearer <clave>`; el agente que atiende lo decide el servicio a partir de la clave. Errores: 400 forma, 401 clave, 404 perfil, 413 texto largo, 429 límite, 5xx no disponible.
++
++El `perfilId` es el `id` del producto en `PRODUCTOS` (`src/domain/catalogo.ts`): `VIDA_ONCOLOGICO`, `VIDA`, `ACCIDENTES_PERSONALES`, `RESPONSABILIDAD_CIVIL`. En el servicio cada perfil tiene su corpus, su alcance y su orientación (`configuraciones/segurolotengo.json` de aquel repo).
++
++## Dónde vive en este repositorio
++
++| Pieza | Archivo |
++| :-- | :-- |
++| Puerto | `src/ports/asistente-provider.ts` |
++| Caso de uso y filtro local de datos sensibles (regla #7) | `src/domain/asistente.ts` |
++| Adaptador simulado (responde desde `catalogo.ts`) | `src/adapters/mock/asistente-provider.ts` |
++| Adaptador oficial (cliente HTTP) | `src/adapters/live/asistente-chatbotrag.ts` |
++| Selección mock/live | `obtenerAsistenteProvider()` en `src/adapters/registro.ts` (`INTEGRATION_ASISTENTE`) |
++| Rutas | `src/app/api/asistente/agente/route.ts`, `src/app/api/asistente/mensaje/route.ts` |
++| Límite por IP | `LIMITE_ASISTENTE` (30 mensajes / 10 min) en `src/domain/rate-limit.ts` |
++| Widget | `src/components/shared/ChatFlotante.tsx`, montado en `src/app/layout.tsx` |
++| Contrato compartido mock/live | `src/ports/__tests__/asistente-provider.contract.ts` |
++
++## Variables y secretos
++
++| Nombre | Dónde | Efecto |
++| :-- | :-- | :-- |
++| `ASISTENTE_ENABLED` | entorno (Amplify) | `"true"` monta el widget y abre las rutas; ausente → 404 |
++| `INTEGRATION_ASISTENTE` | entorno | `mock` (por defecto) o `live` |
++| `CHATBOTRAG_URL` | entorno | origen del servicio (no es credencial) |
++| `CHATBOTRAG_TOKEN` | Secrets Manager `slt-demo-app-secrets` | bearer del cliente `segurolotengo-web` del servicio |
++
++## Corpus aprobado
++
++El corpus del perfil `VIDA_ONCOLOGICO` se derivó de los textos versionados de este repositorio: `catalogo.ts` (OFERTA-CONFIO-v2), `ACLARACION_COBERTURAS` v1.0, `ACLARACION_TERMINOS_CONDICIONES` v1.1, `ACLARACION_DOCUMENTACION_PRECONTRACTUAL` v1.1, `aclaracionConsultasReclamos` v1.1, `entidades.ts` y `textos-legales.ts`. **Cuando uno de esos textos cambie de versión, hay que actualizar el archivo correspondiente en `configuraciones/corpus/segurolotengo/` del servicio**: el asistente cita la versión que tiene cargada.
++
++## Lo que el widget no hace
++
++No usa cookies ni `localStorage` (el aviso de cookies sigue siendo verdad), no se muestra en `/identidad`, `/declaraciones`, `/pago`, `/firma`, `/pago-y-firma` ni `/whatsapp`, y no escribe evidencia: la conversación no es un hecho del expediente.
+diff --git a/docs/Tabla de Integraciones externas - Tabla.csv b/docs/Tabla de Integraciones externas - Tabla.csv
+index e94e397..7c5aa76 100644
+--- a/docs/Tabla de Integraciones externas - Tabla.csv	
++++ b/docs/Tabla de Integraciones externas - Tabla.csv	
+@@ -32,3 +32,4 @@ Categoría,Número,Título,Plataforma,Descripción,Observaciones
+ "2 - PRODUCTO, CONSENTIMIENTO E IDENTIDAD   ",32,OCR de la cedula del demo y el piloto   ,AWS Textract DetectDocumentText + parseo MRZ propio   ,"Reemplaza el OCR del item 7 para demo/piloto. AnalyzeID NO sirve: esta entrenado sobre documentos de EE.UU. Se usa DetectDocumentText generico con confianza minima 90 y cruce contra el MRZ TD1 del dorso (ICAO Doc 9303). No cubre autenticidad documental.   ",EN USO - DEMO Y PILOTO   
+ "2 - PRODUCTO, CONSENTIMIENTO E IDENTIDAD   ",33,Validacion contra el registro civil paraguayo   ,Didit (servicio pry_cedula) - alternativa a convenio directo con Identificaciones   ,"Cruza nombre y numero de cedula contra el Departamento de Identificaciones. USD 0,20 por consulta concluyente. Es la unica opcion evaluada que cierra la brecha de autenticidad sin convenio propio; el item 9 la preveia como fuente oficial autorizada. El piloto de tres formatos la volvio necesaria y no opcional: es lo unico que le da salida a la cedula del formato anterior, que no tiene MRZ. Puerto RegistroCivilProvider y adaptador mock implementados; falta el contrato de API del proveedor para el adaptador oficial.   ",EN USO - MOCK; PUERTO IMPLEMENTADO   
+ "5 - EMISIÓN, ENTREGA Y RENOVACIÓN   ",34,Entrega del Certificado de Cobertura Provisional y la Solicitud firmada   ,WhatsApp-Modular (Meta WhatsApp Cloud API) + Amazon SES   ,"Entrega que hace SeguroLoTengo, distinta del item 23 (la poliza y la factura las envia Alianza). Manda el CPC y el paquete firmado a los dos canales verificados, con el mensaje de D-18. Registra medio de recepcion y acuse (CMP-05) con estados PENDIENTE - ENVIADO - ACUSADO - FALLIDO, reintentos con espera creciente y evidencia por paso. ACUSADO es la confirmacion del proveedor, nunca leido (Matriz 9). Puerto MessagingProvider y adaptador mock implementados; el adaptador oficial de WhatsApp NO se puede escribir todavia porque WhatsApp-Modular expone solo un otp-service y no hay contrato publicado para enviar documentos. El de correo es escribible sobre SES (SendRawEmail con adjuntos MIME).   ",EN USO - MOCK; PUERTO IMPLEMENTADO
++"6 - OPERACIÓN, ANALÍTICA Y CONTROL   ",35,Asistente conversacional del sitio (Terra)   ,ChatbotRAG (servicio propio; repo segurolotengopy/ChatbotRAG) sobre Google Cloud Vertex AI (Gemini + embeddings) — alternativa Amazon Bedrock   ,"Asistente informativo con recuperación documental (RAG) sobre textos aprobados y versionados (planes y premios OFERTA-CONFIO-v2, coberturas v1.0, proceso v1.1, consultas y reclamos v1.1), un perfil por producto del selector, compuertas de seguridad en código (bloquea cédula, tarjeta, salud, PEP y códigos ANTES del modelo; corrige respuestas que nieguen ser IA, prometan indemnización o decidan elegibilidad) y derivación a asesor humano. Desacoplado del flujo transaccional: no recibe el expediente ni tiene puerto hacia Bancard, Code100 ni SEBAOT. Filtro local en src/domain/asistente.ts (regla #7) además del del servicio; sin cookies ni almacenamiento en el navegador. Puerto AsistenteProvider con adaptador mock (responde desde catalogo.ts) y live (cliente HTTP, bearer en Secrets Manager CHATBOTRAG_TOKEN). Se enciende con ASISTENTE_ENABLED=true.   ",EN PILOTO (DEMO) — MOCK POR DEFECTO; LIVE CON INTEGRATION_ASISTENTE=live
+diff --git a/src/adapters/index.ts b/src/adapters/index.ts
+index c747e57..797362f 100644
+--- a/src/adapters/index.ts
++++ b/src/adapters/index.ts
+@@ -27,7 +27,10 @@ export type NombrePuerto =
+   // Noveno: entrega de los documentos emitidos por los canales verificados
+   // (CHG-44). No es el del OTP aunque comparta proveedor: aquel entrega un
+   // código, este entrega archivos a alguien ya identificado.
+-  | "MESSAGING";
++  | "MESSAGING"
++  // Décimo: el asistente conversacional (Terra, ítem 35). Informativo y
++  // desacoplado del flujo: no comparte puerto con ningún proveedor transaccional.
++  | "ASISTENTE";
+ 
+ export type ModoIntegracion = "mock" | "live";
+ 
+diff --git a/src/adapters/live/__tests__/asistente-chatbotrag.test.ts b/src/adapters/live/__tests__/asistente-chatbotrag.test.ts
+new file mode 100644
+index 0000000..00d94d3
+--- /dev/null
++++ b/src/adapters/live/__tests__/asistente-chatbotrag.test.ts
+@@ -0,0 +1,77 @@
++import { describe, expect, it } from "vitest";
++import { crearAsistenteChatbotRag } from "../asistente-chatbotrag";
++
++type Captura = { url: string; init: RequestInit };
++
++function fetchFalso(respuestas: Array<{ status: number; cuerpo: unknown }>, capturas: Captura[]): typeof fetch {
++  return (async (url: string | URL | Request, init?: RequestInit) => {
++    capturas.push({ url: String(url), init: init ?? {} });
++    const r = respuestas.shift() ?? { status: 500, cuerpo: { ok: false } };
++    return new Response(JSON.stringify(r.cuerpo), { status: r.status, headers: { "content-type": "application/json" } });
++  }) as typeof fetch;
++}
++
++const CLAVE = "clave-fija-de-prueba-larga";
++
++describe("adaptador live del asistente (ChatbotRAG)", () => {
++  it("envía Bearer, perfil y canal, y traduce la respuesta al puerto", async () => {
++    const capturas: Captura[] = [];
++    const a = crearAsistenteChatbotRag({
++      baseUrl: "https://chatbotrag.ejemplo.com/",
++      clave: async () => CLAVE,
++      fetchFn: fetchFalso(
++        [{ status: 200, cuerpo: { ok: true, texto: "Según el documento…", respaldo: [{ fuenteId: "planes", titulo: "Planes", version: "v2", puntaje: 0.7 }], avisos: [], derivacion: null } }],
++        capturas,
++      ),
++    });
++    const r = await a.responder({ conversacionId: "web_live0001", perfilId: "VIDA_ONCOLOGICO", texto: "¿precio?" });
++    expect(r).toEqual({ ok: true, texto: "Según el documento…", respaldo: [{ fuenteId: "planes", titulo: "Planes", version: "v2" }], avisos: [], derivacion: false });
++    expect(capturas[0]?.url).toBe("https://chatbotrag.ejemplo.com/v1/conversaciones/web_live0001/mensajes");
++    expect((capturas[0]?.init.headers as Record<string, string>).authorization).toBe(`Bearer ${CLAVE}`);
++    expect(JSON.parse(String(capturas[0]?.init.body))).toEqual({ perfilId: "VIDA_ONCOLOGICO", texto: "¿precio?", canal: "web" });
++  });
++
++  it("traduce 429, 404 y 5xx a motivos del puerto y no lanza ante red caída", async () => {
++    const a = crearAsistenteChatbotRag({
++      baseUrl: "https://c.ejemplo.com",
++      clave: CLAVE,
++      fetchFn: fetchFalso([{ status: 429, cuerpo: { ok: false } }, { status: 404, cuerpo: { ok: false } }, { status: 503, cuerpo: { ok: false } }], []),
++    });
++    const m = { conversacionId: "web_live0002", perfilId: null, texto: "x" };
++    expect(await a.responder(m)).toEqual({ ok: false, motivo: "LIMITE" });
++    expect(await a.responder(m)).toEqual({ ok: false, motivo: "PERFIL_DESCONOCIDO" });
++    expect(await a.responder(m)).toEqual({ ok: false, motivo: "NO_DISPONIBLE" });
++
++    const caido = crearAsistenteChatbotRag({
++      baseUrl: "https://c.ejemplo.com",
++      clave: CLAVE,
++      fetchFn: (async () => {
++        throw new Error("ECONNREFUSED");
++      }) as typeof fetch,
++    });
++    expect(await caido.responder(m)).toEqual({ ok: false, motivo: "NO_DISPONIBLE" });
++    expect(await caido.describir()).toBeNull();
++  });
++
++  it("describe el agente desde /v1/agente", async () => {
++    const a = crearAsistenteChatbotRag({
++      baseUrl: "https://c.ejemplo.com",
++      clave: CLAVE,
++      fetchFn: fetchFalso(
++        [
++          {
++            status: 200,
++            cuerpo: { ok: true, agente: { nombreAsistente: "Terra" }, perfilPorDefecto: "VIDA_ONCOLOGICO", perfiles: [{ id: "VIDA_ONCOLOGICO", nombre: "Vida Oncológico", bienvenida: "Hola" }], bienvenida: "Hola" },
++          },
++        ],
++        [],
++      ),
++    });
++    expect(await a.describir()).toEqual({
++      nombreAsistente: "Terra",
++      perfilPorDefecto: "VIDA_ONCOLOGICO",
++      perfiles: [{ id: "VIDA_ONCOLOGICO", nombre: "Vida Oncológico", bienvenida: "Hola" }],
++      bienvenida: "Hola",
++    });
++  });
++});
+diff --git a/src/adapters/live/asistente-chatbotrag.ts b/src/adapters/live/asistente-chatbotrag.ts
+new file mode 100644
+index 0000000..7b106d6
+--- /dev/null
++++ b/src/adapters/live/asistente-chatbotrag.ts
+@@ -0,0 +1,121 @@
++/**
++ * Cliente HTTP del servicio ChatbotRAG (ítem 35 de
++ * `docs/Tabla de Integraciones externas - Tabla.csv`; repo
++ * `segurolotengopy/ChatbotRAG`, servicio en Cloud Run). Único `fetch` hacia el
++ * asistente en todo el repositorio.
++ *
++ * Contrato consumido (`paquetes/canal-web/src/contrato.ts` de ese repo):
++ *
++ *   GET  /v1/agente                                        → DescripcionAgente
++ *   POST /v1/conversaciones/{conversacionId}/mensajes      → RespuestaMensaje
++ *        cuerpo { perfilId, texto, canal: "web" }
++ *
++ * Autenticación: `Authorization: Bearer <clave>`. La clave vive en Secrets
++ * Manager (`CHATBOTRAG_TOKEN` dentro de `slt-demo-app-secrets`), igual que la de
++ * WhatsApp-Modular, y se resuelve dentro de la llamada asíncrona para que el
++ * composition root siga siendo síncrono. El agente que atiende lo decide el
++ * servicio a partir de la clave: este cliente no puede elegir otro.
++ *
++ * Lo que este cliente NO hace: no reintenta (un asistente que responde tarde y
++ * dos veces confunde más que uno que dice «no disponible»), no registra el texto
++ * en ningún log (regla inviolable #7 y CMP-16) y no decide nada de negocio — el
++ * filtro de datos sensibles corre antes, en `src/domain/asistente.ts`.
++ */
++import type { AsistenteProvider, DescripcionAsistente, MensajeAsistente, RespaldoAsistente, RespuestaAsistente } from "@/ports/asistente-provider";
++
++export interface ConfiguracionClienteChatbotRag {
++  /** Origen del servicio, sin barra final. Ej.: `https://chatbotrag-xxxx.a.run.app`. */
++  readonly baseUrl: string;
++  readonly clave: string | (() => Promise<string>);
++  /** Inyectable para tests: nunca se hace red real en la suite. */
++  readonly fetchFn?: typeof fetch;
++  readonly timeoutMs?: number;
++}
++
++interface RespuestaServicio {
++  readonly ok: boolean;
++  readonly motivo?: string;
++  readonly texto?: string;
++  readonly respaldo?: ReadonlyArray<{ fuenteId: string; titulo: string; version: string }>;
++  readonly avisos?: readonly string[];
++  readonly derivacion?: { motivo: string } | null;
++}
++
++interface DescripcionServicio {
++  readonly ok: boolean;
++  readonly agente?: { nombreAsistente: string };
++  readonly perfilPorDefecto?: string | null;
++  readonly perfiles?: ReadonlyArray<{ id: string; nombre: string; bienvenida: string }>;
++  readonly bienvenida?: string;
++}
++
++function limpiarRespaldo(lista: RespuestaServicio["respaldo"]): readonly RespaldoAsistente[] {
++  return (lista ?? [])
++    .filter((r) => typeof r.fuenteId === "string" && typeof r.titulo === "string" && typeof r.version === "string")
++    .map((r) => ({ fuenteId: r.fuenteId.slice(0, 80), titulo: r.titulo.slice(0, 160), version: r.version.slice(0, 40) }));
++}
++
++export function crearAsistenteChatbotRag(config: ConfiguracionClienteChatbotRag): AsistenteProvider {
++  const fetchFn = config.fetchFn ?? fetch;
++  const timeoutMs = config.timeoutMs ?? 20_000;
++  const base = config.baseUrl.replace(/\/$/, "");
++
++  async function llamar(metodo: "GET" | "POST", ruta: string, cuerpo?: unknown): Promise<{ status: number; json: unknown } | null> {
++    const clave = typeof config.clave === "function" ? await config.clave() : config.clave;
++    const control = new AbortController();
++    const temporizador = setTimeout(() => control.abort(), timeoutMs);
++    try {
++      const respuesta = await fetchFn(`${base}${ruta}`, {
++        method: metodo,
++        headers: {
++          accept: "application/json",
++          authorization: `Bearer ${clave}`,
++          ...(cuerpo === undefined ? {} : { "content-type": "application/json" }),
++        },
++        ...(cuerpo === undefined ? {} : { body: JSON.stringify(cuerpo) }),
++        signal: control.signal,
++      });
++      const json: unknown = await respuesta.json().catch(() => null);
++      return { status: respuesta.status, json };
++    } catch {
++      return null;
++    } finally {
++      clearTimeout(temporizador);
++    }
++  }
++
++  return {
++    nombre: "ChatbotRAG · real",
++    async describir(): Promise<DescripcionAsistente | null> {
++      const r = await llamar("GET", "/v1/agente");
++      if (!r || r.status !== 200) return null;
++      const d = r.json as DescripcionServicio | null;
++      if (!d?.ok || !d.agente || !Array.isArray(d.perfiles) || typeof d.bienvenida !== "string") return null;
++      return {
++        nombreAsistente: d.agente.nombreAsistente,
++        perfilPorDefecto: d.perfilPorDefecto ?? null,
++        perfiles: d.perfiles.map((p) => ({ id: p.id, nombre: p.nombre, bienvenida: p.bienvenida })),
++        bienvenida: d.bienvenida,
++      };
++    },
++    async responder(mensaje: MensajeAsistente): Promise<RespuestaAsistente> {
++      const r = await llamar("POST", `/v1/conversaciones/${encodeURIComponent(mensaje.conversacionId)}/mensajes`, {
++        perfilId: mensaje.perfilId,
++        texto: mensaje.texto,
++        canal: "web",
++      });
++      if (!r) return { ok: false, motivo: "NO_DISPONIBLE" };
++      if (r.status === 429) return { ok: false, motivo: "LIMITE" };
++      if (r.status === 404) return { ok: false, motivo: "PERFIL_DESCONOCIDO" };
++      const j = r.json as RespuestaServicio | null;
++      if (r.status !== 200 || !j?.ok || typeof j.texto !== "string") return { ok: false, motivo: r.status >= 500 ? "NO_DISPONIBLE" : "ERROR" };
++      return {
++        ok: true,
++        texto: j.texto.slice(0, 4000),
++        respaldo: limpiarRespaldo(j.respaldo),
++        avisos: (j.avisos ?? []).filter((a): a is string => typeof a === "string").slice(0, 20),
++        derivacion: j.derivacion !== null && j.derivacion !== undefined,
++      };
++    },
++  };
++}
+diff --git a/src/adapters/mock/__tests__/asistente-provider.test.ts b/src/adapters/mock/__tests__/asistente-provider.test.ts
+new file mode 100644
+index 0000000..17702ec
+--- /dev/null
++++ b/src/adapters/mock/__tests__/asistente-provider.test.ts
+@@ -0,0 +1,42 @@
++import { describe, expect, it } from "vitest";
++import { runAsistenteProviderContractTests } from "@/ports/__tests__/asistente-provider.contract";
++import { crearAsistenteProviderMock, DERIVACION_MOCK, SIN_RESPALDO_MOCK } from "../asistente-provider";
++
++runAsistenteProviderContractTests(crearAsistenteProviderMock);
++
++describe("mock del asistente", () => {
++  const mock = crearAsistenteProviderMock();
++  const preguntar = (texto: string, perfilId: string | null = "VIDA_ONCOLOGICO") =>
++    mock.responder({ conversacionId: "web_mock00001", perfilId, texto });
++
++  it("responde planes y premios desde el catálogo versionado", async () => {
++    const r = await preguntar("¿Cuánto cuesta el plan CONFÍO+?");
++    expect(r.ok && r.texto).toContain("Gs. 522.500");
++    expect(r.ok && r.respaldo[0]?.version).toBe("OFERTA-CONFIO-v2");
++  });
++
++  it("responde carencias, exclusiones y edades desde el documento de coberturas v1.0", async () => {
++    const c = await preguntar("¿Qué carencia tiene?");
++    expect(c.ok && c.texto).toContain("180 días");
++    const e = await preguntar("¿Cuáles son las exclusiones?");
++    expect(e.ok && e.texto).toContain("preexistentes");
++    expect(e.ok && e.respaldo[0]?.version).toBe("v1.0");
++    const d = await preguntar("¿Hasta qué edad puedo entrar?");
++    expect(d.ok && d.texto).toContain("18 y 64");
++  });
++
++  it("los productos «próximamente» no reciben planes ni precios", async () => {
++    const r = await preguntar("¿Cuánto cuesta?", "VIDA");
++    expect(r.ok && r.texto).toContain("próximamente");
++    expect(r.ok && r.texto).not.toMatch(/Gs\./);
++  });
++
++  it("deriva cuando la persona pide hablar con alguien y cae a «sin respaldo» ante lo desconocido", async () => {
++    const d = await preguntar("quiero hablar con un asesor");
++    expect(d.ok && d.derivacion).toBe(true);
++    expect(d.ok && d.texto).toContain(DERIVACION_MOCK);
++    const s = await preguntar("¿me recomendás un restaurante?");
++    expect(s.ok && s.texto).toContain(SIN_RESPALDO_MOCK);
++    expect(s.ok && s.avisos).toEqual(["sin_respaldo"]);
++  });
++});
+diff --git a/src/adapters/mock/asistente-provider.ts b/src/adapters/mock/asistente-provider.ts
+new file mode 100644
+index 0000000..4707ddd
+--- /dev/null
++++ b/src/adapters/mock/asistente-provider.ts
+@@ -0,0 +1,129 @@
++/**
++ * Adaptador simulado del asistente (Terra) — sin red, sin modelo de lenguaje.
++ *
++ * Responde SOLO con datos que ya son fuente de verdad en este repositorio
++ * (`catalogo.ts`, `textos-aclaraciones.ts`, `textos-plan.ts`): planes y premios,
++ * carencias, edades, cómo se contrata, a quién reclamar. Todo lo demás cae al
++ * mensaje de «sin respaldo» con la derivación. Es lo que hace posible mostrar el
++ * widget en una demo sin desplegar el servicio, y lo que las pruebas usan.
++ *
++ * NO intenta parecer inteligente: reconoce palabras clave. La inteligencia vive
++ * en el servicio ChatbotRAG (adaptador `live`); el mock prueba el recorrido, el
++ * contrato y las reglas de la interfaz, no la calidad de las respuestas.
++ */
++import { ACLARACION_COBERTURAS } from "@/domain/textos-aclaraciones";
++import { INFORMACION_RELEVANTE } from "@/domain/textos-plan";
++import { formatearGuaranies, ID_VERSION_OFERTA, NOMBRE_PRODUCTO, ORDEN_PLANES, PLANES, PRODUCTOS } from "@/domain/catalogo";
++import { CORREO_RETRACTO_Y_DATOS, INTERSEGUROS } from "@/domain/entidades";
++import type { AsistenteProvider, DescripcionAsistente, MensajeAsistente, RespuestaAsistente } from "@/ports/asistente-provider";
++
++const NOMBRE_ASISTENTE = "Terra";
++
++export const BIENVENIDA_MOCK =
++  `Hola, soy ${NOMBRE_ASISTENTE}, la asistente virtual de SeguroLoTengo. Puedo explicarte planes, coberturas, ` +
++  "carencias y cómo funciona la contratación. No necesito ningún dato personal tuyo: ¿en qué te ayudo?";
++
++export const DERIVACION_MOCK =
++  `Podés escribir a ${CORREO_RETRACTO_Y_DATOS} o acercarte a las oficinas de ${INTERSEGUROS.razonSocial} ` +
++  `(${INTERSEGUROS.domicilio}) en horario hábil, y una persona te atiende.`;
++
++export const SIN_RESPALDO_MOCK = "No cuento con información aprobada para responder eso con precisión, y prefiero no adivinar.";
++
++const RESPALDO_CATALOGO = { fuenteId: "planes-premios", titulo: `Planes y premios — ${NOMBRE_PRODUCTO}`, version: ID_VERSION_OFERTA } as const;
++const RESPALDO_COBERTURAS = { fuenteId: "coberturas", titulo: ACLARACION_COBERTURAS.titulo, version: ACLARACION_COBERTURAS.version } as const;
++const RESPALDO_PROCESO = { fuenteId: "proceso", titulo: "Cómo se contrata en SeguroLoTengo", version: "v1.1" } as const;
++const RESPALDO_CONTACTO = { fuenteId: "consultas-contacto", titulo: "Consultas, reclamos y contacto", version: "v1.1" } as const;
++
++function normalizar(texto: string): string {
++  return texto
++    .normalize("NFD")
++    .replace(/[\u0300-\u036f]/g, "")
++    .toLowerCase();
++}
++
++function seccion(titulo: string): readonly string[] {
++  return ACLARACION_COBERTURAS.secciones.find((s) => s.titulo === titulo)?.parrafos ?? [];
++}
++
++function textoPlanes(): string {
++  const lineas = ORDEN_PLANES.map((id) => {
++    const p = PLANES[id];
++    return `${p.nombre}: ${formatearGuaranies(p.premioAnualGs)} al año (IVA incluido); cáncer ${formatearGuaranies(p.indemnizacionCancerGs)}, fallecimiento ${formatearGuaranies(p.muerteCualquierCausaGs)}.`;
++  });
++  return `Los tres planes del ${NOMBRE_PRODUCTO} tienen las mismas coberturas y cambian las sumas y el premio. ${lineas.join(" ")}`;
++}
++
++function responderProductoNoDisponible(nombre: string): RespuestaAsistente {
++  return {
++    ok: true,
++    texto: `${nombre} está anunciado como «próximamente» y todavía no se contrata en línea; no tiene planes, coberturas ni precios publicados. Podés dejar tu interés con Interseguros o consultar el ${NOMBRE_PRODUCTO}, que sí está disponible.`,
++    respaldo: [RESPALDO_CONTACTO],
++    avisos: [],
++    derivacion: false,
++  };
++}
++
++export function crearAsistenteProviderMock(): AsistenteProvider {
++  return {
++    nombre: "mock",
++    async describir(): Promise<DescripcionAsistente> {
++      return {
++        nombreAsistente: NOMBRE_ASISTENTE,
++        perfilPorDefecto: "VIDA_ONCOLOGICO",
++        perfiles: PRODUCTOS.map((p) => ({
++          id: p.id,
++          nombre: p.nombre,
++          bienvenida: p.disponible ? BIENVENIDA_MOCK : `Hola, soy ${NOMBRE_ASISTENTE}. ${p.nombre} todavía no se contrata en línea; puedo contarte cómo dejar tu interés o informarte sobre el ${NOMBRE_PRODUCTO}.`,
++        })),
++        bienvenida: BIENVENIDA_MOCK,
++      };
++    },
++    async responder(mensaje: MensajeAsistente): Promise<RespuestaAsistente> {
++      const producto = PRODUCTOS.find((p) => p.id === (mensaje.perfilId ?? "VIDA_ONCOLOGICO"));
++      if (!producto) return { ok: false, motivo: "PERFIL_DESCONOCIDO" };
++      const n = normalizar(mensaje.texto);
++
++      if (/\b(asesor|persona|humano|operador|alguien)\b/.test(n) && /\b(hablar|contactar|comunicar|quiero)\b/.test(n)) {
++        return { ok: true, texto: `Con gusto. ${DERIVACION_MOCK}`, respaldo: [RESPALDO_CONTACTO], avisos: [], derivacion: true };
++      }
++      if (/\b(reclam|queja|denunci|superintendencia)\w*/.test(n)) {
++        return {
++          ok: true,
++          texto: `Los reclamos sobre la póliza y la cobertura los atiende Alianza Garantía Seguros y Reaseguros S.A.; la asistencia sobre la contratación, Interseguros S.A. ${DERIVACION_MOCK} Si la respuesta no te satisface, podés recurrir a la Superintendencia de Seguros del Banco Central del Paraguay.`,
++          respaldo: [RESPALDO_CONTACTO],
++          avisos: [],
++          derivacion: false,
++        };
++      }
++      if (!producto.disponible) return responderProductoNoDisponible(producto.nombre);
++
++      if (/\b(precio|premio|cuesta|cuestan|vale|valor|cuanto|planes?|confio)\b/.test(n)) {
++        return { ok: true, texto: textoPlanes(), respaldo: [RESPALDO_CATALOGO], avisos: [], derivacion: false };
++      }
++      if (/\bcarencia/.test(n)) {
++        return { ok: true, texto: seccion("Períodos de carencia").join(" "), respaldo: [RESPALDO_COBERTURAS], avisos: [], derivacion: false };
++      }
++      if (/\bexclu/.test(n)) {
++        return { ok: true, texto: seccion("Exclusiones principales").join(" "), respaldo: [RESPALDO_COBERTURAS], avisos: [], derivacion: false };
++      }
++      if (/\b(edad|anos|años|renovaci)/.test(n)) {
++        return { ok: true, texto: seccion("Condiciones de edad y renovación").join(" "), respaldo: [RESPALDO_COBERTURAS], avisos: [], derivacion: false };
++      }
++      if (/\b(cubre|cobertura|incluye|indemniz|renta|hospital|accidente|fallec|muerte)/.test(n)) {
++        return { ok: true, texto: seccion("Coberturas incluidas").join(" "), respaldo: [RESPALDO_COBERTURAS], avisos: [], derivacion: false };
++      }
++      if (/\b(contrat|proceso|pasos?|firma|pagar|pago|cedula|inscri|como funciona|documentos?)/.test(n)) {
++        return {
++          ok: true,
++          texto:
++            "La contratación tiene tres pasos: te inscribís con tu cédula (fotografiás el documento y verificás tu WhatsApp), elegís tu plan y respondés las preguntas de la declaración dentro del sitio, y por último firmás electrónicamente la Solicitud y el FIPF y pagás el premio anual por Bancard. " +
++            INFORMACION_RELEVANTE.map((i) => `${i.rotulo}: ${i.detalle}`).join(" "),
++          respaldo: [RESPALDO_PROCESO],
++          avisos: [],
++          derivacion: false,
++        };
++      }
++      return { ok: true, texto: `${SIN_RESPALDO_MOCK} ${DERIVACION_MOCK}`, respaldo: [], avisos: ["sin_respaldo"], derivacion: false };
++    },
++  };
++}
+diff --git a/src/adapters/registro.ts b/src/adapters/registro.ts
+index 219d8e6..ec29af1 100644
+--- a/src/adapters/registro.ts
++++ b/src/adapters/registro.ts
+@@ -42,7 +42,10 @@ import {
+   lectorConMetadataWhatsAppModular,
+ } from "./live/otp-provider";
+ import { crearClienteWhatsAppModularDesdeEntorno } from "./live/whatsapp-modular";
+-import { obtenerOtpPepper, obtenerWhatsAppModularToken } from "../repositories/secrets-client";
++import { obtenerChatbotRagToken, obtenerOtpPepper, obtenerWhatsAppModularToken } from "../repositories/secrets-client";
++import type { AsistenteProvider } from "../ports/asistente-provider";
++import { crearAsistenteChatbotRag } from "./live/asistente-chatbotrag";
++import { crearAsistenteProviderMock } from "./mock/asistente-provider";
+ import { crearAlmacenEstadoDemo } from "../repositories";
+ import { crearIdentityProviderMock } from "./mock/identity-provider";
+ import { crearOtpProviderMock } from "./mock/otp-provider";
+@@ -433,3 +436,23 @@ export function obtenerPlazoPagoMs(): number {
+ export function firmasInstitucionalesCaidas(): boolean {
+   return consumirFallaDemo("FIRMAS_INSTITUCIONALES_FALLAN");
+ }
++
++/**
++ * Asistente conversacional (Terra, ítem 35). `INTEGRATION_ASISTENTE=live` exige
++ * `CHATBOTRAG_URL` en el entorno (no es credencial: identifica el servicio) y
++ * `CHATBOTRAG_TOKEN` en el secret. Sin URL, tira con el nombre de lo que falta
++ * en vez de caer al mock en silencio: un rótulo «real» sobre respuestas
++ * simuladas sería peor que ninguno.
++ */
++export function obtenerAsistenteProvider(): AsistenteProvider {
++  return resolverAdaptador("ASISTENTE", {
++    mock: () => crearAsistenteProviderMock(),
++    live: () => {
++      const baseUrl = process.env.CHATBOTRAG_URL?.trim();
++      if (!baseUrl) {
++        throw new Error("INTEGRATION_ASISTENTE=live sin CHATBOTRAG_URL: definí el origen del servicio ChatbotRAG.");
++      }
++      return crearAsistenteChatbotRag({ baseUrl, clave: obtenerChatbotRagToken });
++    },
++  });
++}
+diff --git a/src/app/api/__tests__/asistente-no-filtra-datos-sensibles.test.ts b/src/app/api/__tests__/asistente-no-filtra-datos-sensibles.test.ts
+new file mode 100644
+index 0000000..cb896b7
+--- /dev/null
++++ b/src/app/api/__tests__/asistente-no-filtra-datos-sensibles.test.ts
+@@ -0,0 +1,89 @@
++/**
++ * La ruta del asistente no reenvía datos sensibles al proveedor de IA ni los
++ * escribe en logs (regla inviolable #7; punto 8 del checklist de CLAUDE.md).
++ */
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++import type { MensajeAsistente } from "@/ports/asistente-provider";
++
++const recibidos: MensajeAsistente[] = [];
++
++vi.mock("@/app/api/asistente/_dependencias", () => ({
++  dependenciasAsistente: () => ({
++    asistente: {
++      nombre: "espia",
++      describir: async () => null,
++      responder: async (m: MensajeAsistente) => {
++        recibidos.push(m);
++        return { ok: true, texto: "ok", respaldo: [], avisos: [], derivacion: false };
++      },
++    },
++  }),
++}));
++
++import { POST } from "@/app/api/asistente/mensaje/route";
++import { GET } from "@/app/api/asistente/agente/route";
++import { limpiarLimitador } from "@/app/api/_http/limitador";
++
++function peticion(cuerpo: unknown, ip = "10.0.0.1"): Request {
++  return new Request("http://localhost/api/asistente/mensaje", {
++    method: "POST",
++    headers: { "content-type": "application/json", "x-forwarded-for": ip },
++    body: JSON.stringify(cuerpo),
++  });
++}
++
++describe("POST /api/asistente/mensaje", () => {
++  const consola = {
++    log: vi.spyOn(console, "log").mockImplementation(() => undefined),
++    error: vi.spyOn(console, "error").mockImplementation(() => undefined),
++    warn: vi.spyOn(console, "warn").mockImplementation(() => undefined),
++  };
++
++  beforeEach(() => {
++    process.env.ASISTENTE_ENABLED = "true";
++    recibidos.length = 0;
++    limpiarLimitador();
++    for (const s of Object.values(consola)) s.mockClear();
++  });
++  afterEach(() => {
++    delete process.env.ASISTENTE_ENABLED;
++  });
++
++  it("responde 404 con el asistente apagado", async () => {
++    delete process.env.ASISTENTE_ENABLED;
++    expect((await POST(peticion({ conversacionId: "web_ruta0001", texto: "hola" }))).status).toBe(404);
++    expect((await GET()).status).toBe(404);
++  });
++
++  it("bloquea un dato sensible sin reenviarlo ni registrarlo", async () => {
++    const r = await POST(peticion({ conversacionId: "web_ruta0001", perfilId: "VIDA_ONCOLOGICO", texto: "tengo cáncer, mi CI es 4.523.118" }));
++    expect(r.status).toBe(200);
++    const j = (await r.json()) as { bloqueado: boolean; categorias: string[]; texto: string };
++    expect(j.bloqueado).toBe(true);
++    expect(j.categorias).toEqual(["cedula", "salud"]);
++    expect(recibidos).toHaveLength(0);
++    const todo = JSON.stringify([...consola.log.mock.calls, ...consola.error.mock.calls, ...consola.warn.mock.calls]);
++    expect(todo).not.toContain("4.523.118");
++    expect(todo).not.toContain("cáncer");
++  });
++
++  it("reenvía texto limpio con el producto como perfil y devuelve cache-control: no-store", async () => {
++    const r = await POST(peticion({ conversacionId: "web_ruta0002", perfilId: "VIDA", texto: "¿qué planes hay?" }));
++    expect(r.status).toBe(200);
++    expect(r.headers.get("cache-control")).toBe("no-store");
++    expect(recibidos).toEqual([{ conversacionId: "web_ruta0002", perfilId: "VIDA", texto: "¿qué planes hay?" }]);
++  });
++
++  it("mapea motivos a status", async () => {
++    expect((await POST(peticion({ conversacionId: "malo", texto: "hola" }))).status).toBe(400);
++    expect((await POST(peticion({ conversacionId: "web_ruta0003", texto: "a".repeat(1600) }))).status).toBe(413);
++    expect((await POST(peticion({ conversacionId: "web_ruta0003", perfilId: "AUTO", texto: "hola" }))).status).toBe(404);
++  });
++
++  it("limita por IP y no toca al proveedor al rechazar", async () => {
++    let ultimo = 200;
++    for (let i = 0; i < 31; i++) ultimo = (await POST(peticion({ conversacionId: "web_ruta0004", texto: `mensaje ${i}` }, "10.9.9.9"))).status;
++    expect(ultimo).toBe(429);
++    expect(recibidos).toHaveLength(30);
++  });
++});
+diff --git a/src/app/api/__tests__/derivado-manual-sin-salida.test.ts b/src/app/api/__tests__/derivado-manual-sin-salida.test.ts
+index ced571e..1b02b3c 100644
+--- a/src/app/api/__tests__/derivado-manual-sin-salida.test.ts
++++ b/src/app/api/__tests__/derivado-manual-sin-salida.test.ts
+@@ -751,6 +751,11 @@ describe("3. Inventario de rutas de la API", () => {
+      * P9 (emisión).
+      */
+     const SOLO_LECTURA: readonly string[] = [
++      // El asistente conversacional (Terra, ítem 35) no recibe el expediente:
++      // no lee la cookie, no lo busca ni lo transiciona. Es informativo y está
++      // desacoplado del flujo por diseño (sección «Asistente IA» de CLAUDE.md).
++      "asistente/agente",
++      "asistente/mensaje",
+       // La consola administrativa consulta y autentica; no transiciona nada.
+       "admin-consola/buscar",
+       "admin-consola/expediente",
+diff --git a/src/app/api/asistente/_dependencias.ts b/src/app/api/asistente/_dependencias.ts
+new file mode 100644
+index 0000000..696c0da
+--- /dev/null
++++ b/src/app/api/asistente/_dependencias.ts
+@@ -0,0 +1,14 @@
++/**
++ * Composition root de la familia `/api/asistente`.
++ *
++ * Deliberadamente NO pide repositorios: el asistente no lee ni escribe el
++ * expediente, no deja evidencia y no conoce a Bancard, Code100 ni SEBAOT. Lo
++ * único que necesita es el puerto del asistente, resuelto por el registro
++ * (`INTEGRATION_ASISTENTE`: mock por defecto, live con `CHATBOTRAG_URL`).
++ */
++import { obtenerAsistenteProvider } from "@/adapters/registro";
++import type { DependenciasAsistente } from "@/domain/asistente";
++
++export function dependenciasAsistente(): DependenciasAsistente {
++  return { asistente: obtenerAsistenteProvider() };
++}
+diff --git a/src/app/api/asistente/_habilitado.ts b/src/app/api/asistente/_habilitado.ts
+new file mode 100644
+index 0000000..3f14841
+--- /dev/null
++++ b/src/app/api/asistente/_habilitado.ts
+@@ -0,0 +1,9 @@
++/**
++ * El asistente se enciende con `ASISTENTE_ENABLED=true`. Apagado, las rutas
++ * responden 404 igual que la consola administrativa sin su flag: el widget no
++ * se monta y no hay endpoint al que llamar. Existe como flag —y no como
++ * presencia del adaptador— para poder apagarlo en producción sin desplegar.
++ */
++export function asistenteHabilitado(entorno: Readonly<Record<string, string | undefined>> = process.env): boolean {
++  return entorno.ASISTENTE_ENABLED === "true";
++}
+diff --git a/src/app/api/asistente/agente/route.ts b/src/app/api/asistente/agente/route.ts
+new file mode 100644
+index 0000000..94df078
+--- /dev/null
++++ b/src/app/api/asistente/agente/route.ts
+@@ -0,0 +1,16 @@
++/**
++ * GET /api/asistente/agente — nombre, perfiles (uno por producto) y bienvenida.
++ * Lo llama el widget al abrirse. Sin sesión, sin datos de la persona.
++ */
++import { respuestaJson } from "@/app/api/_http/contexto-peticion";
++import { dependenciasAsistente } from "@/app/api/asistente/_dependencias";
++import { asistenteHabilitado } from "@/app/api/asistente/_habilitado";
++
++export const dynamic = "force-dynamic";
++
++export async function GET(): Promise<Response> {
++  if (!asistenteHabilitado()) return respuestaJson({ ok: false, motivo: "NO_DISPONIBLE" }, { status: 404 });
++  const descripcion = await dependenciasAsistente().asistente.describir();
++  if (!descripcion) return respuestaJson({ ok: false, motivo: "NO_DISPONIBLE" }, { status: 502 });
++  return respuestaJson({ ok: true, ...descripcion });
++}
+diff --git a/src/app/api/asistente/mensaje/route.ts b/src/app/api/asistente/mensaje/route.ts
+new file mode 100644
+index 0000000..0aa6387
+--- /dev/null
++++ b/src/app/api/asistente/mensaje/route.ts
+@@ -0,0 +1,76 @@
++/**
++ * POST /api/asistente/mensaje — un turno de conversación con el asistente.
++ *
++ * Handler fino: valida la forma, limita por IP, delega al caso de uso y
++ * traduce motivo → status. El cuerpo NO lleva ni recibe el expediente: la
++ * conversación no está atada a la sesión del trámite a propósito (sección
++ * «Asistente IA» de CLAUDE.md: desacoplado del flujo transaccional).
++ *
++ * Nada de lo que la persona escribe se registra en logs (CMP-16). Cuando el
++ * caso de uso bloquea un dato sensible, la respuesta lleva `bloqueado: true` y
++ * las categorías, nunca el texto.
++ */
++import { leerJson, resolverContextoHttp, respuestaJson } from "@/app/api/_http/contexto-peticion";
++import { admitirEvento } from "@/app/api/_http/limitador";
++import { dependenciasAsistente } from "@/app/api/asistente/_dependencias";
++import { asistenteHabilitado } from "@/app/api/asistente/_habilitado";
++import { conversarConAsistente, TEXTO_ASISTENTE_NO_DISPONIBLE } from "@/domain/asistente";
++import { LIMITE_ASISTENTE } from "@/domain/rate-limit";
++
++export const dynamic = "force-dynamic";
++
++export async function POST(request: Request): Promise<Response> {
++  if (!asistenteHabilitado()) return respuestaJson({ ok: false, motivo: "NO_DISPONIBLE" }, { status: 404 });
++
++  const cuerpo = await leerJson(request);
++  if (!cuerpo) return respuestaJson({ ok: false, motivo: "CUERPO_INVALIDO" }, { status: 400 });
++
++  const { contexto } = resolverContextoHttp(request);
++  const limite = admitirEvento(LIMITE_ASISTENTE, contexto.ip);
++  if (!limite.permitido) {
++    return respuestaJson(
++      { ok: false, motivo: "DEMASIADOS_MENSAJES", segundosRestantes: limite.reintentarEnSegundos },
++      { status: 429, cabeceras: { "retry-after": String(limite.reintentarEnSegundos) } },
++    );
++  }
++
++  const resultado = await conversarConAsistente(dependenciasAsistente(), {
++    conversacionId: cuerpo.conversacionId,
++    perfilId: cuerpo.perfilId ?? null,
++    texto: cuerpo.texto,
++  });
++
++  if (!resultado.ok) {
++    const status =
++      resultado.motivo === "TEXTO_LARGO"
++        ? 413
++        : resultado.motivo === "PERFIL_DESCONOCIDO"
++          ? 404
++          : resultado.motivo === "LIMITE"
++            ? 429
++            : resultado.motivo === "NO_DISPONIBLE" || resultado.motivo === "ERROR"
++              ? 502
++              : 400;
++    return respuestaJson(
++      {
++        ok: false,
++        motivo: resultado.motivo,
++        ...(status === 502 ? { texto: TEXTO_ASISTENTE_NO_DISPONIBLE } : {}),
++      },
++      { status },
++    );
++  }
++
++  if (resultado.bloqueado) {
++    return respuestaJson({ ok: true, bloqueado: true, categorias: resultado.categorias, texto: resultado.texto, respaldo: [], derivacion: false });
++  }
++
++  return respuestaJson({
++    ok: true,
++    bloqueado: false,
++    texto: resultado.texto,
++    respaldo: resultado.respaldo,
++    derivacion: resultado.derivacion,
++    avisos: resultado.avisos,
++  });
++}
+diff --git a/src/app/layout.tsx b/src/app/layout.tsx
+index 959d36d..73faa5d 100644
+--- a/src/app/layout.tsx
++++ b/src/app/layout.tsx
+@@ -3,6 +3,8 @@ import type { Metadata } from "next";
+ import { Archivo, DM_Sans, Geist_Mono } from "next/font/google";
+ import { BandaDemo } from "@/components/shared/BandaDemo";
+ import { AvisoCookies } from "@/components/shared/AvisoCookies";
++import { ChatFlotante } from "@/components/shared/ChatFlotante";
++import { asistenteHabilitado } from "@/app/api/asistente/_habilitado";
+ import { SCRIPT_TEMA_INICIAL } from "@/components/shared/tema";
+ import { flujoV3Activo } from "@/domain/flujo-vigente";
+ import "./globals.css";
+@@ -65,6 +67,10 @@ export default function RootLayout({ children }: { children: React.ReactNode })
+             tapaba los botones (ver `AvisoCookies`). */}
+         <AvisoCookies />
+         {children}
++        {/* Asistente conversacional (Terra, ítem 35). Último en el DOM y solo con
++            ASISTENTE_ENABLED=true; se oculta solo en las pantallas transaccionales
++            (ver `ChatFlotante`). Montado acá y no por pantalla: convención de UI. */}
++        {asistenteHabilitado() ? <ChatFlotante /> : null}
+       </body>
+     </html>
+   );
+diff --git a/src/components/shared/ChatFlotante.tsx b/src/components/shared/ChatFlotante.tsx
+new file mode 100644
+index 0000000..e3173a4
+--- /dev/null
++++ b/src/components/shared/ChatFlotante.tsx
+@@ -0,0 +1,263 @@
++"use client";
++
++/**
++ * Widget flotante del asistente conversacional (Terra, ítem 35).
++ *
++ * Habla SOLO con las rutas propias `/api/asistente/*` (nunca con el servicio
++ * ChatbotRAG: la clave del cliente vive en el servidor). El identificador de
++ * conversación se genera en el navegador y vive en el estado de React: sin
++ * cookie ni `localStorage`, para que la fila 85 (aviso de cookies: «tres
++ * cookies necesarias, ninguna de terceros») siga siendo verdad. Recargar la
++ * página empieza una conversación nueva, a propósito: menos retención.
++ *
++ * Reglas que hereda del proyecto:
++ *  - Regla #7: no hay dónde escribir cédula, salud, PEP ni tarjeta; si la
++ *    persona los escribe igual, el servidor los bloquea antes de la IA y el
++ *    widget muestra el aviso.
++ *  - Se OCULTA en las pantallas transaccionales (identidad, declaraciones,
++ *    pago, firma) para que un asistente informativo no aparezca al lado de un
++ *    formulario con datos sensibles.
++ *  - El texto del asistente se dibuja como hijo de React (escapado): nunca
++ *    `dangerouslySetInnerHTML`, nunca autoenlazado de URLs.
++ *  - z-index 70 (debajo de `AvisoCtaFlotante`, que es funcionalidad del flujo);
++ *    en móvil sube 56 px para no tapar la píldora de CTA.
++ *  - Accesibilidad: botón ≥ 44 px, `role="dialog"`, cierre con Escape, foco al
++ *    abrir y al cerrar, `aria-live` en la lista.
++ */
++import { useCallback, useEffect, useId, useRef, useState } from "react";
++import { usePathname } from "next/navigation";
++import { PRODUCTOS } from "@/domain/catalogo";
++
++const RUTAS_SIN_ASISTENTE = ["/identidad", "/declaraciones", "/pago", "/firma", "/pago-y-firma", "/whatsapp", "/demo-panel", "/admin-consola"];
++
++interface Burbuja {
++  readonly quien: "persona" | "asistente";
++  readonly texto: string;
++  readonly fuentes?: readonly string[];
++}
++
++interface RespuestaRuta {
++  ok: boolean;
++  motivo?: string;
++  texto?: string;
++  bloqueado?: boolean;
++  respaldo?: ReadonlyArray<{ titulo: string; version: string }>;
++}
++
++interface DescripcionRuta {
++  ok: boolean;
++  nombreAsistente?: string;
++  perfilPorDefecto?: string | null;
++  perfiles?: ReadonlyArray<{ id: string; nombre: string; bienvenida: string }>;
++  bienvenida?: string;
++}
++
++function nuevoIdConversacion(): string {
++  const aleatorio =
++    typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID().replace(/-/g, "") : `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
++  return `web_${aleatorio}`.slice(0, 120);
++}
++
++export interface ChatFlotanteProps {
++  /** Producto inicial; por defecto el disponible. */
++  perfilInicial?: string;
++}
++
++export function ChatFlotante({ perfilInicial }: ChatFlotanteProps) {
++  const ruta = usePathname();
++  const [abierto, setAbierto] = useState(false);
++  const [perfil, setPerfil] = useState<string>(perfilInicial ?? PRODUCTOS.find((p) => p.disponible)?.id ?? "VIDA_ONCOLOGICO");
++  const [descripcion, setDescripcion] = useState<DescripcionRuta | null>(null);
++  const [burbujas, setBurbujas] = useState<readonly Burbuja[]>([]);
++  const [texto, setTexto] = useState("");
++  const [enviando, setEnviando] = useState(false);
++  const [conversacionId, setConversacionId] = useState(nuevoIdConversacion);
++  const idTitulo = useId();
++  const entradaRef = useRef<HTMLInputElement>(null);
++  const botonRef = useRef<HTMLButtonElement>(null);
++  const listaRef = useRef<HTMLDivElement>(null);
++
++  const oculto = RUTAS_SIN_ASISTENTE.some((r) => ruta === r || ruta.startsWith(`${r}/`));
++
++  const bienvenidaDe = useCallback(
++    (perfilId: string): string =>
++      descripcion?.perfiles?.find((p) => p.id === perfilId)?.bienvenida ?? descripcion?.bienvenida ?? "Hola, soy un asistente virtual con inteligencia artificial. ¿En qué te ayudo?",
++    [descripcion],
++  );
++
++  useEffect(() => {
++    if (!abierto || descripcion) return;
++    let cancelado = false;
++    fetch("/api/asistente/agente", { headers: { accept: "application/json" } })
++      .then((r) => (r.ok ? (r.json() as Promise<DescripcionRuta>) : null))
++      .then((d) => {
++        if (cancelado || !d?.ok) return;
++        setDescripcion(d);
++        setBurbujas([{ quien: "asistente", texto: d.perfiles?.find((p) => p.id === perfil)?.bienvenida ?? d.bienvenida ?? "" }]);
++      })
++      .catch(() => undefined);
++    return () => {
++      cancelado = true;
++    };
++  }, [abierto, descripcion, perfil]);
++
++  useEffect(() => {
++    if (!abierto) return;
++    entradaRef.current?.focus();
++    function alTeclear(evento: KeyboardEvent) {
++      if (evento.key === "Escape") {
++        setAbierto(false);
++        botonRef.current?.focus();
++      }
++    }
++    document.addEventListener("keydown", alTeclear);
++    return () => document.removeEventListener("keydown", alTeclear);
++  }, [abierto]);
++
++  useEffect(() => {
++    listaRef.current?.scrollTo({ top: listaRef.current.scrollHeight });
++  }, [burbujas]);
++
++  function cambiarPerfil(nuevo: string) {
++    setPerfil(nuevo);
++    setConversacionId(nuevoIdConversacion());
++    setBurbujas([{ quien: "asistente", texto: bienvenidaDe(nuevo) }]);
++  }
++
++  async function enviar(evento: React.FormEvent) {
++    evento.preventDefault();
++    const limpio = texto.trim();
++    if (!limpio || enviando) return;
++    setEnviando(true);
++    setBurbujas((b) => [...b, { quien: "persona", texto: limpio }]);
++    setTexto("");
++    try {
++      const r = await fetch("/api/asistente/mensaje", {
++        method: "POST",
++        headers: { "content-type": "application/json", accept: "application/json" },
++        body: JSON.stringify({ conversacionId, perfilId: perfil, texto: limpio }),
++      });
++      const j = (await r.json().catch(() => null)) as RespuestaRuta | null;
++      if (r.status === 429) {
++        setBurbujas((b) => [...b, { quien: "asistente", texto: "Demasiados mensajes seguidos. Esperá un momento e intentá de nuevo." }]);
++      } else if (!r.ok || !j?.ok || typeof j.texto !== "string") {
++        setBurbujas((b) => [...b, { quien: "asistente", texto: j?.texto ?? "No pude procesar el mensaje. Intentá de nuevo en unos segundos." }]);
++      } else {
++        const fuentes = [...new Set((j.respaldo ?? []).map((f) => `${f.titulo} (${f.version})`))];
++        setBurbujas((b) => [...b, { quien: "asistente", texto: j.texto ?? "", ...(fuentes.length ? { fuentes } : {}) }]);
++      }
++    } catch {
++      setBurbujas((b) => [...b, { quien: "asistente", texto: "No hay conexión con el asistente en este momento." }]);
++    } finally {
++      setEnviando(false);
++      entradaRef.current?.focus();
++    }
++  }
++
++  if (oculto) return null;
++
++  const nombre = descripcion?.nombreAsistente ?? "Asistente";
++
++  return (
++    <>
++      <button
++        ref={botonRef}
++        type="button"
++        aria-haspopup="dialog"
++        aria-expanded={abierto}
++        aria-controls={abierto ? idTitulo : undefined}
++        onClick={() => setAbierto((v) => !v)}
++        className="fixed right-4 bottom-[76px] z-[70] inline-flex min-h-tap min-w-tap items-center gap-2 rounded-full bg-naranja-600 px-4 py-2 text-sm font-semibold text-white shadow-lg hover:bg-naranja-700 sm:bottom-5 dark:bg-naranja-500 dark:hover:bg-naranja-600"
++      >
++        <span aria-hidden="true">💬</span>
++        {abierto ? "Cerrar" : `Preguntale a ${nombre}`}
++      </button>
++
++      {abierto ? (
++        <section
++          role="dialog"
++          aria-modal="false"
++          aria-labelledby={idTitulo}
++          className="fixed right-4 bottom-[132px] z-[90] flex h-[min(560px,calc(100vh-160px))] w-[min(380px,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-borde-sutil bg-superficie shadow-xl sm:bottom-[76px]"
++        >
++          <header className="flex items-center justify-between gap-2 bg-naranja-600 px-4 py-3 text-white dark:bg-naranja-500">
++            <h2 id={idTitulo} className="text-base font-bold">
++              {nombre} · asistente virtual
++            </h2>
++            <button
++              type="button"
++              aria-label="Cerrar el asistente"
++              onClick={() => {
++                setAbierto(false);
++                botonRef.current?.focus();
++              }}
++              className="min-h-tap min-w-tap rounded-md text-xl leading-none hover:bg-white/15"
++            >
++              ×
++            </button>
++          </header>
++
++          <div className="border-b border-borde-tenue px-3 py-2">
++            <label className="flex flex-col gap-1 text-xs text-etiqueta">
++              Seguro sobre el que consultás
++              <select
++                value={perfil}
++                onChange={(e) => cambiarPerfil(e.target.value)}
++                className="min-h-tap rounded-md border border-borde-sutil bg-superficie px-2 text-sm text-cuerpo"
++              >
++                {PRODUCTOS.map((p) => (
++                  <option key={p.id} value={p.id}>
++                    {p.nombre}
++                    {p.disponible ? "" : " (próximamente)"}
++                  </option>
++                ))}
++              </select>
++            </label>
++          </div>
++
++          <div ref={listaRef} aria-live="polite" className="flex flex-1 flex-col gap-2 overflow-y-auto px-3 py-3 text-sm">
++            {burbujas.map((b, i) => (
++              <div key={i} className={b.quien === "persona" ? "self-end" : "self-start"}>
++                <p
++                  className={
++                    b.quien === "persona"
++                      ? "max-w-[85%] whitespace-pre-wrap rounded-xl bg-naranja-600 px-3 py-2 text-white dark:bg-naranja-500"
++                      : "max-w-[85%] whitespace-pre-wrap rounded-xl bg-superficie-suave px-3 py-2 text-cuerpo"
++                  }
++                >
++                  {b.texto}
++                </p>
++                {b.fuentes ? <p className="mt-1 text-xs text-etiqueta">Fuente: {b.fuentes.join(" · ")}</p> : null}
++              </div>
++            ))}
++            {enviando ? <p className="self-start text-xs text-etiqueta">{nombre} está escribiendo…</p> : null}
++          </div>
++
++          <form onSubmit={enviar} className="flex gap-2 border-t border-borde-tenue p-2">
++            <input
++              ref={entradaRef}
++              type="text"
++              value={texto}
++              onChange={(e) => setTexto(e.target.value)}
++              maxLength={1500}
++              autoComplete="off"
++              placeholder="Escribí tu consulta…"
++              aria-label="Mensaje para el asistente"
++              className="min-h-tap flex-1 rounded-md border border-borde-sutil bg-superficie px-3 text-sm text-cuerpo"
++            />
++            <button
++              type="submit"
++              disabled={enviando || texto.trim() === ""}
++              className="min-h-tap min-w-tap rounded-md bg-azul-600 px-3 text-sm font-semibold text-white disabled:opacity-60 dark:bg-azul-500"
++            >
++              Enviar
++            </button>
++          </form>
++          <p className="px-3 pb-2 text-[11px] leading-snug text-etiqueta">
++            Asistente con inteligencia artificial: responde solo con información aprobada y no reemplaza a un asesor. No compartas cédula, datos de salud, tarjetas ni códigos por este medio.
++          </p>
++        </section>
++      ) : null}
++    </>
++  );
++}
+diff --git a/src/components/shared/index.ts b/src/components/shared/index.ts
+index 21411b8..9f62036 100644
+--- a/src/components/shared/index.ts
++++ b/src/components/shared/index.ts
+@@ -48,3 +48,5 @@ export type { Tema } from "./tema";
+ export { ModalEvidenciaFirma } from "./ModalEvidenciaFirma";
+ export { BandaPasosV3 } from "./BandaPasosV3";
+ export { AvisoCtaFlotante } from "./AvisoCtaFlotante";
++export { ChatFlotante } from "./ChatFlotante";
++export type { ChatFlotanteProps } from "./ChatFlotante";
+diff --git a/src/domain/__tests__/asistente.test.ts b/src/domain/__tests__/asistente.test.ts
+new file mode 100644
+index 0000000..7145397
+--- /dev/null
++++ b/src/domain/__tests__/asistente.test.ts
+@@ -0,0 +1,80 @@
++import { describe, expect, it } from "vitest";
++import { categoriasBloqueadas, conversarConAsistente, esPerfilConocido, TEXTO_ENTRADA_BLOQUEADA } from "../asistente";
++import type { AsistenteProvider, MensajeAsistente } from "../../ports/asistente-provider";
++
++function asistenteEspia() {
++  const recibidos: MensajeAsistente[] = [];
++  const asistente: AsistenteProvider = {
++    nombre: "espia",
++    async describir() {
++      return null;
++    },
++    async responder(m) {
++      recibidos.push(m);
++      return { ok: true, texto: "respuesta", respaldo: [], avisos: [], derivacion: false };
++    },
++  };
++  return { asistente, recibidos };
++}
++
++describe("categoriasBloqueadas — regla inviolable #7 aplicada al chat", () => {
++  it("bloquea cédula (con puntos, corrida y por contexto), tarjeta y códigos", () => {
++    expect(categoriasBloqueadas("mi cédula es 4.523.118")).toContain("cedula");
++    expect(categoriasBloqueadas("CI 4523118 puedo contratar?")).toContain("cedula");
++    expect(categoriasBloqueadas("mi número es 4.523.118")).toContain("cedula");
++    expect(categoriasBloqueadas("pago con la 4111 1111 1111 1111")).toContain("tarjeta");
++    expect(categoriasBloqueadas("el cvv es 123")).toContain("tarjeta");
++    expect(categoriasBloqueadas("me llegó el código 482913")).toContain("codigo");
++  });
++
++  it("bloquea datos de salud y PEP en primera persona, pero no preguntas sobre el producto", () => {
++    expect(categoriasBloqueadas("tengo cáncer, ¿puedo contratar?")).toEqual(["salud"]);
++    expect(categoriasBloqueadas("mi mamá tiene diabetes")).toEqual(["salud"]);
++    expect(categoriasBloqueadas("soy diputado")).toEqual(["pep"]);
++    expect(categoriasBloqueadas("¿El seguro cubre cáncer?")).toEqual([]);
++    expect(categoriasBloqueadas("¿qué carencia tiene el cáncer?")).toEqual([]);
++    expect(categoriasBloqueadas("¿qué es una persona políticamente expuesta?")).toEqual([]);
++  });
++
++  it("no confunde premios en guaraníes con cédulas", () => {
++    expect(categoriasBloqueadas("¿el premio es Gs. 319.000 al año?")).toEqual([]);
++    expect(categoriasBloqueadas("cuesta 522.500?")).toEqual([]);
++  });
++});
++
++describe("conversarConAsistente", () => {
++  it("valida forma antes de tocar el proveedor", async () => {
++    const { asistente, recibidos } = asistenteEspia();
++    expect(await conversarConAsistente({ asistente }, { conversacionId: "x", perfilId: null, texto: "hola" })).toEqual({ ok: false, motivo: "CONVERSACION_INVALIDA" });
++    expect(await conversarConAsistente({ asistente }, { conversacionId: "web_12345678", perfilId: null, texto: "   " })).toEqual({ ok: false, motivo: "TEXTO_VACIO" });
++    expect(await conversarConAsistente({ asistente }, { conversacionId: "web_12345678", perfilId: null, texto: "a".repeat(1501) })).toEqual({ ok: false, motivo: "TEXTO_LARGO" });
++    expect(await conversarConAsistente({ asistente }, { conversacionId: "web_12345678", perfilId: "HOGAR", texto: "hola" })).toEqual({ ok: false, motivo: "PERFIL_DESCONOCIDO" });
++    expect(recibidos).toHaveLength(0);
++  });
++
++  it("un dato sensible NO llega al proveedor y responde el texto fijo", async () => {
++    const { asistente, recibidos } = asistenteEspia();
++    const r = await conversarConAsistente({ asistente }, { conversacionId: "web_12345678", perfilId: "VIDA_ONCOLOGICO", texto: "Tengo cáncer y mi cédula es 4.523.118" });
++    expect(r).toEqual({ ok: true, bloqueado: true, categorias: ["cedula", "salud"], texto: TEXTO_ENTRADA_BLOQUEADA });
++    expect(recibidos).toHaveLength(0);
++  });
++
++  it("un texto limpio viaja con el perfil del producto y devuelve la respuesta", async () => {
++    const { asistente, recibidos } = asistenteEspia();
++    const r = await conversarConAsistente({ asistente }, { conversacionId: "web_12345678", perfilId: "VIDA", texto: "¿Qué planes hay?" });
++    expect(r).toMatchObject({ ok: true, texto: "respuesta", derivacion: false });
++    expect(recibidos).toEqual([{ conversacionId: "web_12345678", perfilId: "VIDA", texto: "¿Qué planes hay?" }]);
++  });
++
++  it("quita caracteres de control y BIDI antes de evaluar", async () => {
++    const { asistente, recibidos } = asistenteEspia();
++    await conversarConAsistente({ asistente }, { conversacionId: "web_12345678", perfilId: null, texto: "hola\u202e mundo\u0007 " });
++    expect(recibidos[0]?.texto).toBe("hola mundo");
++  });
++
++  it("solo reconoce los productos del catálogo como perfil", () => {
++    expect(esPerfilConocido("VIDA_ONCOLOGICO")).toBe(true);
++    expect(esPerfilConocido("RESPONSABILIDAD_CIVIL")).toBe(true);
++    expect(esPerfilConocido("AUTO")).toBe(false);
++  });
++});
+diff --git a/src/domain/asistente.ts b/src/domain/asistente.ts
+new file mode 100644
+index 0000000..0abe33c
+--- /dev/null
++++ b/src/domain/asistente.ts
+@@ -0,0 +1,147 @@
++/**
++ * Caso de uso del asistente conversacional (Terra).
++ *
++ * Es deliberadamente CORTO y deliberadamente AISLADO: no recibe el expediente,
++ * no conoce `transicionarExpediente`, no escribe evidencia y no toca ningún
++ * puerto transaccional. Su trabajo es uno solo: dejar pasar hacia el servicio
++ * de IA únicamente texto que no contenga datos sensibles, con el producto
++ * elegido como perfil.
++ *
++ * DEFENSA EN PROFUNDIDAD. El servicio ChatbotRAG tiene sus propias compuertas
++ * de entrada (bloquea cédula, tarjeta, salud, PEP, códigos); este filtro se
++ * repite ACÁ porque la regla inviolable #7 es de este repositorio, no del
++ * proveedor: «las respuestas médicas y la condición PEP no salen hacia
++ * servicios de IA». Si el servicio cambiara de manos o de versión, esta
++ * frontera sigue en pie. Los patrones son amplios a propósito: un falso
++ * positivo cuesta una frase de cortesía; un falso negativo, una fuga.
++ *
++ * Cuando se bloquea, el texto NO viaja a ningún lado (ni a la bitácora): se
++ * responde con un mensaje fijo y solo se registra la categoría.
++ */
++import { PRODUCTOS } from "./catalogo";
++import type { AsistenteProvider, RespaldoAsistente } from "../ports/asistente-provider";
++
++export const MAX_CARACTERES_ASISTENTE = 1500;
++// eslint-disable-next-line no-control-regex -- la intención es justamente quitar controles
++const CONTROLES = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]/g;
++export const ID_CONVERSACION_ASISTENTE = /^[A-Za-z0-9][A-Za-z0-9_-]{7,119}$/;
++
++export type CategoriaBloqueada = "cedula" | "tarjeta" | "salud" | "pep" | "codigo";
++
++/** Mensaje fijo cuando la persona ofrece un dato que este canal no recibe. */
++export const TEXTO_ENTRADA_BLOQUEADA =
++  "Por tu seguridad, por este chat no recibimos cédula, datos de salud, condición PEP, tarjetas ni " +
++  "códigos de verificación: esos datos se completan solo dentro del proceso seguro del sitio. Contame tu " +
++  "consulta sin esos datos y te ayudo.";
++
++export const TEXTO_ASISTENTE_NO_DISPONIBLE =
++  "El asistente no está disponible en este momento. Podés escribir a segurolotengo@interseguros360.com.";
++
++function normalizar(texto: string): string {
++  return texto
++    .normalize("NFD")
++    .replace(/[\u0300-\u036f]/g, "")
++    .toLowerCase()
++    .replace(/\s+/g, " ")
++    .trim();
++}
++
++const VOCABULARIO: Readonly<Record<Exclude<CategoriaBloqueada, "cedula" | "tarjeta">, RegExp>> = {
++  salud:
++    /\b(enfermedad|enfermo|enferma|diagnostic|cancer|tumor|quimio|diabet|hipertens|cardiac|infarto|vih|sida|hepatitis|epilep|asma|depresion|ansiedad|psiquiatr|embaraz|cirugia|operaci|medicamento|receta|antecedente|preexist|discapacidad|internad|hospitaliz|sintoma|salud mental|adiccion|fumo\b|fumador|tabaco)\w*/,
++  pep: /\b(pep\b|persona expuesta|politicamente expuest|funcionario publico|cargo publico|diputad|senador|ministr|alcalde|gobernador|candidat|partido politico)\w*/,
++  codigo: /\b(otp|codigo de verificacion|codigo que me llego|codigo sms|codigo de whatsapp)\b|\bcodigo\b.*(?<!\d)\d{6}(?!\d)/,
++};
++
++/** «¿Cubre cáncer?» es pregunta de producto; «tengo cáncer» es dato personal. */
++function esPreguntaGeneral(n: string): boolean {
++  const primeraPersona =
++    /\b(tengo|tuve|padezco|sufro|me diagnosticaron|me operaron|estoy (enfermo|enferma|embarazada|internado|internada|en tratamiento)|mi (mama|madre|papa|padre|esposo|esposa|hijo|hija|hermano|hermana|pareja) (tiene|tuvo|padece|sufre|esta)|soy (pep|funcionario|funcionaria|diputado|diputada|senador|senadora|ministro|ministra|candidato|candidata|diabetico|diabetica|hipertenso|hipertensa|fumador|fumadora)|\bfumo\b|tomo (medicamentos|pastillas|remedios))/;
++  if (primeraPersona.test(n)) return false;
++  return /\b(cubre|cobertura|incluye|excluye|exclusion|carencia|que pasa si|en caso de|se considera|aplica|paga|indemniza|que es|significa|requisitos?)\b/.test(n) || n.includes("?");
++}
++
++function pareceCedula(texto: string, n: string): boolean {
++  const conPuntos = texto.match(/(?<![\d.])\d{1,3}(?:\.\d{3}){1,2}(?!\d|\.\d)/g) ?? [];
++  const corridos = texto.match(/(?<![\d.])\d{6,8}(?!\d|\.\d)/g) ?? [];
++  if (conPuntos.length === 0 && corridos.length === 0) return false;
++  if (/\b(cedula|c\.?i\.?\b|documento|dni|carnet|pasaporte)/.test(n)) return true;
++  const hayDinero = /\b(gs|usd|precio|premio|prima|cuota|costo|monto|cuesta|cuestan|vale|pagar|pago|anual|mensual|guaranies|dolares|importe|total)\b|\$/.test(n);
++  return conPuntos.length > 0 && !hayDinero;
++}
++
++function pareceTarjeta(texto: string, n: string): boolean {
++  if (/\b(tarjeta|cvv|cvc|codigo de seguridad|mastercard|visa)\b/.test(n)) return true;
++  const secuencias = texto.match(/(?:\d[ -]?){13,19}/g) ?? [];
++  return secuencias.some((s) => {
++    const d = s.replace(/\D/g, "");
++    if (d.length < 13 || d.length > 19) return false;
++    let suma = 0;
++    let doble = false;
++    for (let i = d.length - 1; i >= 0; i--) {
++      let x = Number(d[i]);
++      if (doble) {
++        x *= 2;
++        if (x > 9) x -= 9;
++      }
++      suma += x;
++      doble = !doble;
++    }
++    return suma % 10 === 0;
++  });
++}
++
++/** Categorías sensibles presentes en el texto. Vacío = puede viajar al asistente. */
++export function categoriasBloqueadas(texto: string): readonly CategoriaBloqueada[] {
++  const n = normalizar(texto);
++  const salida: CategoriaBloqueada[] = [];
++  if (pareceCedula(texto, n)) salida.push("cedula");
++  if (pareceTarjeta(texto, n)) salida.push("tarjeta");
++  if (VOCABULARIO.salud.test(n) && !esPreguntaGeneral(n)) salida.push("salud");
++  if (VOCABULARIO.pep.test(n) && !esPreguntaGeneral(n)) salida.push("pep");
++  if (VOCABULARIO.codigo.test(n)) salida.push("codigo");
++  return salida;
++}
++
++export function esPerfilConocido(valor: unknown): valor is string {
++  return typeof valor === "string" && PRODUCTOS.some((p) => p.id === valor);
++}
++
++export interface EntradaAsistente {
++  readonly conversacionId: unknown;
++  readonly perfilId: unknown;
++  readonly texto: unknown;
++}
++
++export type ResultadoAsistente =
++  | { readonly ok: true; readonly bloqueado?: false; readonly texto: string; readonly respaldo: readonly RespaldoAsistente[]; readonly avisos: readonly string[]; readonly derivacion: boolean }
++  | { readonly ok: false; readonly motivo: "CONVERSACION_INVALIDA" | "TEXTO_VACIO" | "TEXTO_LARGO" | "PERFIL_DESCONOCIDO" | "NO_DISPONIBLE" | "LIMITE" | "ERROR" }
++  | { readonly ok: true; readonly bloqueado: true; readonly categorias: readonly CategoriaBloqueada[]; readonly texto: string };
++
++export interface DependenciasAsistente {
++  readonly asistente: AsistenteProvider;
++}
++
++export async function conversarConAsistente(deps: DependenciasAsistente, entrada: EntradaAsistente): Promise<ResultadoAsistente> {
++  if (typeof entrada.conversacionId !== "string" || !ID_CONVERSACION_ASISTENTE.test(entrada.conversacionId)) {
++    return { ok: false, motivo: "CONVERSACION_INVALIDA" };
++  }
++  const texto = typeof entrada.texto === "string" ? entrada.texto.replace(CONTROLES, "").trim() : "";
++  if (texto.length === 0) return { ok: false, motivo: "TEXTO_VACIO" };
++  if (texto.length > MAX_CARACTERES_ASISTENTE) return { ok: false, motivo: "TEXTO_LARGO" };
++
++  let perfilId: string | null = null;
++  if (entrada.perfilId !== null && entrada.perfilId !== undefined && entrada.perfilId !== "") {
++    if (!esPerfilConocido(entrada.perfilId)) return { ok: false, motivo: "PERFIL_DESCONOCIDO" };
++    perfilId = entrada.perfilId;
++  }
++
++  const categorias = categoriasBloqueadas(texto);
++  if (categorias.length > 0) {
++    return { ok: true, bloqueado: true, categorias, texto: TEXTO_ENTRADA_BLOQUEADA };
++  }
++
++  const respuesta = await deps.asistente.responder({ conversacionId: entrada.conversacionId, perfilId, texto });
++  if (!respuesta.ok) return { ok: false, motivo: respuesta.motivo };
++  return { ok: true, texto: respuesta.texto, respaldo: respuesta.respaldo, avisos: respuesta.avisos, derivacion: respuesta.derivacion };
++}
+diff --git a/src/domain/rate-limit.ts b/src/domain/rate-limit.ts
+index 9c33bbc..0a624e9 100644
+--- a/src/domain/rate-limit.ts
++++ b/src/domain/rate-limit.ts
+@@ -89,6 +89,17 @@ export const LIMITE_OTP_VERIFICACION: PoliticaLimite = {
+   ventanaSegundos: 10 * 60,
+ };
+ 
++/**
++ * El asistente conversacional cuesta tokens por mensaje (L6). Treinta mensajes
++ * en diez minutos por IP alcanzan para una conversación real y frenan un bucle;
++ * el servicio ChatbotRAG aplica además su propio cupo por cliente.
++ */
++export const LIMITE_ASISTENTE: PoliticaLimite = {
++  nombre: "asistente-mensaje",
++  maximo: 30,
++  ventanaSegundos: 10 * 60,
++};
++
+ export type RegistroLimite = readonly number[];
+ 
+ export interface ResultadoLimite {
+diff --git a/src/ports/__tests__/asistente-provider.contract.ts b/src/ports/__tests__/asistente-provider.contract.ts
+new file mode 100644
+index 0000000..5c747f9
+--- /dev/null
++++ b/src/ports/__tests__/asistente-provider.contract.ts
+@@ -0,0 +1,33 @@
++import { describe, expect, it } from "vitest";
++import type { AsistenteProvider } from "../asistente-provider";
++
++/**
++ * Contrato compartido por el mock y el adaptador oficial del asistente.
++ * Verifica la forma y las reglas de la interfaz, no la calidad de las respuestas.
++ */
++export function runAsistenteProviderContractTests(crear: () => AsistenteProvider) {
++  describe("contrato AsistenteProvider", () => {
++    it("describe el agente con un perfil por producto y una bienvenida", async () => {
++      const d = await crear().describir();
++      expect(d).not.toBeNull();
++      expect(d!.nombreAsistente.length).toBeGreaterThan(0);
++      expect(d!.perfiles.map((p) => p.id)).toEqual(expect.arrayContaining(["VIDA_ONCOLOGICO"]));
++      expect(d!.bienvenida.length).toBeGreaterThan(0);
++    });
++
++    it("responde con texto y respaldo tipado, sin datos de la persona", async () => {
++      const r = await crear().responder({ conversacionId: "web_contrato01", perfilId: "VIDA_ONCOLOGICO", texto: "¿Cuánto cuesta el plan CONFÍO?" });
++      expect(r.ok).toBe(true);
++      if (r.ok) {
++        expect(typeof r.texto).toBe("string");
++        for (const f of r.respaldo) expect(f).toEqual({ fuenteId: expect.any(String), titulo: expect.any(String), version: expect.any(String) });
++        expect(r.texto).not.toMatch(/web_contrato01/);
++      }
++    });
++
++    it("un perfil desconocido no se atiende como si fuera el por defecto", async () => {
++      const r = await crear().responder({ conversacionId: "web_contrato02", perfilId: "NO_EXISTE", texto: "hola" });
++      expect(r).toEqual({ ok: false, motivo: "PERFIL_DESCONOCIDO" });
++    });
++  });
++}
+diff --git a/src/ports/asistente-provider.ts b/src/ports/asistente-provider.ts
+new file mode 100644
+index 0000000..97bb649
+--- /dev/null
++++ b/src/ports/asistente-provider.ts
+@@ -0,0 +1,69 @@
++/**
++ * Puerto del asistente conversacional («Terra», ítem 35 de
++ * `docs/Tabla de Integraciones externas - Tabla.csv`).
++ *
++ * Es la única puerta entre este sitio y el servicio ChatbotRAG
++ * (repo `segurolotengopy/ChatbotRAG`): un agente conversacional configurable
++ * por JSON, con recuperación documental (RAG) sobre textos aprobados y
++ * versionados, y compuertas de seguridad en código.
++ *
++ * LO QUE ESTE PUERTO NO RECIBE, POR DISEÑO (regla inviolable #7 y sección
++ * «Asistente IA» de CLAUDE.md): el expediente, la cédula, las respuestas de
++ * salud, la condición PEP, datos de tarjeta ni códigos de verificación. La
++ * firma de `responder` no tiene dónde ponerlos, y el caso de uso
++ * (`src/domain/asistente.ts`) filtra el texto libre ANTES de llegar acá. El
++ * asistente no puede invocar Bancard, Code100 ni SEBAOT: no tiene puerto hacia
++ * ellos.
++ *
++ * El `perfilId` es el producto elegido en el selector (`PRODUCTOS` de
++ * `catalogo.ts`): el servicio resuelve con él qué corpus, qué alcance y qué
++ * orientación aplican. Así el chat «depende enteramente de los parámetros de
++ * cada seguro» sin que este repo conozca esos parámetros.
++ */
++
++export interface MensajeAsistente {
++  /** Identificador opaco de la conversación (lo genera el navegador; sin cookie). */
++  readonly conversacionId: string;
++  /** Producto elegido; `null` = el perfil por defecto del agente. */
++  readonly perfilId: string | null;
++  /** Texto ya filtrado por el caso de uso. Nunca contiene datos sensibles. */
++  readonly texto: string;
++}
++
++export interface RespaldoAsistente {
++  readonly fuenteId: string;
++  readonly titulo: string;
++  readonly version: string;
++}
++
++export type RespuestaAsistente =
++  | {
++      readonly ok: true;
++      readonly texto: string;
++      /** Documentos aprobados de los que salió la respuesta (visibles para la persona). */
++      readonly respaldo: readonly RespaldoAsistente[];
++      /** Compuertas del servicio que actuaron (`niega_ia`, `sin_respaldo`, …). Sin texto. */
++      readonly avisos: readonly string[];
++      readonly derivacion: boolean;
++    }
++  | { readonly ok: false; readonly motivo: "NO_DISPONIBLE" | "LIMITE" | "PERFIL_DESCONOCIDO" | "ERROR" };
++
++export interface PerfilAsistente {
++  readonly id: string;
++  readonly nombre: string;
++  readonly bienvenida: string;
++}
++
++export interface DescripcionAsistente {
++  readonly nombreAsistente: string;
++  readonly perfilPorDefecto: string | null;
++  readonly perfiles: readonly PerfilAsistente[];
++  readonly bienvenida: string;
++}
++
++export interface AsistenteProvider {
++  /** Nombre del adaptador para el rótulo de evidencia («mock» / «ChatbotRAG · real»). */
++  readonly nombre: string;
++  describir(): Promise<DescripcionAsistente | null>;
++  responder(mensaje: MensajeAsistente): Promise<RespuestaAsistente>;
++}
+diff --git a/src/repositories/secrets-client.ts b/src/repositories/secrets-client.ts
+index 9a6005b..52ffa58 100644
+--- a/src/repositories/secrets-client.ts
++++ b/src/repositories/secrets-client.ts
+@@ -38,6 +38,12 @@ export interface SecretosApp {
+    * artefacto de build.
+    */
+   readonly WHATSAPP_MODULAR_TOKEN?: string;
++  /**
++   * Bearer del servicio ChatbotRAG (asistente Terra, ítem 35). Opcional por la
++   * misma razón que el de WhatsApp-Modular: Terraform no puede agregarlo a un
++   * secret ya desplegado.
++   */
++  readonly CHATBOTRAG_TOKEN?: string;
+ }
+ 
+ function esSecretosApp(valor: unknown): valor is SecretosApp {
+@@ -48,7 +54,8 @@ function esSecretosApp(valor: unknown): valor is SecretosApp {
+     typeof registro.OTP_PEPPER === "string" &&
+     typeof registro.ADMIN_CONSOLE_KEY === "string" &&
+     (registro.WHATSAPP_MODULAR_TOKEN === undefined ||
+-      typeof registro.WHATSAPP_MODULAR_TOKEN === "string")
++      typeof registro.WHATSAPP_MODULAR_TOKEN === "string") &&
++    (registro.CHATBOTRAG_TOKEN === undefined || typeof registro.CHATBOTRAG_TOKEN === "string")
+   );
+ }
+ 
+@@ -131,3 +138,18 @@ export async function obtenerWhatsAppModularToken(): Promise<string> {
+   }
+   return token;
+ }
++
++/**
++ * Bearer del servicio ChatbotRAG (asistente Terra). Mismo criterio que el de
++ * WhatsApp-Modular: falla con el nombre exacto de lo que falta.
++ */
++export async function obtenerChatbotRagToken(): Promise<string> {
++  const token = (await obtenerSecretosApp()).CHATBOTRAG_TOKEN;
++  if (!token) {
++    throw new Error(
++      "INTEGRATION_ASISTENTE=live sin CHATBOTRAG_TOKEN: agregá esa clave al secret " +
++        "slt-demo-app-secrets o definila como variable de entorno en desarrollo local.",
++    );
++  }
++  return token;
++}
+-- 
+2.43.0
+

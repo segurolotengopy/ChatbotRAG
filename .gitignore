@@ -14,3 +14,13 @@ coverage/
 credenciales*.json
 CONFIGURACION.local.md
 configuraciones/*.local.json
+serviceAccountKey*.json
+*-sa-key.json
+tfplan*
+.terraform/
+*.tfstate*
+*.auto.tfvars
+secrets.tfvars
+.trivy-cache/
+.trivyignore.yaml
+.gitleaksignore
