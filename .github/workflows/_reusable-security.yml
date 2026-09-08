@@ -184,6 +184,18 @@ jobs:
                         "YAML convierte una fecha sin comillas en un objeto date.")
 
           avisos = 0
+          # `componente` debe nombrar un componente declarado: el job que lee las
+          # excepciones descarta las que no coinciden, así que un nombre erróneo
+          # —una ruta de archivo, por ejemplo— desactiva la excepción sin avisar.
+          declarados = {c.get("nombre") for c in (manifiesto.get("componentes") or [])}
+          for e in (manifiesto.get("seguridad", {}) or {}).get("excepciones", []) or []:
+              comp = e.get("componente")
+              if comp and comp not in declarados:
+                  print(f"::error file=.devsecops.yml::Excepción {e.get('id')}: componente '{comp}' no está "
+                        f"declarado en `componentes[].nombre` ({', '.join(sorted(declarados)) or 'ninguno'}). "
+                        "La excepción se descartaría sin aviso; use un nombre declarado o quite el campo.")
+                  errores.append(e)
+
           # Vigencia: la política admite 90 días para CRITICAL/HIGH y 180 para
           # MEDIUM. La entrada no declara severidad, así que solo se bloquea lo
           # que excede el techo absoluto; entre 90 y 180 se avisa.

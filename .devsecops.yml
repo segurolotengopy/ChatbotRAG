@@ -30,7 +30,7 @@ seguridad:
   excepciones:
     - id: undici-types@6.21.0
       herramienta: pnpm
-      componente: pnpm-workspace.yaml
+      componente: chatbotrag
       justificacion: >-
         Exención de trustPolicy con version exacta (un nombre a secas eximiria a
         todas las versiones del paquete, presentes y futuras). La fija
