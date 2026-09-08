@@ -142,6 +142,75 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Stack detectado: $stack (node=$hay_node python=$hay_python iac=$hay_iac)"
 
+      # Valida .devsecops.yml contra el esquema ANTES de leerlo. Un manifiesto
+      # inválido se detectaba recién al fallar algo aguas abajo, o no se
+      # detectaba nunca: nada lo validaba, ni aquí ni en security-local.sh.
+      # Casos reales que esto atrapa: una fecha sin comillas (YAML la convierte
+      # en date y el esquema exige string), una `herramienta` fuera del enum y
+      # una vigencia por encima del máximo que fija la política.
+      - name: Validar .devsecops.yml contra el esquema
+        id: manifiesto
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f .devsecops.yml ]]; then
+            echo "Sin .devsecops.yml: nada que validar (el manifiesto es opcional)."
+            exit 0
+          fi
+          if [[ ! -f .github/devsecops.schema.json ]]; then
+            echo "::warning::Hay .devsecops.yml pero falta .github/devsecops.schema.json; no se valida. Ejecute bootstrap-repo.sh para copiarlo."
+            exit 0
+          fi
+          python3 -m pip install --quiet jsonschema
+          python3 - <<'PY'
+          import datetime as dt, json, sys, yaml
+          from jsonschema import Draft202012Validator
+
+          with open(".devsecops.yml", encoding="utf-8") as f:
+              manifiesto = yaml.safe_load(f) or {}
+          with open(".github/devsecops.schema.json", encoding="utf-8") as f:
+              esquema = json.load(f)
+
+          errores = sorted(Draft202012Validator(esquema).iter_errors(manifiesto),
+                           key=lambda e: list(e.absolute_path))
+          for e in errores:
+              ruta = ".".join(str(x) for x in e.absolute_path) or "(raíz)"
+              print(f"::error file=.devsecops.yml::{ruta}: {e.message}")
+              # Una fecha sin comillas es el error más frecuente y su mensaje
+              # ("is not of type 'string'") no dice cómo arreglarlo.
+              if isinstance(e.instance, dt.date):
+                  print(f"::error file=.devsecops.yml::{ruta}: entrecomille la fecha "
+                        f'(`{e.path[-1] if e.path else "campo"}: "{e.instance}"`); '
+                        "YAML convierte una fecha sin comillas en un objeto date.")
+
+          avisos = 0
+          # Vigencia: la política admite 90 días para CRITICAL/HIGH y 180 para
+          # MEDIUM. La entrada no declara severidad, así que solo se bloquea lo
+          # que excede el techo absoluto; entre 90 y 180 se avisa.
+          for e in (manifiesto.get("seguridad", {}) or {}).get("excepciones", []) or []:
+              try:
+                  creado = dt.date.fromisoformat(str(e["creado"]))
+                  vence = dt.date.fromisoformat(str(e["vence"]))
+              except (KeyError, ValueError):
+                  continue   # el esquema ya reportó lo que falte o esté mal formado
+              dias = (vence - creado).days
+              if dias > 180:
+                  print(f"::error file=.devsecops.yml::Excepción {e.get('id')}: {dias} días de vigencia; "
+                        "el máximo es 90 (CRITICAL/HIGH) o 180 (MEDIUM).")
+                  errores.append(e)
+              elif dias > 90:
+                  avisos += 1
+                  print(f"::warning file=.devsecops.yml::Excepción {e.get('id')}: {dias} días de vigencia; "
+                        "solo admisible si el hallazgo es MEDIUM (CRITICAL/HIGH: máximo 90).")
+
+          if errores:
+              sys.exit(1)
+          if avisos:
+              print(f"✓ .devsecops.yml valida contra el esquema, con {avisos} aviso(s) de vigencia.")
+          else:
+              print("✓ .devsecops.yml valida contra el esquema y las vigencias están dentro de límite.")
+          PY
+
       # Lee seguridad.excepciones[] del manifiesto (si existe). Solo las
       # excepciones VIGENTES (vence >= hoy) y aplicables al componente (campo
       # `componente` vacío o igual al componente cuya `ruta` es inputs.ruta)
