@@ -623,15 +623,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          archivo=$(find resultados-checkov -name '*.sarif' -type f 2>/dev/null | head -1 || true)
+          # `output_file_path: console,resultados-checkov` no crea un directorio:
+          # checkov escribe el SARIF en un ARCHIVO llamado `resultados-checkov`.
+          # Se contemplan los dos casos porque el comportamiento cambió entre
+          # versiones. upload-sarif exige extensión .sarif, así que se copia.
+          archivo=""
+          if [[ -d resultados-checkov ]]; then
+            archivo=$(find resultados-checkov -name '*.sarif' -type f | head -1 || true)
+          elif [[ -f resultados-checkov ]]; then
+            cp resultados-checkov checkov.sarif
+            archivo=checkov.sarif
+          fi
           if [[ -z "$archivo" ]]; then
             archivo=$(find . -maxdepth 3 -name 'results_sarif.sarif' -type f 2>/dev/null | head -1 || true)
           fi
           if [[ -z "$archivo" ]]; then
-            echo "::warning::Checkov no dejó ningún .sarif; no se sube a Code Scanning. Contenido de resultados-checkov:"
-            ls -la resultados-checkov 2>&1 | sed 's/^/  /' || echo "  (el directorio no existe)"
+            echo "::warning::Checkov no dejó ningún SARIF; no se sube a Code Scanning."
+            ls -la resultados-checkov 2>&1 | sed 's/^/  /' || echo "  (no existe)"
           else
-            echo "SARIF de Checkov: $archivo"
+            echo "SARIF de Checkov: $archivo ($(wc -c <"$archivo") bytes)"
           fi
           echo "archivo=$archivo" >> "$GITHUB_OUTPUT"
 
