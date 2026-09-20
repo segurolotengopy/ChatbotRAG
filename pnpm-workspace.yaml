@@ -16,12 +16,17 @@ allowBuilds:
 # subdependencia servida fuera del registro escapa a toda revisión.
 # - blockExoticSubdeps: ninguna dependencia transitiva desde git/tarball/URL.
 # - trustPolicy: una actualización no puede degradar estos ajustes.
-# Pendiente `minimumReleaseAge: 10080`: el lockfile vigente (resuelto el
-# 2026-09-06) tiene 26 entradas publicadas dentro de esa ventana, así que
-# activarlo hoy rompe `pnpm install --frozen-lockfile` en CI. Se activa cuando
-# el lockfile envejezca o al regenerarlo contra versiones con 7 días.
+# - minimumReleaseAge: 10080 minutos (7 días) de cuarentena antes de que una
+#   versión recién publicada pueda instalarse. Quedó pendiente el 2026-09-06
+#   porque el lockfile de entonces tenía 26 entradas más nuevas que la ventana
+#   y rompía `pnpm install --frozen-lockfile`; la más reciente es del
+#   2026-09-04, así que desde el 2026-09-11 el lockfile entero la cumple y se
+#   activa sin regenerarlo ni mover dependencias.
+#   Al subir una dependencia habrá que esperar 7 días desde su publicación, o
+#   eximir esa versión exacta en `minimumReleaseAgeExclude` con justificación.
 blockExoticSubdeps: true
 trustPolicy: no-downgrade
+minimumReleaseAge: 10080
 # Excepción única y con versión exacta (un nombre a secas eximiría a TODAS las
 # versiones del paquete). undici-types@6.21.0 lo fija @types/node@22.20.1
 # (rango ~6.21.0) y no lleva atestación de provenance: se publicó a mano en
