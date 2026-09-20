@@ -61,3 +61,25 @@ seguridad:
       aprobado_por: Andres Alberdi (propietario)
       creado: "2026-09-07"
       vence: "2026-12-06"
+    - id: CVE-2026-84373
+      herramienta: osv-scanner
+      componente: chatbotrag
+      justificacion: >-
+        GHSA-82fw-gwwq-j7x9: lectura arbitraria de archivos por travesia de
+        rutas en @vitest/mocker, alcanzado por vitest 3.2.7. Severidad MODERATE
+        (CVSS 3.1 AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N). No hay correccion en la
+        linea 3.x: la primera version corregida es la 4.1.11, es decir una
+        actualizacion mayor del marco de pruebas, que toca los 8 archivos de
+        prueba del monorepo y la configuracion de cobertura. Es dependencia de
+        desarrollo: no entra en la imagen de Cloud Run (la etapa final se arma
+        con `pnpm --filter servicio deploy --prod`) ni se ejecuta en
+        produccion. El vector exige un mock
+        `redirect` con ruta controlada por un tercero; este repositorio no usa
+        redirect en ninguna prueba, verificado sobre los 8 archivos *.prueba.ts.
+        En CI osv-scanner es informativo y no bloqueante, y MEDIUM esta por
+        debajo de bloquear_en, asi que esta entrada no desbloquea nada: deja
+        registrada la decision y su fecha. Se retira al migrar a vitest 4 en su
+        propia rama, que es la correccion de fondo.
+      aprobado_por: Andres Alberdi (propietario)
+      creado: "2026-09-20"
+      vence: "2026-12-19"
