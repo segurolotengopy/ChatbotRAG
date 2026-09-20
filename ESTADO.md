@@ -2,6 +2,32 @@
 
 Se actualiza al final de cada sesión. **Nunca contiene secretos.** Lo más reciente arriba.
 
+## 2026-09-20 · Cuarentena de dependencias y validación única del manifiesto
+
+### Qué se hizo
+
+- **Activada la cuarentena de 7 días** (`minimumReleaseAge: 10080` en `pnpm-workspace.yaml`, commit `8aa61dc`). Quedó pendiente el 2026-09-06 porque el lockfile de entonces tenía 26 entradas más nuevas que la ventana y rompía `pnpm install --frozen-lockfile`; la más reciente era del 2026-09-04, así que el lockfile completo cumple la ventana desde el 2026-09-11 y entró sin regenerarlo ni mover dependencias. Se declaró también `min-release-age=7` en `.npmrc`, para que cualquier uso de npm sobre el repositorio quede bajo la misma ventana. Con esto **cierran los dos MEDIUM de semgrep** que quedaban abiertos.
+- **En el estándar compartido** (`SeguridadGeneral`, rama `fix/validar-manifiesto-compartido`, 2 commits **sin publicar**):
+  - La validación de `.devsecops.yml`, que desde el 2026-09-07 vivía dentro de `_reusable-security.yml`, se extrajo a `02-pipelines/scripts/validar-manifiesto.py`. Ahora el job `preparar` **y** `security-local.sh` ejecutan el mismo archivo, que `bootstrap-repo.sh` copia a `.github/scripts/`. Antes solo validaba CI: un manifiesto con una fecha sin comillas pasaba el análisis local y fallaba recién en el pipeline, que es justo la divergencia que el script local existe para evitar.
+  - `bootstrap-repo.sh` **siembra la excepción de `CKV_GHA_7`** en el manifiesto que genera, con `creado` de hoy y `vence` a 90 días. Sin ella, todo repositorio que adopte el estándar arranca con checkov bloqueando por el `release.yml` que el propio script acaba de copiar.
+  - 22 pruebas nuevas (`02-pipelines/pruebas-workflows/validacion_manifiesto.py`), registradas en el CI del estándar: comportamiento del validador, el manifiesto que genera `bootstrap-repo.sh` para tres combinaciones de stack y modo, y el cableado de los tres consumidores.
+- **Ya resuelto aguas arriba por otras sesiones**: el umbral local de `CKV_GHA_7` (PR #20 del estándar dejó a checkov corriendo y bloqueando igual que el job `iac` de CI). De los tres puntos que quedaron a decisión del propietario el 2026-09-07, este no hacía falta tocarlo.
+
+### Verificaciones
+
+- `pnpm install --frozen-lockfile` ✓ (384 entradas bajo la política de cadena de suministro, ya con la cuarentena activa) · `pnpm verificar` ✓ (tipos, lint, **74 pruebas**).
+- `security-local.sh`: **CRITICAL 0 · HIGH 0 · MEDIUM 2**. Los dos MEDIUM anteriores (`min-release-age`) desaparecieron; los dos actuales son el mismo aviso nuevo, descrito abajo.
+- En el estándar: `pruebas-security-local.sh` ✓, `pruebas-tuberias-pipefail.sh` ✓ (21 casos), `validacion_manifiesto.py` ✓ (22 casos). Se ejecutó además el `run:` real del paso del workflow contra repositorios simulados. **ShellCheck y actionlint no están instalados en este equipo**: los ejecuta el CI del estándar.
+
+### Pendientes (por orden)
+
+1. 🔑 **Publicar y abrir el PR del estándar** (`fix/validar-manifiesto-compartido`, 2 commits) y **publicar el commit `8aa61dc`** de este repositorio. Ambos esperan autorización.
+2. 🔑 Sigue pendiente todo lo 🔑 de las sesiones anteriores: secretos de Actions (`GCP_WIF_PROVIDER`, `GCP_SA_DEPLOY_STAGING` vía `setup-oidc-gcp.sh`), proyectos GCP «A CONFIRMAR» del manifiesto, rulesets y Environments. `construir` es el único job del PR #1 que sigue en rojo, y es por esto.
+3. **`vitest@3.2.7` — CVE-2026-84373 / GHSA-82fw-gwwq-j7x9 (MEDIUM, path traversal en `@vitest/mocker`)**. Apareció después del 2026-09-07. No hay corrección en la línea 3.x: la primera versión corregida es **4.1.11**, o sea una actualización mayor del marco de pruebas. Es dependencia de desarrollo y el vector exige un mock `redirect` con ruta controlada por un tercero, que este repositorio no usa. Decidir entre subir a vitest 4 en su propia rama o registrar una excepción con vencimiento; **no se hizo ninguna de las dos en esta sesión**.
+4. **Sincronizar este repositorio con el estándar.** Las copias de `.github/workflows/_reusable-*.yml`, `security-local.sh` y `deploy.sh` son del 2026-09-06 y el estándar lleva más de veinte PR desde entonces (SARIF por componente, `nosemgrep` fuera del SARIF que sube a Code Scanning, excepciones de `npm-audit` en CI, detección de IaC bajo `pipefail`, y la validación del manifiesto de esta sesión). Es un cambio propio, en su rama: no entra en el PR #1.
+5. Primer despliegue a staging por el pipeline; pruebas contra Vertex real. **Ojo**: fusionar el PR #1 dispara el despliegue automático a staging, así que los secretos del punto 2 deben estar cargados antes.
+6. Aprobación del corpus de SeguroLoTengo por Interseguros/Alianza; panel de configuración web; canal WhatsApp y memoria persistente.
+
 ## 2026-09-06 · Puesta en marcha local y cadena de suministro
 
 ### Qué se hizo
