@@ -1,0 +1,701 @@
+# =============================================================================
+# ci-node-cloudrun.yml — servicio Node (Fastify, pnpm) contenerizado → Cloud Run
+# Versión: 2.0 | Fecha: 2026-08-24
+# -----------------------------------------------------------------------------
+# Flujo:
+#   PR → main ............ preparar, calidad, seguridad-estatica, construir
+#   push main ............ + desplegar-staging → dast-y-humo
+#   push tag v* .......... + desplegar-produccion (10 % → 100 % de tráfico)
+#                            → post-despliegue (health check + rollback)
+#   workflow_dispatch .... Modo B0: confirmar=DESPLEGAR
+#
+# Cadena de suministro en construir: imagen multi-stage → push a Artifact
+# Registry → Trivy image (bloquea CRITICAL/HIGH) → SBOM (Syft) → firma keyless
+# (cosign, Sigstore) → attestation de procedencia (solo repos públicos).
+# Se despliega SIEMPRE por digest (inmutable), nunca por tag.
+#
+# Identidad: WIF. La SA de deploy (GCP_SA_DEPLOY_*) despliega; la SA de runtime
+# (vars.CLOUD_RUN_SA_*) es la identidad del servicio y solo lee sus secretos
+# de Secret Manager (--set-secrets). Ver 01-seguridad/02-identidad-federada-oidc.md.
+#
+# Secretos: GCP_WIF_PROVIDER, GCP_SA_DEPLOY_STAGING, GCP_SA_DEPLOY_PROD
+# Variables: MODO, APROBADORES_PROD, TAG_FIRMADO_REQUERIDO, GCP_PROJECT_ID_STAGING,
+#            GCP_PROJECT_ID_PROD, GCP_REGION, ARTIFACT_REGISTRY_REPO,
+#            CLOUD_RUN_SERVICE, CLOUD_RUN_SA_STAGING, CLOUD_RUN_SA_PROD,
+#            CLOUD_RUN_SECRETS (líneas VAR=secreto:version), STAGING_URL,
+#            PROD_URL, HEALTH_PATH (/salud), NODE_VERSION (22), COVERAGE_MIN (70)
+# =============================================================================
+name: CI/CD Node → Cloud Run
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag vX.Y.Z ya creado (debe ser ancestro de main)
+        type: string
+        required: true
+      confirmar:
+        description: Escriba DESPLEGAR para publicar en producción desde el tag
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NODE_VERSION: ${{ vars.NODE_VERSION || '22' }}
+  # Registro único (en el proyecto de staging); producción lo lee con el rol
+  # roles/artifactregistry.reader concedido a su SA de runtime.
+  IMAGEN: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID_STAGING }}/${{ vars.ARTIFACT_REGISTRY_REPO }}/${{ vars.CLOUD_RUN_SERVICE }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Fase 0 — preparar: detecta el gestor de paquetes (pnpm/yarn/npm) y calienta la caché.
+  # Adaptado del workflow node-firebase del estándar: este proyecto es Node en Cloud Run.
+  # ---------------------------------------------------------------------------
+  preparar:
+    name: preparar
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      pm: ${{ steps.pm.outputs.pm }}
+      instalar: ${{ steps.pm.outputs.instalar }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # En workflow_dispatch se analiza/despliega el tag aprobado (D3)
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Detectar gestor de paquetes
+        id: pm
+        run: |
+          set -euo pipefail
+          if   [[ -f pnpm-lock.yaml ]]; then pm=pnpm; instalar="pnpm install --frozen-lockfile"
+          elif [[ -f yarn.lock ]];      then pm=yarn; instalar="yarn install --immutable"
+          else                                pm=npm;  instalar="npm ci"; fi
+          { echo "pm=$pm"; echo "instalar=$instalar"; } >> "$GITHUB_OUTPUT"
+          echo "Gestor: $pm"
+
+      - name: Habilitar corepack (pnpm/yarn)
+        if: steps.pm.outputs.pm != 'npm'
+        run: corepack enable
+
+      - name: Node.js con caché
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: ${{ steps.pm.outputs.pm }}
+
+      - name: Instalar dependencias (calienta la caché para los demás jobs)
+        run: ${{ steps.pm.outputs.instalar }}
+
+  # ---------------------------------------------------------------------------
+  # Fase 1 — calidad: tipos + lint + pruebas con cobertura mínima + auditoría de dependencias.
+  # ---------------------------------------------------------------------------
+  calidad:
+    name: calidad
+    needs: preparar
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      COVERAGE_MIN: ${{ vars.COVERAGE_MIN || 70 }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # En workflow_dispatch se analiza/despliega el tag aprobado (D3)
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Habilitar corepack (pnpm/yarn)
+        if: needs.preparar.outputs.pm != 'npm'
+        run: corepack enable
+
+      - name: Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: ${{ needs.preparar.outputs.pm }}
+
+      - name: Instalar dependencias
+        run: ${{ needs.preparar.outputs.instalar }}
+
+      - name: Verificación de tipos (compila los paquetes)
+        run: pnpm tipos
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Pruebas unitarias con cobertura (Vitest)
+        run: >-
+          pnpm vitest run --coverage
+          --coverage.reporter=text --coverage.reporter=json-summary
+
+      - name: Umbral de cobertura (COVERAGE_MIN=${{ env.COVERAGE_MIN }} %)
+        run: |
+          set -euo pipefail
+          archivo=coverage/coverage-summary.json
+          if [[ ! -f "$archivo" ]]; then
+            echo "::error::No existe $archivo. Habilite coverage en vitest.config (provider v8)."
+            exit 1
+          fi
+          lineas=$(jq -r '.total.lines.pct' "$archivo")
+          echo "Cobertura de líneas: $lineas % (mínimo $COVERAGE_MIN %)"
+          echo "### Cobertura: $lineas % (mínimo $COVERAGE_MIN %)" >> "$GITHUB_STEP_SUMMARY"
+          if (( $(echo "$lineas < $COVERAGE_MIN" | bc -l) )); then
+            echo "::error::Cobertura $lineas % por debajo del mínimo $COVERAGE_MIN %"
+            exit 1
+          fi
+
+      - name: Auditoría de dependencias (pnpm audit, bloquea HIGH y CRITICAL)
+        run: pnpm audit --prod --audit-level high
+
+      - name: Validar configuraciones de agentes contra el esquema
+        run: pnpm validar-config configuraciones/*.json
+
+  # ---------------------------------------------------------------------------
+  # Fase 2 — seguridad-estatica (reusable; ruta local en el repo del proyecto).
+  # ---------------------------------------------------------------------------
+  seguridad-estatica:
+    name: seguridad-estatica
+    needs: preparar
+    permissions:
+      contents: read
+      # security-events: write solo lo usa el reusable cuando subir_sarif = true.
+      # Sin pull-requests: write: los escáneres no comentan en el PR.
+      security-events: write
+      actions: read
+    uses: ./.github/workflows/_reusable-security.yml
+    with:
+      ruta: '.'
+      stack: node
+      bloquear_en: ${{ vars.BLOQUEAR_EN || 'CRITICAL,HIGH' }}
+      subir_sarif: ${{ github.event.repository.visibility == 'public' || vars.GHAS_ENABLED == 'true' }}
+      ref: ${{ inputs.tag || '' }}
+    # Mínimo privilegio: se mapean solo los dos secretos que el reusable declara
+    # en `on.workflow_call.secrets` (ambos opcionales). `secrets: inherit` pasaba
+    # también los de despliegue (WIF, Cloud Run), que ningún escáner necesita.
+    secrets:
+      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+  # ---------------------------------------------------------------------------
+  # Fase 3 — construir: imagen → registro → escaneo → SBOM → firma → attestation.
+  # No corre en PRs de forks (no tienen OIDC). En PRs propios sí construye y
+  # publica con tag pr-N para poder escanearla (se puede limitar con `if`).
+  # ---------------------------------------------------------------------------
+  construir:
+    name: construir
+    needs: [calidad, seguridad-estatica]
+    if: github.event.pull_request.head.repo.fork != true
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write     # WIF + firma keyless con Sigstore
+      attestations: write # attest-build-provenance (público)
+      packages: read
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      imagen: ${{ env.IMAGEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # En workflow_dispatch se analiza/despliega el tag aprobado (D3)
+          ref: ${{ inputs.tag || github.ref }}
+
+      # WIF con impersonación de la SA de deploy y token_format: access_token
+      # para autenticar Docker. Alternativa "Direct WIF" (sin SA): omitir
+      # service_account y usar `steps.auth.outputs.auth_token` como password;
+      # requiere conceder artifactregistry.writer al principal del pool.
+      - name: Autenticar en GCP (WIF)
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_DEPLOY_STAGING }}
+          token_format: access_token
+
+      - name: Login en Artifact Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ${{ vars.GCP_REGION }}-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      - name: Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
+
+      - name: Metadatos de imagen (tags y labels OCI)
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ${{ env.IMAGEN }}
+          tags: |
+            type=sha,format=long,prefix=
+            type=ref,event=tag
+            type=ref,event=pr
+            type=raw,value=main,enable={{is_default_branch}}
+
+      - name: Build y push
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Caché de capas en el propio registro (rápido y sin límite de GHA)
+          cache-from: type=registry,ref=${{ env.IMAGEN }}:buildcache
+          cache-to: type=registry,ref=${{ env.IMAGEN }}:buildcache,mode=max
+          provenance: false # la procedencia la genera attest-build-provenance
+          build-args: |
+            APP_VERSION=${{ github.ref_name }}
+
+      - name: Resolver configuración de Trivy (opcional)
+        id: trivycfg
+        run: |
+          # Si bootstrap-repo.sh copió config/trivy.yaml se usa; si no, vacío
+          # (la acción omite --config cuando el valor está vacío).
+          if [[ -f .github/trivy.yaml ]]; then echo "ruta=.github/trivy.yaml" >> "$GITHUB_OUTPUT"; else echo "ruta=" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Trivy image (bloquea CRITICAL/HIGH con corrección disponible)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.IMAGEN }}@${{ steps.build.outputs.digest }}
+          severity: ${{ vars.BLOQUEAR_EN || 'CRITICAL,HIGH' }}
+          ignore-unfixed: true
+          exit-code: '1'
+          format: table
+          trivy-config: ${{ steps.trivycfg.outputs.ruta }}
+
+      - name: SBOM (SPDX JSON) con Syft
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: ${{ env.IMAGEN }}@${{ steps.build.outputs.digest }}
+          registry-username: oauth2accesstoken
+          registry-password: ${{ steps.auth.outputs.access_token }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+          artifact-name: sbom-${{ github.sha }}.spdx.json
+          upload-artifact: true
+
+      - name: Instalar cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Firma keyless y attestation del SBOM (Sigstore / Rekor)
+        env:
+          REF: ${{ env.IMAGEN }}@${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cosign sign --yes "$REF"
+          cosign attest --yes --type spdxjson --predicate sbom.spdx.json "$REF"
+          echo "Imagen firmada: $REF"
+
+      - name: Attestation de procedencia (solo repos públicos)
+        if: github.event.repository.visibility == 'public'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
+        with:
+          subject-name: ${{ env.IMAGEN }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Resumen
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          {
+            echo "### Imagen construida"
+            echo "- \`$IMAGEN@$DIGEST\`"
+            echo "- Trivy: sin CRITICAL/HIGH corregibles | SBOM: artifact | Firma: cosign keyless"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # Fase 4 — desplegar-staging: por digest, con secretos de Secret Manager y
+  # SA de runtime dedicada. Recibe el 100 % del tráfico (staging).
+  # ---------------------------------------------------------------------------
+  desplegar-staging:
+    name: desplegar-staging
+    needs: construir
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: staging
+      url: ${{ steps.deploy.outputs.url }}
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Autenticar en GCP (WIF)
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_DEPLOY_STAGING }}
+          token_format: access_token # docker login para cosign verify
+
+      - name: Login en Artifact Registry (lectura para verificar la firma)
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ${{ vars.GCP_REGION }}-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      - name: Instalar cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      # Cadena de suministro: no se despliega ninguna imagen cuya firma keyless
+      # no provenga de un workflow de ESTE repositorio (Sigstore/Fulcio).
+      - name: Verificar firma de la imagen (cosign verify)
+        env:
+          REF: ${{ needs.construir.outputs.imagen }}@${{ needs.construir.outputs.digest }}
+          REPO: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          cosign verify \
+            --certificate-identity-regexp "^${REPO}/" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "$REF"
+
+      - name: Desplegar en Cloud Run (staging)
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@2028e2d7d30a78c6910e0632e48dd561b064884d # v3
+        with:
+          service: ${{ vars.CLOUD_RUN_SERVICE }}
+          region: ${{ vars.GCP_REGION }}
+          project_id: ${{ vars.GCP_PROJECT_ID_STAGING }}
+          image: ${{ needs.construir.outputs.imagen }}@${{ needs.construir.outputs.digest }}
+          # Secretos desde Secret Manager (nunca como variables planas):
+          # formato por línea VAR=nombre-secreto:version (o :latest)
+          secrets: ${{ vars.CLOUD_RUN_SECRETS }}
+          env_vars: |
+            APP_ENV=staging
+            APP_VERSION=${{ github.sha }}
+          # no_traffic: true + migración gradual es opcional en staging; aquí
+          # se envía todo el tráfico a la nueva revisión.
+          no_traffic: false
+          flags: >-
+            --service-account=${{ vars.CLOUD_RUN_SA_STAGING }}
+            --ingress=all
+            --cpu-throttling
+            --max-instances=${{ vars.CLOUD_RUN_MAX_INSTANCES || 3 }}
+
+      - name: Resumen
+        env:
+          URL_DEPLOY: ${{ steps.deploy.outputs.url }}
+        run: echo "### Staging desplegado en $URL_DEPLOY" >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # Fase 5 — dast-y-humo contra STAGING_URL (ZAP baseline + humo).
+  # ---------------------------------------------------------------------------
+  dast-y-humo:
+    name: dast-y-humo
+    needs: desplegar-staging
+    permissions:
+      contents: read
+    uses: ./.github/workflows/_reusable-dast.yml
+    with:
+      url_objetivo: ${{ vars.STAGING_URL }}
+      reglas: .github/zap-rules.tsv
+      escaneo_completo: false
+      ruta_salud: ${{ vars.HEALTH_PATH || '/salud' }}
+
+  # ---------------------------------------------------------------------------
+  # Fase 6 — desplegar-produccion: misma imagen (digest) que staging. Despliega
+  # SIN tráfico, mueve 10 %, verifica salud y luego 100 %. Guarda la revisión
+  # anterior para el rollback de post-despliegue.
+  # ---------------------------------------------------------------------------
+  desplegar-produccion:
+    name: desplegar-produccion
+    needs: construir
+    if: >-
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        && !contains(github.ref_name, '-') && vars.MODO != 'B0')
+      || (github.event_name == 'workflow_dispatch' && inputs.confirmar == 'DESPLEGAR')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: production
+      url: ${{ vars.PROD_URL }}
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      revision_anterior: ${{ steps.anterior.outputs.revision }}
+      revision_nueva: ${{ steps.nueva.outputs.revision }}
+    env:
+      SERVICIO: ${{ vars.CLOUD_RUN_SERVICE }}
+      REGION: ${{ vars.GCP_REGION }}
+      PROYECTO: ${{ vars.GCP_PROJECT_ID_PROD }}
+    steps:
+      - name: Checkout (historial completo para verificar la aprobación)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      # D3 — Verificación de aprobación previa a producción (todos los modos).
+      - name: Verificar aprobación
+        env:
+          EVENTO: ${{ github.event_name }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+          ACTOR: ${{ github.actor }}
+          APROBADORES: ${{ vars.APROBADORES_PROD }}
+          FIRMA_REQUERIDA: ${{ vars.TAG_FIRMADO_REQUERIDO }}
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin main
+          if [[ "$EVENTO" == "workflow_dispatch" ]]; then
+            git rev-parse -q --verify "refs/tags/$TAG" >/dev/null \
+              || { echo "::error::El tag '$TAG' no existe en el repositorio"; exit 1; }
+            [[ "$TAG" != *-* ]] \
+              || { echo "::error::'$TAG' es un prerelease y no despliega producción"; exit 1; }
+            git merge-base --is-ancestor "$TAG" origin/main \
+              || { echo "::error::'$TAG' no es ancestro de origin/main"; exit 1; }
+            lista=",$(echo "$APROBADORES" | tr -d ' '),"
+            [[ "$lista" == *",$ACTOR,"* ]] \
+              || { echo "::error::'$ACTOR' no está en vars.APROBADORES_PROD"; exit 1; }
+            if [[ "$FIRMA_REQUERIDA" == "true" ]]; then
+              git tag -v "$TAG" \
+                || { echo "::error::El tag '$TAG' no tiene firma verificable (TAG_FIRMADO_REQUERIDO=true)"; exit 1; }
+            fi
+          else
+            git merge-base --is-ancestor "$TAG" origin/main \
+              || { echo "::error::El tag '$TAG' no es ancestro de origin/main"; exit 1; }
+            [[ "$TAG" != *-* ]] \
+              || { echo "::error::'$TAG' es un prerelease y no despliega producción"; exit 1; }
+          fi
+          echo "Aprobación verificada: $TAG por $ACTOR ($EVENTO)"
+
+      - name: Autenticar en GCP (WIF, SA de producción)
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_DEPLOY_PROD }}
+          token_format: access_token # docker login para cosign verify
+
+      - name: gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
+
+      - name: Login en Artifact Registry (lectura para verificar la firma)
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ${{ vars.GCP_REGION }}-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      - name: Instalar cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Verificar firma de la imagen (cosign verify)
+        env:
+          REF: ${{ needs.construir.outputs.imagen }}@${{ needs.construir.outputs.digest }}
+          REPO: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          cosign verify \
+            --certificate-identity-regexp "^${REPO}/" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "$REF"
+
+      - name: Guardar revisión anterior (para rollback)
+        id: anterior
+        run: |
+          rev=$(gcloud run services describe "$SERVICIO" --region "$REGION" --project "$PROYECTO" \
+                --format='value(status.latestReadyRevisionName)' 2>/dev/null || true)
+          echo "revision=$rev" >> "$GITHUB_OUTPUT"
+          echo "Revisión anterior: ${rev:-<ninguna, primer despliegue>}"
+
+      - name: Desplegar en Cloud Run (producción, sin tráfico)
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@2028e2d7d30a78c6910e0632e48dd561b064884d # v3
+        with:
+          service: ${{ vars.CLOUD_RUN_SERVICE }}
+          region: ${{ vars.GCP_REGION }}
+          project_id: ${{ vars.GCP_PROJECT_ID_PROD }}
+          image: ${{ needs.construir.outputs.imagen }}@${{ needs.construir.outputs.digest }}
+          secrets: ${{ vars.CLOUD_RUN_SECRETS }}
+          env_vars: |
+            APP_ENV=production
+            APP_VERSION=${{ github.ref_name }}
+          no_traffic: true
+          flags: >-
+            --service-account=${{ vars.CLOUD_RUN_SA_PROD }}
+            --ingress=all
+            --min-instances=${{ vars.CLOUD_RUN_MIN_INSTANCES || 0 }}
+            --max-instances=${{ vars.CLOUD_RUN_MAX_INSTANCES || 10 }}
+
+      - name: Obtener nombre de la nueva revisión
+        id: nueva
+        run: |
+          rev=$(gcloud run services describe "$SERVICIO" --region "$REGION" --project "$PROYECTO" \
+                --format='value(status.latestCreatedRevisionName)')
+          echo "revision=$rev" >> "$GITHUB_OUTPUT"
+          echo "Nueva revisión: $rev"
+
+      - name: Tráfico 10 % a la nueva revisión (canary)
+        env:
+          NUEVA: ${{ steps.nueva.outputs.revision }}
+          ANTERIOR: ${{ steps.anterior.outputs.revision }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$ANTERIOR" ]]; then
+            echo "Primer despliegue: 100 % directo"
+            gcloud run services update-traffic "$SERVICIO" --region "$REGION" --project "$PROYECTO" --to-latest
+            exit 0
+          fi
+          gcloud run services update-traffic "$SERVICIO" --region "$REGION" --project "$PROYECTO" \
+            --to-revisions="$NUEVA=10,$ANTERIOR=90"
+
+      - name: Verificar salud durante el canary (2 min)
+        env:
+          URL: ${{ vars.PROD_URL }}
+          RUTA_SALUD: ${{ vars.HEALTH_PATH || '/salud' }}
+        run: |
+          set -euo pipefail
+          fallos=0
+          for i in $(seq 1 12); do
+            codigo=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "${URL%/}$RUTA_SALUD" || echo 000)
+            [[ "$codigo" == "200" ]] || fallos=$((fallos+1))
+            echo "sonda $i: $codigo"; sleep 10
+          done
+          # Se toleran hasta 2 fallos transitorios de 12 sondas.
+          if (( fallos > 2 )); then
+            echo "::error::Canary insalubre ($fallos/12 fallos); se aborta la promoción"
+            exit 1
+          fi
+
+      - name: Tráfico 100 % a la nueva revisión
+        env:
+          URL_PROD: ${{ vars.PROD_URL }}
+          REVISION: ${{ steps.nueva.outputs.revision }}
+        run: |
+          gcloud run services update-traffic "$SERVICIO" --region "$REGION" --project "$PROYECTO" --to-latest
+          echo "### Producción: $URL_PROD → revisión $REVISION" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Revertir tráfico si el canary falló
+        if: failure() && steps.anterior.outputs.revision != ''
+        env:
+          ANTERIOR: ${{ steps.anterior.outputs.revision }}
+        run: |
+          gcloud run services update-traffic "$SERVICIO" --region "$REGION" --project "$PROYECTO" \
+            --to-revisions="$ANTERIOR=100"
+          echo "::warning::Tráfico devuelto al 100 % a $ANTERIOR"
+
+  # ---------------------------------------------------------------------------
+  # Fase 7 — post-despliegue: health check final; rollback automático a la
+  # revisión anterior si falla. Registra el resultado como Deployment status.
+  # ---------------------------------------------------------------------------
+  post-despliegue:
+    name: post-despliegue
+    needs: desplegar-produccion
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      deployments: write
+    env:
+      SERVICIO: ${{ vars.CLOUD_RUN_SERVICE }}
+      REGION: ${{ vars.GCP_REGION }}
+      PROYECTO: ${{ vars.GCP_PROJECT_ID_PROD }}
+    steps:
+      - name: Health check de producción (10 intentos)
+        id: salud
+        env:
+          URL: ${{ vars.PROD_URL }}
+          RUTA_SALUD: ${{ vars.HEALTH_PATH || '/salud' }}
+        run: |
+          set -uo pipefail
+          for i in $(seq 1 10); do
+            codigo=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "${URL%/}$RUTA_SALUD" || echo 000)
+            [[ "$codigo" == "200" ]] && { echo "ok=true" >> "$GITHUB_OUTPUT"; echo "OK ($i)"; exit 0; }
+            echo "Intento $i: $codigo"; sleep 15
+          done
+          echo "ok=false" >> "$GITHUB_OUTPUT"
+          echo "::error::Producción no responde 200 en $RUTA_SALUD"
+
+      - name: Autenticar en GCP para rollback
+        if: steps.salud.outputs.ok == 'false' && needs.desplegar-produccion.outputs.revision_anterior != ''
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_DEPLOY_PROD }}
+
+      - name: Rollback automático a la revisión anterior
+        if: steps.salud.outputs.ok == 'false' && needs.desplegar-produccion.outputs.revision_anterior != ''
+        env:
+          ANTERIOR: ${{ needs.desplegar-produccion.outputs.revision_anterior }}
+        run: |
+          set -euo pipefail
+          gcloud run services update-traffic "$SERVICIO" --region "$REGION" --project "$PROYECTO" \
+            --to-revisions="$ANTERIOR=100"
+          echo "::warning::ROLLBACK: 100 % del tráfico devuelto a $ANTERIOR. Ver 01-seguridad/06-rollback-e-incidentes.md"
+
+      - name: Registrar resultado del despliegue
+        if: always()
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          SALUD_OK: ${{ steps.salud.outputs.ok }}
+          URL_PROD: ${{ vars.PROD_URL }}
+          REV: ${{ needs.desplegar-produccion.outputs.revision_nueva }}
+        with:
+          script: |
+            const ok = process.env.SALUD_OK === 'true';
+            const { data: d } = await github.rest.repos.createDeployment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              ref: context.ref, environment: 'production', auto_merge: false,
+              required_contexts: [], description: `Cloud Run ${process.env.REV}`
+            });
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner, repo: context.repo.repo,
+              deployment_id: d.id, state: ok ? 'success' : 'failure',
+              environment_url: process.env.URL_PROD,
+              log_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              description: ok ? 'Health check correcto' : 'Health check fallido; rollback ejecutado'
+            });
+            if (!ok) core.setFailed('Health check de producción fallido');
+
+  # ---------------------------------------------------------------------------
+  # compuerta-pr (D1): ÚNICO status check que exigen los rulesets de main.
+  # ---------------------------------------------------------------------------
+  compuerta-pr:
+    name: compuerta-pr
+    needs: [calidad, seguridad-estatica]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verificar resultados de calidad y seguridad-estatica
+        env:
+          R_CALIDAD: ${{ needs.calidad.result }}
+          R_SEGURIDAD: ${{ needs.seguridad-estatica.result }}
+        run: |
+          set -euo pipefail
+          echo "calidad=$R_CALIDAD | seguridad-estatica=$R_SEGURIDAD"
+          for r in "$R_CALIDAD" "$R_SEGURIDAD"; do
+            if [[ "$r" != "success" ]]; then
+              echo "::error::compuerta-pr bloqueada: algún job requerido no terminó en success"
+              exit 1
+            fi
+          done
+          echo "compuerta-pr: aprobada"

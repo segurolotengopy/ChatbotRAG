@@ -1,0 +1,57 @@
+# =============================================================================
+# CODEOWNERS — Revisores obligatorios por ruta
+# Versión: 2.0 | Fecha: 2026-08-24 | Destino: .github/CODEOWNERS
+# -----------------------------------------------------------------------------
+# Con la rama main protegida y "Require review from Code Owners" activo
+# (ruleset), ningún cambio en estas rutas se fusiona sin la aprobación del
+# equipo dueño. En Modo B0 (privado Free) los rulesets básicos existen pero la
+# revisión de Code Owners NO se exige: el archivo sigue siendo útil para
+# asignar revisores automáticamente.
+# Sustituido el 2026-09-30: el repositorio conservaba los 26 marcadores de
+# equipo de la plantilla, que apuntaban a equipos inexistentes. No rompía nada
+# porque el ruleset del estándar deja `require_code_owner_review: false`, pero
+# al activarlo NINGUNA aprobación habría satisfecho el requisito y los PR
+# quedaban sin poder fusionarse. Aquí no debe volver a aparecer la cadena de
+# marcador, ni en un comentario: bootstrap-repo.sh la busca con grep en todo el
+# archivo y, si la encuentra, se niega a exigir la revisión de Code Owners.
+# La última regla que coincide gana; el orden importa.
+# =============================================================================
+
+# Propietario por defecto de todo el repositorio
+*                                   @segurolotengopy
+
+# Pipeline, seguridad y configuración de CI: exige al equipo de plataforma
+/.github/                           @segurolotengopy
+/.github/workflows/                 @segurolotengopy
+/.github/CODEOWNERS                 @segurolotengopy
+/.github/dependabot.yml             @segurolotengopy
+/.github/gitleaks.toml              @segurolotengopy
+/.pre-commit-config.yaml            @segurolotengopy
+/.devsecops.yml                     @segurolotengopy
+
+# Reglas de acceso a datos: cualquier cambio requiere seguridad
+/firestore.rules                    @segurolotengopy
+/storage.rules                      @segurolotengopy
+/firebase.json                      @segurolotengopy
+
+# Infraestructura como código y contenedores
+/infra/                             @segurolotengopy
+/Dockerfile                         @segurolotengopy
+/.aws/                              @segurolotengopy
+/docker-compose*.yml                @segurolotengopy
+
+# Dependencias (revisar cambios de lockfile en PRs no generados por Dependabot)
+/package.json                       @segurolotengopy
+/package-lock.json                  @segurolotengopy
+/pnpm-lock.yaml                     @segurolotengopy
+/requirements*.txt                  @segurolotengopy
+/pyproject.toml                     @segurolotengopy
+
+# Autenticación, autorización y manejo de secretos en la aplicación
+/src/auth/                          @segurolotengopy
+/src/**/seguridad/                  @segurolotengopy
+/api/auth/                          @segurolotengopy
+
+# Documentación del estándar y runbooks
+/docs/                              @segurolotengopy
+/CHANGELOG.md                       @segurolotengopy

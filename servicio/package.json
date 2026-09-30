@@ -9,7 +9,7 @@
   "scripts": {
     "construir": "tsc -b tsconfig.json",
     "tipos": "tsc -b tsconfig.json",
-    "dev": "CHATBOTRAG_PROVEEDOR_FORZADO=simulado CHATBOTRAG_CLIENTES='[{\"id\":\"local\",\"agenteId\":\"segurolotengo\",\"claveSha256\":\"5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03\"}]' node --import tsx src/principal.ts",
+    "dev": "CHATBOTRAG_PROVEEDOR_FORZADO=simulado CHATBOTRAG_CLIENTES='[{\"id\":\"local\",\"agenteId\":\"segurolotengo\",\"claveSha256\":\"0636948085431299e37be258a2ff0381e2ae41bec3d58d422bc7829af150302f\"}]' node --import tsx src/principal.ts",
     "iniciar": "node dist/principal.js"
   },
   "dependencies": {

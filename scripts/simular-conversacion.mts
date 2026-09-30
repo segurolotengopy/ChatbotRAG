@@ -1,7 +1,11 @@
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { Agente, BitacoraEnMemoria, cargarConfiguracionDesdeJson, cargarCorpus, IndiceEnMemoria, MemoriaEnProceso, ProveedorSimulado, RegistroHerramientas } from '../paquetes/nucleo/src/indice.js';
-const raiz = '/home/claude/ChatbotRAG/configuraciones';
+// Relativa al propio archivo, no absoluta: con la ruta fija del equipo donde se
+// generó la entrega, el comando que documenta CLAUDE.md fallaba con ENOENT en
+// cualquier otra máquina, incluida esta.
+const raiz = fileURLToPath(new URL('../configuraciones', import.meta.url));
 const config = cargarConfiguracionDesdeJson(readFileSync(join(raiz, 'segurolotengo.json'), 'utf8'));
 const indice = new IndiceEnMemoria();
 const bit = new BitacoraEnMemoria();

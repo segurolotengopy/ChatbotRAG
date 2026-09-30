@@ -10,3 +10,52 @@ allowBuilds:
   # de terceros se ejecuta al instalar.
   "@google/genai": false
   protobufjs: false
+
+# Cadena de suministro (semgrep package_managers.pnpm.*): un paquete recién
+# publicado es el vector típico del secuestro de cuenta de un mantenedor, y una
+# subdependencia servida fuera del registro escapa a toda revisión.
+# - blockExoticSubdeps: ninguna dependencia transitiva desde git/tarball/URL.
+# - trustPolicy: una actualización no puede degradar estos ajustes.
+# - minimumReleaseAge: 10080 minutos (7 días) de cuarentena antes de que una
+#   versión recién publicada pueda instalarse. Quedó pendiente el 2026-09-06
+#   porque el lockfile de entonces tenía 26 entradas más nuevas que la ventana
+#   y rompía `pnpm install --frozen-lockfile`; la más reciente es del
+#   2026-09-04, así que desde el 2026-09-11 el lockfile entero la cumple y se
+#   activa sin regenerarlo ni mover dependencias.
+#   Al subir una dependencia habrá que esperar 7 días desde su publicación, o
+#   eximir esa versión exacta en `minimumReleaseAgeExclude` con justificación.
+blockExoticSubdeps: true
+trustPolicy: no-downgrade
+minimumReleaseAge: 10080
+# Excepción única y con versión exacta (un nombre a secas eximiría a TODAS las
+# versiones del paquete). undici-types@6.21.0 lo fija @types/node@22.20.1
+# (rango ~6.21.0) y no lleva atestación de provenance: se publicó a mano en
+# 2024, antes de que el paquete pasara a publicarse por OIDC (7.x en adelante).
+# Verificado: lo publicó matteo.collina, mantenedor legítimo de undici; no es
+# una toma de control. Se retira al subir @types/node a una versión que use
+# undici-types 7.x o superior.
+trustPolicyExclude:
+  - undici-types@6.21.0
+
+# Subdependencias forzadas a la versión con corrección (2026-09-30). Ninguna es
+# dependencia directa: las tres llegan por el andamiaje de desarrollo
+# (brace-expansion por minimatch 3/9/10, fast-uri por ajv y por Fastify,
+# ip-address por socks-proxy-agent), así que no hay una dependencia propia que
+# subir y la única vía es el override. Se fija el rango exacto por línea mayor,
+# no un ">=" abierto: un override laxo adopta en silencio la siguiente mayor.
+# Todas pasan la cuarentena de minimumReleaseAge (publicadas entre el
+# 2026-09-14 y el 2026-09-18). Se retira cada entrada cuando el paquete que la
+# arrastra suba por su cuenta a una versión igual o mayor.
+overrides:
+  # GHSA-6j4f-fj2g-mc7p, GHSA-qhr7-859c-m2p7 y GHSA-q2hr-2g5m-vwhr: agotamiento
+  # de pila por recursión no acotada al expandir llaves (dos HIGH y un MEDIUM).
+  brace-expansion@1: 1.1.21
+  brace-expansion@2: 2.1.7
+  brace-expansion@5: 5.0.12
+  # GHSA-hrr3-gc8f-f4qj y GHSA-jvvf-x445-j334: normalización inconsistente del
+  # host con octetos porcentuales, y validación de URI.
+  fast-uri@3: 3.1.8
+  fast-uri@4: 4.1.5
+  # GHSA-h3mg-xc3c-68pw y GHSA-j6r3-76f7-8jcv: diagnóstico de parseo sin límite
+  # de longitud, y comparación de familias distintas en isInSubnet().
+  ip-address@10: 10.7.1
