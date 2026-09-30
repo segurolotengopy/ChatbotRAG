@@ -1,6 +1,6 @@
 # =============================================================================
 # zap-rules.tsv — Reglas de OWASP ZAP para _reusable-dast.yml
-# Versión: 2.0 | Fecha: 2026-08-24 | Destino: .github/zap-rules.tsv
+# Versión: 2.1 | Fecha: 2026-09-04 | Destino: .github/zap-rules.tsv
 # -----------------------------------------------------------------------------
 # Formato (separado por TABULADOR, una regla por línea):
 #   ID<TAB>ACCION<TAB>(nota)

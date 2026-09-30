@@ -2,7 +2,7 @@
 # ==============================================================================
 # deploy.sh v2 — Despliegue manual gobernado por el estándar DevSecOps
 # ==============================================================================
-# Versión: 2.0 | Fecha: 2026-08-24
+# Versión: 2.2 | Fecha: 2026-09-28
 # Documentos relacionados: 00-gobernanza/01-politica-cicd-devsecops.md,
 #   00-gobernanza/02-flujo-git-y-versionado.md, 01-seguridad/05-checklist-pase-a-produccion.md,
 #   02-pipelines/README.md, 03-scripts/security-local.sh
@@ -57,7 +57,7 @@ set -Eeuo pipefail
 # ------------------------------------------------------------------------------
 # Constantes y estado global
 # ------------------------------------------------------------------------------
-readonly SCRIPT_VERSION="2.0"
+readonly SCRIPT_VERSION="2.2"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 readonly MANIFIESTO=".devsecops.yml"
@@ -342,7 +342,9 @@ cargar_manifiesto() {
     rc=1
   fi
   if [[ $rc -ne 0 ]]; then
-    if command -v yq >/dev/null 2>&1 && yq --version 2>&1 | grep -qi mikefarah; then
+    # Sin tubería: con pipefail, `yq --version | grep -q` da falso si yq sigue
+    # escribiendo después de que grep salga (SIGPIPE).
+    if command -v yq >/dev/null 2>&1 && grep -qi mikefarah <<< "$(yq --version 2>&1)"; then
       salida="$(leer_manifiesto_yq)" || die 3 "No se pudo leer $MANIFIESTO con yq"
     else
       die 3 "Se requiere python3 con PyYAML (pip install pyyaml) o yq (mikefarah) para leer $MANIFIESTO"
@@ -764,11 +766,22 @@ desplegar_firebase() {
   fi
   ( cd "$C_RUTA" && firebase_cmd hosting:channel:create previa --project "$C_PROYECTO" ) >/dev/null 2>&1 || true
   if ! ( cd "$C_RUTA" && firebase_cmd hosting:clone "${C_PROYECTO}:live" "${C_PROYECTO}:previa" ); then
-    log_warn "No se pudo copiar live → previa (¿primer despliegue?); no habrá canal de rollback para esta versión."
+    log_warn "No se pudo copiar live → previa (¿primer despliegue, o el sitio '$C_PROYECTO' todavía no existe?); no habrá canal de rollback para esta versión."
   fi
   log_info "firebase deploy --only $objetivos --project $C_PROYECTO"
-  ( cd "$C_RUTA" && firebase_cmd deploy --only "$objetivos" --project "$C_PROYECTO" --non-interactive ) \
-    || die 7 "firebase deploy falló en '$C_NOMBRE'"
+  local registro rc=0
+  registro="$(mktemp)"
+  ( cd "$C_RUTA" && firebase_cmd deploy --only "$objetivos" --project "$C_PROYECTO" --non-interactive 2>&1 ) \
+    | tee "$registro" || rc=$?
+  if grep -qiE 'site not found|404.*site|no site (named|with id)' "$registro"; then
+    # Desde el 15/10/2026 un proyecto de Firebase nuevo no trae creado su sitio
+    # por defecto (aviso de Firebase, 28/09/2026), y `firebase deploy` solo dice
+    # «404 Site Not Found». Traducirlo: el mensaje crudo no dice qué hacer.
+    rm -f "$registro"
+    die 7 "El proyecto $C_PROYECTO no tiene creado el sitio de Hosting. Créelo una vez: firebase hosting:sites:create $C_PROYECTO --project $C_PROYECTO (03-scripts/setup-oidc-gcp.sh lo verifica y lo crea al federar). Si el siteId no puede ser el del proyecto, declárelo en firebase.json (\"site\")."
+  fi
+  rm -f "$registro"
+  [[ "$rc" -eq 0 ]] || die 7 "firebase deploy falló en '$C_NOMBRE'"
 }
 
 desplegar_cloudrun() {
@@ -934,10 +947,13 @@ fase_registro() {
   # Solo archivos ya rastreados: un despliegue no debe introducir archivos
   # nuevos (y menos secretos o artefactos) sin revisión humana.
   local no_rastreados
-  no_rastreados="$(git ls-files --others --exclude-standard | head -n 20)"
+  # Sin `| head`: con pipefail y cientos de no rastreados, git recibía SIGPIPE,
+  # la asignación salía con 141 y set -e cortaba el script después de desplegar
+  # (medido: con 300 archivos, 19 de 20 veces). Se listan los 20 primeros.
+  no_rastreados="$(git ls-files --others --exclude-standard)"
   if [[ -n "$no_rastreados" ]]; then
     log_warn "Hay archivos no rastreados que NO se agregarán al commit (revíselos manualmente):"
-    sed 's/^/  /' <<< "$no_rastreados" >&2
+    sed -n '1,20s/^/  /p' <<< "$no_rastreados" >&2
   fi
   if [[ "$DRY_RUN" -eq 1 ]]; then
     printf '%s[DRY-RUN]%s git switch -c %s && git add -u && git commit -m "chore(deploy): despliegue %s %s %s" && git push -u origin %s && gh pr create\n' \

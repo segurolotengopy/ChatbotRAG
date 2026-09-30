@@ -1,12 +1,23 @@
 # =============================================================================
 # dependabot.yml — Actualización automática de dependencias y de pines por SHA
-# Versión: 2.0 | Fecha: 2026-08-24 | Destino: .github/dependabot.yml
+# Versión: 2.1 | Fecha: 2026-09-12 | Destino: .github/dependabot.yml
 # -----------------------------------------------------------------------------
 # Dependabot es gratuito en todos los planes y visibilidades. Aquí se configura:
 #   - Un ecosistema por stack (elimine los que no apliquen al proyecto).
+#     En ChatbotRAG quedan tres: github-actions, npm y docker. Se quitaron
+#     `pip` (no hay Python) y `terraform` (no hay /infra): Dependabot los
+#     intentaba igual y fallaba cada semana.
 #   - Frecuencia semanal (lunes temprano, zona horaria de La Paz/CDMX).
-#   - Agrupación de minor+patch en un solo PR para reducir ruido; los major
-#     llegan en PR individuales para revisarlos con cuidado.
+#   - Agrupación de minor+patch en un solo PR para reducir ruido.
+#   - Versiones mayores: en npm y pip quedan EXCLUIDAS (`ignore`) y se revisan
+#     una vez al mes, a mano, con notas de cambio, como fija la política
+#     (01-seguridad/04 §7.2). En github-actions, docker y terraform siguen
+#     llegando en PR individuales para revisarlos con cuidado.
+#     Hasta la 2.0 este encabezado decía que las mayores llegaban siempre en
+#     PR individuales, lo contrario de la política; se corrigió el 2026-09-12.
+#   - OJO: el `ignore` también frena las actualizaciones de SEGURIDAD que
+#     exijan una versión mayor. La alerta sigue apareciendo, pero el PR no se
+#     abre solo: se abre a mano dentro de las 72 h de la política.
 #   - Límite de PRs abiertos por ecosistema.
 #   - `github-actions`: mantiene los pines por SHA de los workflows y actualiza
 #     el comentario `# vX` automáticamente (Dependabot entiende el formato
@@ -94,12 +105,12 @@ updates:
     # Detectado en novuchat-site (2026-09-03) y confirmado en
     # AndresAlberdi/FirmasNoCualificadas (2026-09-05).
     #
-    # Para añadir una excepción, descomente y justifique (revisar cada
-    # trimestre):
-    #
-    # ignore:
-    #   - dependency-name: "firebase"
-    #     update-types: ["version-update:semver-major"]
+    # Las mayores quedan fuera de la automatización (ver encabezado). Para una
+    # excepción puntual, agregue otra entrada y justifíquela (revisar cada
+    # trimestre).
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   # ---- Docker (imágenes base del Dockerfile) -----------------------------------
   - package-ecosystem: docker
