@@ -24,3 +24,7 @@ secrets.tfvars
 .trivy-cache/
 .trivyignore.yaml
 .gitleaksignore
+
+# Permisos locales de Claude Code: personales de cada equipo, nunca compartidos
+# (este repositorio es público).
+.claude/settings.local.json
