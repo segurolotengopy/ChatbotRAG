@@ -3,7 +3,7 @@
 # Multi-etapa: se compila con pnpm y se copia solo lo necesario para ejecutar.
 # El proceso corre como usuario sin privilegios y sin shell de escritura.
 
-FROM node:22-bookworm-slim AS base
+FROM node:26-bookworm-slim AS base
 ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 RUN corepack enable && corepack prepare pnpm@11.25.0 --activate
 WORKDIR /app
@@ -24,7 +24,7 @@ COPY paquetes ./paquetes
 COPY servicio ./servicio
 RUN pnpm construir && pnpm --filter servicio deploy --prod --legacy /salida
 
-FROM node:22-bookworm-slim AS ejecucion
+FROM node:26-bookworm-slim AS ejecucion
 ENV NODE_ENV=production PUERTO=8080
 WORKDIR /app
 COPY --from=construccion /salida ./
