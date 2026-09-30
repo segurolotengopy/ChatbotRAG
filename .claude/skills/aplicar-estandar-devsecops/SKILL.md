@@ -9,21 +9,22 @@ Procedimiento para Claude Code. Trabaje en una rama `chore/estandar-devsecops`; 
 
 ## 0. Contexto que debe reunir antes de ejecutar nada
 
-1. Ruta local del estándar: `/home/claude/SeguridadGeneral` (confírmela con `ls /home/claude/SeguridadGeneral/03-scripts/bootstrap-repo.sh`; si no existe, pregunte la ruta).
-2. Lea `/home/claude/SeguridadGeneral/00-gobernanza/01-politica-cicd-devsecops.md` (secciones 4 y 12: fases y mapeo v1 → v2) y `/home/claude/SeguridadGeneral/02-pipelines/README.md`.
+1. Ruta local del estándar: `/home/andres-alberdi/SeguridadGeneral` (confírmela con `ls /home/andres-alberdi/SeguridadGeneral/03-scripts/bootstrap-repo.sh`; si no existe, pregunte la ruta).
+2. Lea `/home/andres-alberdi/SeguridadGeneral/00-gobernanza/01-politica-cicd-devsecops.md` (secciones 4 y 12: fases y mapeo v1 → v2) y `/home/andres-alberdi/SeguridadGeneral/02-pipelines/README.md`.
 3. Determine el **stack real** inspeccionando el repositorio, no preguntando:
    - `package.json` + `firebase.json` → `node-firebase`
    - `requirements.txt`/`pyproject.toml` + `Dockerfile` (+ referencias a Cloud Run) → `python-cloudrun`
    - `Dockerfile` + task definition / referencias a ECS/ECR → `aws-ecs`
    - `*.tf` con provider `oci` o referencias a Resource Manager → `oci-terraform`
    - Varios de los anteriores en subdirectorios → `multicloud`
+   - Nada que desplegar (solo documentación, scripts o herramientas de consulta, sin `Dockerfile`, `firebase.json` ni `*.tf`) → `solo-ci`: calidad y seguridad sin despliegue, sin identidad federada ni variables de nube. No fuerce uno de los stacks que despliegan.
 4. Determine el **modo**: `gh repo view --json visibility,owner` → público = A; privado en organización con GHAS (`vars.GHAS_ENABLED` o licencia confirmada por el propietario) = B; privado sin licencias = B0. Si no puede confirmar B, use B0 y anótelo como pendiente.
 5. Detecte restos de la política v1: `CI_CD_POLICIES.md`, `ci-cd-pipeline.yml`, `deploy.sh` v1 (busque `[1/4]` y `snyk test`), `AGENTS.md`, rama `staging`. Anote qué hay para la migración.
 
 ## 1. Ejecutar el bootstrap
 
 ```bash
-/home/claude/SeguridadGeneral/03-scripts/bootstrap-repo.sh --stack <stack> --modo <A|B|B0> --ruta-estandar /home/claude/SeguridadGeneral
+/home/andres-alberdi/SeguridadGeneral/03-scripts/bootstrap-repo.sh --stack <stack> --modo <A|B|B0> --ruta-estandar /home/andres-alberdi/SeguridadGeneral
 ```
 
 - Responda las preguntas con datos reales del proyecto (nombre, proyectos de staging/prod, URLs); si no los conoce, use los valores por defecto y márquelos como "a confirmar" en el informe.
