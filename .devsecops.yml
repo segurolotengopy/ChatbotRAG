@@ -83,3 +83,21 @@ seguridad:
       aprobado_por: Andres Alberdi (propietario)
       creado: "2026-09-20"
       vence: "2026-12-19"
+    # Misma vulnerabilidad que la entrada anterior, repetida porque la
+    # excepción se compara por (herramienta, id) y trivy tambien la reporta: con
+    # solo la de osv-scanner, el hallazgo de trivy quedaba sin exceptuar. Se
+    # descubrio el 2026-09-30, al poner al dia security-local.sh, que desde la
+    # version 2.x corre trivy fs sobre el lockfile.
+    - id: CVE-2026-84373
+      herramienta: trivy
+      componente: chatbotrag
+      justificacion: >-
+        GHSA-82fw-gwwq-j7x9 en @vitest/mocker, alcanzado por vitest 3.2.7. El
+        analisis completo esta en la entrada de osv-scanner del mismo id: sin
+        correccion en la linea 3.x (la primera corregida es la 4.1.11),
+        dependencia de desarrollo que no entra en la imagen de Cloud Run, y el
+        vector exige un mock `redirect` con ruta controlada por un tercero que
+        ninguna de las 8 pruebas usa. Se retira al migrar a vitest 4.
+      aprobado_por: Andres Alberdi (propietario)
+      creado: "2026-09-30"
+      vence: "2026-12-19"
