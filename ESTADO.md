@@ -2,6 +2,39 @@
 
 Se actualiza al final de cada sesión. **Nunca contiene secretos.** Lo más reciente arriba.
 
+## 2026-09-30 · Sincronización con el estándar y rutas rotas de la entrega
+
+### Qué se hizo
+
+- **Corregidas tres rutas heredadas del equipo de entrega** (`/home/claude/...`, que no existe aquí):
+  - `scripts/simular-conversacion.mts` tenía la raíz de `configuraciones/` fijada por ruta absoluta, así que el comando que documenta CLAUDE.md fallaba con ENOENT. Ahora se resuelve relativa al propio archivo (commit `e908715`).
+  - Los siete agentes y las dos skills de `.claude/` citaban `/home/claude/SeguridadGeneral` en 28 lugares: cualquier subagente que siguiera sus instrucciones leía rutas inexistentes, y `/aplicar-estandar-devsecops` mandaba a buscar el bootstrap donde no está. Se recopiaron del estándar con la sustitución correcta (commit `cccc83b`); con eso llegaron también los tres agentes nuevos (`planificador`, `implementador`, `revisor-codigo`) y el modelo fijado por rol.
+- **Puestos al día los archivos copiados del estándar** (commit `f9599c2`), que eran del 2026-09-06 con 24 PR de atraso. Lo crítico: `.github/scripts/validar-manifiesto.py` **no estaba** y el reusable actual **falla** si falta, no solo avisa; sin ese archivo el primer PR tras la actualización se caía en el job `preparar`. Se comprobó antes, archivo por archivo, que solo `_reusable-security.yml` y `dependabot.yml` tenían diferencias propias, y que ninguna era una adaptación del proyecto.
+- **Forzadas tres subdependencias a su versión con corrección** (commit `3014afa`): `brace-expansion`, `fast-uri` e `ip-address`. El `security-local.sh` nuevo —que además corre `npm audit`— dejó el informe en **BLOQUEA con 12 HIGH y 23 MEDIUM**; ninguna de las tres es dependencia directa, así que la única vía era `overrides` en `pnpm-workspace.yaml`, con rango exacto por línea mayor.
+- **Completada la excepción de vitest** (commit `ce869c7`): la del 2026-09-20 nombraba solo `osv-scanner` y la comparación es por (herramienta, id), así que trivy reportaba el mismo hallazgo sin exceptuar.
+- **En el estándar** (rama `fix/validar-manifiesto-formato-ruff`, 1 commit **sin publicar**): el `validar-manifiesto.py` del PR #26 no pasaba el hook `ruff-format` que el propio estándar reparte, y por eso hizo fallar los tres commits de esta sincronización. Se formateó con ruff 0.13.0 —la versión del `rev` repartido— y se agregó el control al CI del estándar, acotado a `02-pipelines/scripts/`, que es lo único que se copia a los repositorios.
+
+### Verificaciones
+
+- `pnpm install --frozen-lockfile` ✓ con la cuarentena activa · `pnpm verificar` ✓ (**74 pruebas**) · simulación completa ✓ (59 líneas, salida 0).
+- `security-local.sh`: **APROBADO — CRITICAL 0 · HIGH 0 · MEDIUM 0**, 4 hallazgos exceptuados (los de vitest en osv-scanner y en trivy). Las seis herramientas corrieron; ninguna quedó sin ejecutar.
+- `actionlint` ✓ y `yamllint` ✓ sobre los seis workflows · `bash -n` de `deploy.sh` y `security-local.sh` ✓ · el manifiesto valida con el script recién copiado ✓ · `./deploy.sh staging --dry-run` llega a la fase 7/7 con salida 0.
+- En el estándar: `validacion_manifiesto.py` ✓ (25 casos) y `ruff format --check` ✓.
+- **No verificado aquí**: ShellCheck no está instalado en este equipo (lo corre el CI del estándar).
+
+### Corrección de lo anotado el 2026-09-20
+
+El pendiente 4 de la entrada anterior decía que la sincronización con el estándar no entraba en el PR #1. Entra: el PR #1 *es* la aplicación del estándar y sigue abierto, así que dejarlo en una versión con 24 PR de atraso para después abrir un segundo PR que lo actualice era peor.
+
+### Pendientes (por orden)
+
+1. 🔑 **Elegir los proyectos GCP.** Existe **`rag-generico`** (creado el 2026-09-17, activo, sin APIs habilitadas salvo `runtimeconfig`), que por nombre y fecha parece ser el previsto para esto. Falta decidir si se usa para staging y se crea otro para producción, o alguna otra combinación. Con eso resuelto: correr `setup-oidc-gcp.sh`, cargar `GCP_WIF_PROVIDER` y `GCP_SA_DEPLOY_STAGING`, y reemplazar los cuatro «A CONFIRMAR» de `.devsecops.yml`. `construir` es el único job del PR #1 en rojo y es por esto.
+2. 🔑 Publicar los 5 commits de este repositorio y el commit del estándar; abrir el PR del estándar. Esperan autorización.
+3. **Migrar a vitest 4** (rama propia). Las excepciones de `CVE-2026-84373` vencen el **2026-12-19** y ese es el plazo. Ojo: `dependabot.yml` ignora las versiones mayores, así que Dependabot **no** va a proponer esta actualización; se abre a mano.
+4. Rulesets y Environments (`staging`, `production` con revisores) en GitHub.
+5. Primer despliegue a staging por el pipeline; pruebas contra Vertex real. **Fusionar el PR #1 dispara el despliegue a staging**, así que el punto 1 va antes.
+6. Aprobación del corpus por Interseguros/Alianza; panel de configuración web; canal WhatsApp y memoria persistente.
+
 ## 2026-09-20 · Cuarentena de dependencias y validación única del manifiesto
 
 ### Qué se hizo
