@@ -11,14 +11,17 @@ componentes:
     proveedor: cloudrun
     ambientes:
       staging:
-        proyecto: chatbotrag-staging   # A CONFIRMAR por el propietario (ID real del proyecto GCP)
-        url: https://chatbotrag-staging.example.com   # A CONFIRMAR: URL de Cloud Run de staging
+        proyecto: rag-generico   # número 1045414922333
+        # Formato que Cloud Run asigna hoy: <servicio>-<numero de proyecto>.<region>.run.app.
+        # Se confirma contra la salida del primer despliegue; hasta entonces la
+        # verificación de salud del job post-despliegue apunta aquí.
+        url: https://chatbotrag-1045414922333.us-central1.run.app
         region: us-central1
         servicio: chatbotrag
         repositorio: chatbotrag
       production:
-        proyecto: chatbotrag-prod   # A CONFIRMAR
-        url: https://chatbotrag.example.com   # A CONFIRMAR
+        proyecto: rag-generico-prod   # número 69578817451
+        url: https://chatbotrag-69578817451.us-central1.run.app
         region: us-central1
         servicio: chatbotrag
         repositorio: chatbotrag
