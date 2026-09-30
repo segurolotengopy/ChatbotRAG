@@ -7,45 +7,51 @@
 # equipo dueño. En Modo B0 (privado Free) los rulesets básicos existen pero la
 # revisión de Code Owners NO se exige: el archivo sigue siendo útil para
 # asignar revisores automáticamente.
-# Reemplace @ORG/equipo por equipos reales (o @usuario en cuentas personales).
+# Sustituido el 2026-09-30: el repositorio conservaba los 26 marcadores de
+# equipo de la plantilla, que apuntaban a equipos inexistentes. No rompía nada
+# porque el ruleset del estándar deja `require_code_owner_review: false`, pero
+# al activarlo NINGUNA aprobación habría satisfecho el requisito y los PR
+# quedaban sin poder fusionarse. Aquí no debe volver a aparecer la cadena de
+# marcador, ni en un comentario: bootstrap-repo.sh la busca con grep en todo el
+# archivo y, si la encuentra, se niega a exigir la revisión de Code Owners.
 # La última regla que coincide gana; el orden importa.
 # =============================================================================
 
 # Propietario por defecto de todo el repositorio
-*                                   @ORG/desarrollo
+*                                   @segurolotengopy
 
 # Pipeline, seguridad y configuración de CI: exige al equipo de plataforma
-/.github/                           @ORG/plataforma @ORG/seguridad
-/.github/workflows/                 @ORG/plataforma @ORG/seguridad
-/.github/CODEOWNERS                 @ORG/seguridad
-/.github/dependabot.yml             @ORG/plataforma
-/.github/gitleaks.toml              @ORG/seguridad
-/.pre-commit-config.yaml            @ORG/plataforma
-/.devsecops.yml                     @ORG/plataforma @ORG/seguridad
+/.github/                           @segurolotengopy
+/.github/workflows/                 @segurolotengopy
+/.github/CODEOWNERS                 @segurolotengopy
+/.github/dependabot.yml             @segurolotengopy
+/.github/gitleaks.toml              @segurolotengopy
+/.pre-commit-config.yaml            @segurolotengopy
+/.devsecops.yml                     @segurolotengopy
 
 # Reglas de acceso a datos: cualquier cambio requiere seguridad
-/firestore.rules                    @ORG/seguridad
-/storage.rules                      @ORG/seguridad
-/firebase.json                      @ORG/plataforma
+/firestore.rules                    @segurolotengopy
+/storage.rules                      @segurolotengopy
+/firebase.json                      @segurolotengopy
 
 # Infraestructura como código y contenedores
-/infra/                             @ORG/plataforma
-/Dockerfile                         @ORG/plataforma
-/.aws/                              @ORG/plataforma
-/docker-compose*.yml                @ORG/plataforma
+/infra/                             @segurolotengopy
+/Dockerfile                         @segurolotengopy
+/.aws/                              @segurolotengopy
+/docker-compose*.yml                @segurolotengopy
 
 # Dependencias (revisar cambios de lockfile en PRs no generados por Dependabot)
-/package.json                       @ORG/desarrollo @ORG/plataforma
-/package-lock.json                  @ORG/desarrollo
-/pnpm-lock.yaml                     @ORG/desarrollo
-/requirements*.txt                  @ORG/desarrollo @ORG/plataforma
-/pyproject.toml                     @ORG/desarrollo @ORG/plataforma
+/package.json                       @segurolotengopy
+/package-lock.json                  @segurolotengopy
+/pnpm-lock.yaml                     @segurolotengopy
+/requirements*.txt                  @segurolotengopy
+/pyproject.toml                     @segurolotengopy
 
 # Autenticación, autorización y manejo de secretos en la aplicación
-/src/auth/                          @ORG/seguridad @ORG/desarrollo
-/src/**/seguridad/                  @ORG/seguridad
-/api/auth/                          @ORG/seguridad @ORG/desarrollo
+/src/auth/                          @segurolotengopy
+/src/**/seguridad/                  @segurolotengopy
+/api/auth/                          @segurolotengopy
 
 # Documentación del estándar y runbooks
-/docs/                              @ORG/desarrollo
-/CHANGELOG.md                       @ORG/plataforma
+/docs/                              @segurolotengopy
+/CHANGELOG.md                       @segurolotengopy
