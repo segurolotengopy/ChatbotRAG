@@ -36,3 +36,26 @@ minimumReleaseAge: 10080
 # undici-types 7.x o superior.
 trustPolicyExclude:
   - undici-types@6.21.0
+
+# Subdependencias forzadas a la versión con corrección (2026-09-30). Ninguna es
+# dependencia directa: las tres llegan por el andamiaje de desarrollo
+# (brace-expansion por minimatch 3/9/10, fast-uri por ajv y por Fastify,
+# ip-address por socks-proxy-agent), así que no hay una dependencia propia que
+# subir y la única vía es el override. Se fija el rango exacto por línea mayor,
+# no un ">=" abierto: un override laxo adopta en silencio la siguiente mayor.
+# Todas pasan la cuarentena de minimumReleaseAge (publicadas entre el
+# 2026-09-14 y el 2026-09-18). Se retira cada entrada cuando el paquete que la
+# arrastra suba por su cuenta a una versión igual o mayor.
+overrides:
+  # GHSA-6j4f-fj2g-mc7p, GHSA-qhr7-859c-m2p7 y GHSA-q2hr-2g5m-vwhr: agotamiento
+  # de pila por recursión no acotada al expandir llaves (dos HIGH y un MEDIUM).
+  brace-expansion@1: 1.1.21
+  brace-expansion@2: 2.1.7
+  brace-expansion@5: 5.0.12
+  # GHSA-hrr3-gc8f-f4qj y GHSA-jvvf-x445-j334: normalización inconsistente del
+  # host con octetos porcentuales, y validación de URI.
+  fast-uri@3: 3.1.8
+  fast-uri@4: 4.1.5
+  # GHSA-h3mg-xc3c-68pw y GHSA-j6r3-76f7-8jcv: diagnóstico de parseo sin límite
+  # de longitud, y comparación de familias distintas en isInSubnet().
+  ip-address@10: 10.7.1
