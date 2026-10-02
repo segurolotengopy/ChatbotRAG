@@ -234,7 +234,7 @@ jobs:
           password: ${{ steps.auth.outputs.access_token }}
 
       - name: Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       - name: Metadatos de imagen (tags y labels OCI)
         id: meta
@@ -249,7 +249,7 @@ jobs:
 
       - name: Build y push
         id: build
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           push: true
@@ -281,7 +281,7 @@ jobs:
           trivy-config: ${{ steps.trivycfg.outputs.ruta }}
 
       - name: SBOM (SPDX JSON) con Syft
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
         with:
           image: ${{ env.IMAGEN }}@${{ steps.build.outputs.digest }}
           registry-username: oauth2accesstoken
