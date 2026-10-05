@@ -102,11 +102,21 @@ export async function crearAplicacion(opciones: OpcionesAplicacion): Promise<Fas
     return true;
   };
 
-  app.get('/salud', async () => ({
+  // La ruta del dominio es `/salud`, como todo lo demás en español. `/health`
+  // existe solo como alias hacia la infraestructura: el estándar DevSecOps
+  // verifica la salud con `HEALTH_PATH`, cuyo valor por defecto en `deploy.sh`
+  // era `/healthz` —que este servicio no sirve— y pasó a `/health`. Además
+  // Cloud Run reserva en `*.run.app` las rutas que terminan en «z»: el front
+  // end de Google responde su propio 404 y la petición nunca llega al
+  // contenedor, así que `/healthz` no funcionaría ni implementándolo.
+  // El alias evita depender de que cada operador exporte la variable correcta.
+  const salud = async () => ({
     ok: true,
     version: VERSION_SERVICIO,
     agentes: [...agentes.values()].map((a) => ({ id: a.config.id, proveedor: a.proveedor, indice: a.indice.nombre, perfiles: Object.keys(a.config.perfiles).length })),
-  }));
+  });
+  app.get('/salud', salud);
+  app.get('/health', salud);
 
   const conCliente = async (p: FastifyRequest): Promise<{ cliente: Cliente; armado: AgenteArmado } | { error: number; motivo: string }> => {
     const cliente = autenticar(p, entorno.clientes);
