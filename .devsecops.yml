@@ -34,19 +34,33 @@ seguridad:
     - id: CKV_GHA_7
       herramienta: checkov
       justificacion: >-
-        Regla SLSA sobre .github/workflows/release.yml: exige que
-        workflow_dispatch no tenga inputs. Los dos que declara son de tipo
-        cerrado, no texto libre: `tipo` es un choice de [auto, patch, minor,
-        major] y `prerelease` un boolean, asi que no admiten un valor
-        arbitrario. `tipo` llega al shell por variable de entorno
-        (TIPO_ENTRADA) y no interpolado en el script, que es el patron que
-        evita la inyeccion. El workflow no produce el artefacto de build: solo
-        crea el tag y la release; la imagen la construye ci-node-cloudrun.yml
-        disparado por ese tag. Ademas corre solo desde main
-        (if: github.ref == refs/heads/main) y con permissions contents: read.
-        Quitar los inputs eliminaria la eleccion del incremento de version y la
-        marca de pre-release. Es una regla del estandar compartido: la solucion
-        de fondo corresponde a SeguridadGeneral, no a este repositorio.
+        Regla SLSA sobre workflow_dispatch con inputs, en los DOS workflows de
+        este repositorio que lo declaran. Revisado el 2026-10-01 uno por uno:
+        ningun input se interpola en un script. Hasta esa fecha esta
+        justificacion solo hablaba de release.yml, aunque la excepcion se
+        compara por (herramienta, id) y por tanto tapaba tambien el segundo;
+        se amplia para que no quede ningun workflow exceptuado sin analisis
+        escrito. Las fechas no se mueven: reafirmar un analisis no extiende la
+        vigencia.
+        (1) release.yml: `tipo` es un choice de [auto, patch, minor, major] y
+        `prerelease` un boolean, asi que GitHub rechaza cualquier otro valor
+        antes de que el workflow arranque, y `tipo` llega al shell por variable
+        de entorno (TIPO_ENTRADA), no interpolado. El workflow no produce el
+        artefacto de build: solo crea el tag y la release, corre solo desde
+        main y con permissions contents: read.
+        (2) ci-node-cloudrun.yml: `confirmar` solo se compara con la cadena
+        DESPLEGAR dentro de una condicion `if:` y su valor no llega a ningun
+        script; `tag` llega a actions/checkout (`ref:`), al `ref` del reusable
+        y a la variable de entorno TAG, que el shell usa siempre entre
+        comillas. Antes de desplegar a produccion se exige que el tag exista
+        (rev-parse --verify refs/tags/), que no tenga guion —lo que descarta
+        los prerelease y cualquier valor que empiece por '-'— y que sea
+        ancestro de origin/main, mas firma verificable si
+        TAG_FIRMADO_REQUERIDO.
+        En ambos casos solo quien tiene permiso de escritura puede lanzar un
+        workflow_dispatch, y ese permiso ya permite ejecutar el workflow de su
+        propia rama. Quitar los inputs obligaria a editar el workflow en cada
+        release o despliegue manual.
       aprobado_por: Andres Alberdi (propietario)
       creado: "2026-09-07"
       vence: "2026-12-06"
