@@ -1,7 +1,7 @@
 # =============================================================================
 # gitleaks.toml — Configuración de Gitleaks para _reusable-security.yml,
 #                 pre-commit y security-local.sh
-# Versión: 2.0 | Fecha: 2026-08-24 | Destino: .github/gitleaks.toml
+# Versión: 2.1 | Fecha: 2026-10-01 | Destino: .github/gitleaks.toml
 # -----------------------------------------------------------------------------
 # Extiende la configuración por defecto de Gitleaks (≈170 reglas: AWS, GCP,
 # GitHub, Slack, claves privadas, JWT, etc.) y añade:
@@ -98,6 +98,15 @@ paths = [
   '''\.(png|jpg|jpeg|gif|svg|ico|woff2?|ttf|pdf)$''',
   '''(^|/)\.gitleaks\.toml$''',
   '''(^|/)\.github/gitleaks\.toml$''',
+  # Artefactos que generan las propias herramientas del estándar. Todos están en
+  # .gitignore (security-local.sh y bootstrap-repo.sh los agregan), así que no hay
+  # código del proyecto ahí; pero Gitleaks en modo directorio (--no-git) no respeta
+  # .gitignore y en la SEGUNDA corrida de security-local.sh leía la base de Trivy
+  # (.trivy-cache/db/trivy.db) y daba ~20 CRITICAL falsos. Son directorios exactos,
+  # no nombres: un `src/trivy-cache.js` se sigue analizando.
+  '''(^|/)\.trivy-cache/''',
+  '''(^|/)\.security-reports/''',
+  '''(^|/)\.deploy-log/''',
 ]
 
 [[allowlists]]
