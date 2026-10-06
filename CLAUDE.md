@@ -39,7 +39,7 @@ Flujo: trabajo en ramas `feat/*`, `fix/*`, `chore/*`, `hotfix/*` → PR hacia `m
 | Widget web | `pnpm --filter @chatbotrag/canal-web run construir` → `paquetes/canal-web/dist-web/` |
 | Imagen | `docker build -t chatbotrag .` |
 | Seguridad estática local | `./security-local.sh` (informe en `.security-reports/ultimo/resumen.md`) |
-| Desplegar a staging | `./deploy.sh staging` (`--dry-run` para ver los comandos) |
+| Desplegar a staging | `HEALTH_PATH=/salud ./deploy.sh staging` (`--dry-run` para ver los comandos). El valor por defecto de `deploy.sh` es el del estándar y no coincide con la ruta de este servicio; en CI no hace falta porque `ci-node-cloudrun.yml` ya usa `/salud`. |
 | Desplegar a producción | **No lo ejecute.** Lo hace una persona: tag `vX.Y.Z` + aprobación del Environment (A/B) o `workflow_dispatch` del `ci-*` con `confirmar=DESPLEGAR` (B0). Ver `/pase-a-produccion`. |
 | Validar workflows | `actionlint .github/workflows/*.yml` |
 
@@ -82,6 +82,7 @@ Flujo: trabajo en ramas `feat/*`, `fix/*`, `chore/*`, `hotfix/*` → PR hacia `m
 - **Frontera de nube (lint la hace cumplir)**: nada fuera de `paquetes/proveedor-*` y `paquetes/conocimiento-*` importa `@google/genai`, `@aws-sdk/*` ni `pg`; el núcleo no usa `fetch`. Un proveedor nuevo es un paquete nuevo que implementa `ProveedorLLM`/`Embebedor`/`IndiceConocimiento`.
 - **Lo que determina comportamiento es enumerado; el texto libre es DATO.** Un valor de configuración jamás se interpola en las reglas del prompt: selecciona una frase de `prompt/frases.ts`. Las prohibiciones duras viven en `compuertas/salida.ts`, no en el prompt.
 - **Los campos derivados se calculan** (`configuracion/derivados.ts`); no existen en el esquema.
+- **Salud: `/salud` es la ruta del dominio y `/health` su alias.** Única ruta en inglés del servicio, y a propósito: es la frontera con la infraestructura. El estándar verifica la salud por `HEALTH_PATH`, y Cloud Run reserva en `*.run.app` las rutas terminadas en «z» —el front end de Google responde 404 y la petición nunca llega al contenedor—, así que `/healthz` no sirve ni implementándolo. Las dos rutas devuelven lo mismo y una prueba lo verifica; si cambia una, cambie la otra.
 - **Bitácora sin texto**: ningún evento lleva el mensaje de la persona ni del asistente. La prueba `la bitácora nunca contiene el texto de los mensajes` lo verifica; no la debilite.
 - **Secretos**: nunca en `configuraciones/*.json` (el validador rechaza claves por forma), nunca en el repo. Credenciales de nube por identidad del entorno (ADC / rol); clave de clientes solo como SHA-256 en `CHATBOTRAG_CLIENTES`.
 - TypeScript estricto (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`), sin `any`; Zod en el borde; Vitest con cobertura mínima 70 %.
