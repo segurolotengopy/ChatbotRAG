@@ -34,19 +34,33 @@ seguridad:
     - id: CKV_GHA_7
       herramienta: checkov
       justificacion: >-
-        Regla SLSA sobre .github/workflows/release.yml: exige que
-        workflow_dispatch no tenga inputs. Los dos que declara son de tipo
-        cerrado, no texto libre: `tipo` es un choice de [auto, patch, minor,
-        major] y `prerelease` un boolean, asi que no admiten un valor
-        arbitrario. `tipo` llega al shell por variable de entorno
-        (TIPO_ENTRADA) y no interpolado en el script, que es el patron que
-        evita la inyeccion. El workflow no produce el artefacto de build: solo
-        crea el tag y la release; la imagen la construye ci-node-cloudrun.yml
-        disparado por ese tag. Ademas corre solo desde main
-        (if: github.ref == refs/heads/main) y con permissions contents: read.
-        Quitar los inputs eliminaria la eleccion del incremento de version y la
-        marca de pre-release. Es una regla del estandar compartido: la solucion
-        de fondo corresponde a SeguridadGeneral, no a este repositorio.
+        Regla SLSA sobre workflow_dispatch con inputs, en los DOS workflows de
+        este repositorio que lo declaran. Revisado el 2026-10-01 uno por uno:
+        ningun input se interpola en un script. Hasta esa fecha esta
+        justificacion solo hablaba de release.yml, aunque la excepcion se
+        compara por (herramienta, id) y por tanto tapaba tambien el segundo;
+        se amplia para que no quede ningun workflow exceptuado sin analisis
+        escrito. Las fechas no se mueven: reafirmar un analisis no extiende la
+        vigencia.
+        (1) release.yml: `tipo` es un choice de [auto, patch, minor, major] y
+        `prerelease` un boolean, asi que GitHub rechaza cualquier otro valor
+        antes de que el workflow arranque, y `tipo` llega al shell por variable
+        de entorno (TIPO_ENTRADA), no interpolado. El workflow no produce el
+        artefacto de build: solo crea el tag y la release, corre solo desde
+        main y con permissions contents: read.
+        (2) ci-node-cloudrun.yml: `confirmar` solo se compara con la cadena
+        DESPLEGAR dentro de una condicion `if:` y su valor no llega a ningun
+        script; `tag` llega a actions/checkout (`ref:`), al `ref` del reusable
+        y a la variable de entorno TAG, que el shell usa siempre entre
+        comillas. Antes de desplegar a produccion se exige que el tag exista
+        (rev-parse --verify refs/tags/), que no tenga guion —lo que descarta
+        los prerelease y cualquier valor que empiece por '-'— y que sea
+        ancestro de origin/main, mas firma verificable si
+        TAG_FIRMADO_REQUERIDO.
+        En ambos casos solo quien tiene permiso de escritura puede lanzar un
+        workflow_dispatch, y ese permiso ya permite ejecutar el workflow de su
+        propia rama. Quitar los inputs obligaria a editar el workflow en cada
+        release o despliegue manual.
       aprobado_por: Andres Alberdi (propietario)
       creado: "2026-09-07"
       vence: "2026-12-06"
@@ -64,43 +78,3 @@ seguridad:
       aprobado_por: Andres Alberdi (propietario)
       creado: "2026-09-07"
       vence: "2026-12-06"
-    - id: CVE-2026-84373
-      herramienta: osv-scanner
-      componente: chatbotrag
-      justificacion: >-
-        GHSA-82fw-gwwq-j7x9: lectura arbitraria de archivos por travesia de
-        rutas en @vitest/mocker, alcanzado por vitest 3.2.7. Severidad MODERATE
-        (CVSS 3.1 AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N). No hay correccion en la
-        linea 3.x: la primera version corregida es la 4.1.11, es decir una
-        actualizacion mayor del marco de pruebas, que toca los 8 archivos de
-        prueba del monorepo y la configuracion de cobertura. Es dependencia de
-        desarrollo: no entra en la imagen de Cloud Run (la etapa final se arma
-        con `pnpm --filter servicio deploy --prod`) ni se ejecuta en
-        produccion. El vector exige un mock
-        `redirect` con ruta controlada por un tercero; este repositorio no usa
-        redirect en ninguna prueba, verificado sobre los 8 archivos *.prueba.ts.
-        En CI osv-scanner es informativo y no bloqueante, y MEDIUM esta por
-        debajo de bloquear_en, asi que esta entrada no desbloquea nada: deja
-        registrada la decision y su fecha. Se retira al migrar a vitest 4 en su
-        propia rama, que es la correccion de fondo.
-      aprobado_por: Andres Alberdi (propietario)
-      creado: "2026-09-20"
-      vence: "2026-12-19"
-    # Misma vulnerabilidad que la entrada anterior, repetida porque la
-    # excepción se compara por (herramienta, id) y trivy tambien la reporta: con
-    # solo la de osv-scanner, el hallazgo de trivy quedaba sin exceptuar. Se
-    # descubrio el 2026-09-30, al poner al dia security-local.sh, que desde la
-    # version 2.x corre trivy fs sobre el lockfile.
-    - id: CVE-2026-84373
-      herramienta: trivy
-      componente: chatbotrag
-      justificacion: >-
-        GHSA-82fw-gwwq-j7x9 en @vitest/mocker, alcanzado por vitest 3.2.7. El
-        analisis completo esta en la entrada de osv-scanner del mismo id: sin
-        correccion en la linea 3.x (la primera corregida es la 4.1.11),
-        dependencia de desarrollo que no entra en la imagen de Cloud Run, y el
-        vector exige un mock `redirect` con ruta controlada por un tercero que
-        ninguna de las 8 pruebas usa. Se retira al migrar a vitest 4.
-      aprobado_por: Andres Alberdi (propietario)
-      creado: "2026-09-30"
-      vence: "2026-12-19"

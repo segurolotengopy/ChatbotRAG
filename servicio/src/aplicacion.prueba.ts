@@ -73,6 +73,17 @@ describe('servicio HTTP', () => {
     expect(r.headers['cache-control']).toBe('no-store');
   });
 
+  // El estándar verifica la salud por `HEALTH_PATH`; `/health` es el alias que
+  // evita que un valor por defecto distinto de `/salud` deje el chequeo en 404.
+  // Debe devolver exactamente lo mismo que la ruta del dominio.
+  it('/health es alias de /salud y responde igual', async () => {
+    const es = await app.inject({ method: 'GET', url: '/salud' });
+    const en = await app.inject({ method: 'GET', url: '/health' });
+    expect(en.statusCode).toBe(200);
+    expect(en.json()).toEqual(es.json());
+    expect(en.headers['cache-control']).toBe('no-store');
+  });
+
   it('exige Bearer válido', async () => {
     expect((await app.inject({ method: 'GET', url: '/v1/agente' })).statusCode).toBe(401);
     expect((await app.inject({ method: 'GET', url: '/v1/agente', headers: { authorization: 'Bearer otra-clave-incorrecta-larga' } })).statusCode).toBe(401);

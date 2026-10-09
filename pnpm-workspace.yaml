@@ -59,3 +59,8 @@ overrides:
   # GHSA-h3mg-xc3c-68pw y GHSA-j6r3-76f7-8jcv: diagnóstico de parseo sin límite
   # de longitud, y comparación de familias distintas en isInSubnet().
   ip-address@10: 10.7.1
+  # GHSA-68fv-2mgg-jv7q (CVE-2026-93749): los desplazamientos de las secciones
+  # de un source map indexado no se validan, así que un mapa malformado deja el
+  # bucle de eventos girando. Lo arrastran postcss (vía vite) y magicast, las
+  # dos cadenas de herramientas de desarrollo.
+  source-map-js@1: 1.2.2
