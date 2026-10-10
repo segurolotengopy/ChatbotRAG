@@ -12,15 +12,23 @@ componentes:
     ambientes:
       staging:
         proyecto: rag-generico   # número 1045414922333
-        # Formato que Cloud Run asigna hoy: <servicio>-<numero de proyecto>.<region>.run.app.
-        # Se confirma contra la salida del primer despliegue; hasta entonces la
-        # verificación de salud del job post-despliegue apunta aquí.
-        url: https://chatbotrag-1045414922333.us-central1.run.app
+        # URL CONFIRMADA contra el primer despliegue (2026-10-10, revisión
+        # chatbotrag-00002). El formato que Cloud Run asignó NO es el que esta
+        # entrada suponía: no usa <servicio>-<numero de proyecto>.<region>.run.app
+        # sino el de hash, <servicio>-<hash>-<region abreviada>.a.run.app. El
+        # hash lo asigna Cloud Run al crear el servicio y no se puede derivar
+        # del proyecto ni del nombre, así que no se adivina: se lee del
+        # despliegue con `gcloud run services describe`.
+        url: https://chatbotrag-fhah4udeaq-uc.a.run.app
         region: us-central1
         servicio: chatbotrag
         repositorio: chatbotrag
       production:
         proyecto: rag-generico-prod   # número 69578817451
+        # SIN CONFIRMAR: producción no se desplegó nunca. Este valor es una
+        # suposición con el mismo formato que resultó equivocado en staging, así
+        # que hay que reemplazarlo leyéndolo del primer despliegue a producción
+        # antes de confiar en la verificación de salud del pase.
         url: https://chatbotrag-69578817451.us-central1.run.app
         region: us-central1
         servicio: chatbotrag
