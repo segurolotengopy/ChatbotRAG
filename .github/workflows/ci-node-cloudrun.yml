@@ -401,9 +401,14 @@ jobs:
           # Secretos desde Secret Manager (nunca como variables planas):
           # formato por línea VAR=nombre-secreto:version (o :latest)
           secrets: ${{ vars.CLOUD_RUN_SECRETS }}
+          # GCP_PROYECTO lo exige `armar-agentes.ts` cuando el agente usa el
+          # proveedor `vertex`: sin ella el servicio se niega a arrancar y Cloud
+          # Run rechaza la revisión por el chequeo de puerto. GCP_REGION no hace
+          # falta, su valor por omisión en el esquema de entorno es us-central1.
           env_vars: |
             APP_ENV=staging
             APP_VERSION=${{ github.sha }}
+            GCP_PROYECTO=${{ vars.GCP_PROJECT_ID_STAGING }}
           # no_traffic: true + migración gradual es opcional en staging; aquí
           # se envía todo el tráfico a la nueva revisión.
           no_traffic: false
@@ -552,9 +557,13 @@ jobs:
           project_id: ${{ vars.GCP_PROJECT_ID_PROD }}
           image: ${{ needs.construir.outputs.imagen }}@${{ needs.construir.outputs.digest }}
           secrets: ${{ vars.CLOUD_RUN_SECRETS }}
+          # Mismo requisito que en staging. Se corrige acá también para no dejar
+          # el defecto latente: producción nunca se desplegó, así que habría
+          # aparecido recién en el primer pase, con el tag ya creado.
           env_vars: |
             APP_ENV=production
             APP_VERSION=${{ github.ref_name }}
+            GCP_PROYECTO=${{ vars.GCP_PROJECT_ID_PROD }}
           no_traffic: true
           flags: >-
             --service-account=${{ vars.CLOUD_RUN_SA_PROD }}
