@@ -75,14 +75,28 @@ jobs:
             done
             echo "::error::$destino no respondió 200 tras 10 intentos"; return 1
           }
-          comprobar "$url/"
-          # El health check es opcional para SPAs estáticas: si devuelve 404 se
-          # avisa pero no se bloquea; cualquier 5xx sí bloquea.
-          codigo=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 -L "$url$RUTA_SALUD" || echo 000)
+          # CORRECCIÓN LOCAL, pendiente de llevar al estándar (2026-10-11).
+          #
+          # Antes la comprobación bloqueante era la RAÍZ (`comprobar "$url/"`) y
+          # el chequeo de salud solo avisaba ante un 404, «opcional para SPAs
+          # estáticas». Está invertido para cualquier servicio que no sirva la
+          # raíz: exige lo que una API legítimamente no tiene y deja pasar con
+          # una advertencia lo único que verifica que el servicio esté sano.
+          # Medido en ChatbotRAG: el despliegue a staging quedó correcto y el
+          # job bloqueó diez veces contra `/`, que devuelve 404 porque el
+          # servicio solo expone rutas bajo /v1 más /salud y /health.
+          #
+          # Ahora lo bloqueante es `ruta_salud`, que es para lo que existe ese
+          # parámetro, y la raíz pasa a ser informativa. Un sitio estático no
+          # pierde nada: declara `ruta_salud: /` y obtiene la misma comprobación
+          # que antes. No se relaja ningún control: se apunta al URL correcto y
+          # el chequeo que de verdad importa pasa de advertencia a bloqueante.
+          comprobar "$url$RUTA_SALUD"
+          codigo=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 -L "$url/" || echo 000)
           case "$codigo" in
-            200) echo "OK  $url$RUTA_SALUD -> 200" ;;
-            404) echo "::warning::$url$RUTA_SALUD devolvió 404 (defina un health check o cambie ruta_salud)" ;;
-            *)   echo "::error::$url$RUTA_SALUD devolvió $codigo"; exit 1 ;;
+            200) echo "OK  $url/ -> 200" ;;
+            404) echo "$url/ devolvió 404; es normal en una API que no sirve la raíz" ;;
+            *)   echo "::warning::$url/ devolvió $codigo" ;;
           esac
 
       - name: Verificar cabeceras de seguridad (HSTS y CSP)
