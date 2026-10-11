@@ -2,6 +2,39 @@
 
 Se actualiza al final de cada sesión. **Nunca contiene secretos.** Lo más reciente arriba.
 
+## 2026-10-11 · Del repositorio publicado al primer despliegue real en staging
+
+### Punto de retorno
+
+**Qué estaba haciendo.** Dejar listo el asistente de SeguroLoTengo para la demostración del lunes 12-oct: solo orientación sobre el funcionamiento del sitio y los procedimientos, en lenguaje llano, con índice en memoria. El servicio está desplegado en staging y sano; falta que el demo se conecte.
+
+**Qué sigue, por orden.**
+1. **Primera llamada real del demo.** Hasta hoy no llegó ninguna: en los registros de Cloud Run no hay `/v1/*`. Cuando llegue, 200 = clave válida y 401 = clave distinta. La sesión de SeguroLoTengo debe aplicar su Terraform (`asistente_ambiente=staging`, autorizado por Andres el 11-oct) y pasar de `mock` a `live`.
+2. **Corpus de orientación** (`ORIENTACION-v1.0`, 22 archivos, lo escribe SeguroLoTengo en su repositorio). Llegó como borrador y **no se carga** hasta que Interseguros firme la checklist C4: este repositorio es público. Al cargarlo: quitar el encabezado `fuente:`, fijar la versión y ajustar el prompt para que parafrasee los textos de pantalla redactados como orden (el verificador de salida del demo descarta toda respuesta que parezca un pedido de datos).
+3. **Contacto de derivación.** El mensaje fijo informa un correo; la checklist C4 (ítem 2) dice que no se informa ninguno. Andres pidió mantenerlo si no perjudica; técnicamente no perjudica (el verificador del demo lo aprueba). Falta corregir la checklist o sacarlo.
+4. **Sincronización con el estándar**, en un solo PR: ahora son seis cambios, entre ellos el `ignorefile` de Trivy en `construir` y la prueba de humo contra la ruta de salud. `_reusable-dast.yml` es del estándar: la corrección de #22 es local y una sincronización la revertiría.
+5. **Producción.** La cuenta de facturación está en su tope de proyectos; el proyecto de producción sigue sin facturación. La URL de producción en `.devsecops.yml` está marcada SIN CONFIRMAR y tiene el formato que resultó equivocado en staging.
+6. El PR #2 (Node 22 → 26) sigue sin fusionar, a propósito.
+
+**Decisiones que esperan a Andres.** Si la demostración se hace con el corpus aún sin firmar (el asistente responde poco); la firma de Interseguros; qué hacer con el correo; si confirma `.claude/settings.json`, hoy modificado sin confirmar, que publicaría reglas de permisos en el repositorio; y cómo resolver la cuota de facturación para producción.
+
+### Qué se hizo
+- **Pipeline en verde por primera vez**, de punta a punta: construcción de la imagen, firma keyless con SBOM y attestation, despliegue, prueba de humo y ZAP. Fusionados #10 a #12, #14 y #16 a #24.
+- **Cinco defectos latentes**, destapados al desplegar por primera vez (el job moría antes de llegar a ellos): el `ignorefile` de Trivy ausente en `construir` (#18), la imagen base con `perl-base` y el `npm` incluido vulnerables (#19), `GCP_PROYECTO` sin pasar al servicio (#20), la URL de staging con el formato equivocado (#21), la prueba de humo contra la raíz en vez de la ruta de salud (#22) y las cabeceras HSTS y CSP ausentes (#24).
+- **Dependencias.** vitest 4 y retiro de sus dos excepciones (#16); `source-map-js` forzado a 1.2.2; main volvió a CRITICAL 0, HIGH 0, MEDIUM 0 y cero alertas de Dependabot.
+- **Nube.** Facturación y APIs de staging, Workload Identity Federation, dos cuentas de servicio con roles mínimos, repositorio de imágenes, secretos y variables. Servicio abierto a invocación pública con la clave de cliente como control real: sin clave o con clave inválida responde 401.
+- **Alcance del asistente (#23).** Pasó de informar sobre el producto a explicar el funcionamiento del sitio. Se sacaron las fuentes de coberturas y precios, la herramienta de recomendación (devolvía montos como texto fijo, sin pasar por el modelo) y los mensajes que prometían explicarlos. Una prueba lee la configuración real y falla si se amplía el alcance.
+
+### Verificaciones
+- `pnpm verificar`: 82 pruebas en verde. `./security-local.sh`: CRITICAL 0, HIGH 0, MEDIUM 0, cero exceptuadas, las siete herramientas corridas.
+- Servicio en staging medido por fuera: `/salud` y `/health` responden 200, HSTS y CSP presentes, `/v1/agente` sin clave responde 401.
+- **No verificado:** ninguna llamada autenticada de punta a punta (la clave en claro nunca se leyó, a propósito), ni respuestas reales del modelo.
+
+### Correcciones de lo que yo afirmé durante la jornada
+- Dije que los `overrides` de pnpm podían no llegar a la imagen. Era falso: el árbol de producción los respeta. Los hallazgos eran del `npm` incluido en la imagen base.
+- `gcloud billing projects link` devolvió un error de cuota y la vinculación se hizo igual. Se verifica con `describe`, no con el código de salida.
+- La URL de staging no sigue el formato que suponía el manifiesto; el hash lo asigna Cloud Run y no se deriva.
+
 ## 2026-10-01 · El estándar en producción de verdad: fusión, protecciones y costos
 
 ### Qué se hizo
