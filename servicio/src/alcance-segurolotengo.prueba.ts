@@ -73,6 +73,14 @@ describe('alcance del asistente de SeguroLoTengo: funcionamiento, no producto', 
     }
   });
 
+  it('los hechos que se inyectan al prompt no hablan de precios ni de premios', () => {
+    // `datos.hechos` va al prompt del modelo como verdad establecida. Un hecho
+    // sobre premios lo invita a hablar de precios, que está fuera de alcance.
+    for (const h of config.datos.hechos) {
+      expect(h, 'un hecho del prompt habla de precios o premios').not.toMatch(/premio|precio|prima|gs\.?\s*\d|guaran/i);
+    }
+  });
+
   it('declara como bloqueados los temas de producto que se sacaron del alcance', () => {
     const bloqueados = config.alcance.temasBloqueados.join(' | ').toLowerCase();
     expect(bloqueados).toContain('cubre');
