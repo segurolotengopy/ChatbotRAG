@@ -10,13 +10,13 @@
     "zonaHoraria": "America/Asuncion",
     "moneda": "PYG"
   },
-  "voz": { "tratamiento": "vos", "emojis": "ninguno", "longitud": "breve", "registro": "cercano" },
+  "voz": { "tratamiento": "usted", "emojis": "ninguno", "longitud": "breve", "registro": "cercano" },
   "operacion": {
     "estado": "operativo",
     "horarios": { "lun": "08:00-17:00", "mar": "08:00-17:00", "mie": "08:00-17:00", "jue": "08:00-17:00", "vie": "08:00-17:00" },
     "contactoHumano": {
       "correo": "segurolotengo@interseguros360.com",
-      "texto": "Un asesor de Interseguros S.A. atiende en días y horarios hábiles. También podés acercarte a sus oficinas de Avda. Aviadores del Chaco 2351, Edificio Plaza Center 7.º piso, Asunción."
+      "texto": "Un asesor de Interseguros S.A. atiende en días y horarios hábiles. También puede acercarse a sus oficinas de Avda. Aviadores del Chaco 2351, Edificio Plaza Center 7.º piso, Asunción."
     }
   },
   "datos": {
@@ -85,14 +85,14 @@
   ],
   "orientacion": { "facetas": [], "reglas": [] },
   "mensajes": {
-    "bienvenida": "Hola, soy Terra. Te explico cómo funciona este sitio: qué te pide cada paso, qué significa lo que ves en pantalla y cómo seguir. No te pido ningún dato personal. ¿Qué parte querés que te explique?",
-    "errorTemporal": "Tuve un problema técnico momentáneo. ¿Me repetís lo último?",
-    "fueraDeAlcance": "Eso no te lo puedo responder por acá. Yo te explico cómo funciona el sitio y qué te pide cada paso; lo que tiene que ver con qué cubre el producto o con tu caso en particular lo ve una persona de Interseguros.",
+    "bienvenida": "Hola, soy Terra. Le explico cómo funciona este sitio: qué le pide cada paso, qué significa lo que ve en pantalla y cómo seguir. No le pido ningún dato personal. ¿Qué parte quiere que le explique?",
+    "errorTemporal": "Tuve un problema técnico momentáneo. ¿Me repite lo último, por favor?",
+    "fueraDeAlcance": "Eso no se lo puedo responder por este medio. Yo le explico cómo funciona el sitio y qué le pide cada paso; lo que tiene que ver con qué cubre el producto o con su caso en particular lo atiende una persona de Interseguros.",
     "sinRespaldo": "No cuento con información aprobada para responder eso con precisión, y prefiero no adivinar.",
-    "derivacion": "Podés escribir a segurolotengo@interseguros360.com o acercarte a las oficinas de Interseguros S.A. (Avda. Aviadores del Chaco 2351, Edificio Plaza Center 7.º piso, Asunción) en horario hábil, y una persona te atiende.",
-    "entradaBloqueada": "Por tu seguridad, por este chat no recibo cédula, datos de salud, condición PEP, tarjetas ni códigos de verificación: esos datos se completan solo dentro del proceso seguro del sitio. Contame tu consulta sin esos datos y te ayudo.",
-    "suspendido": "En este momento el asistente no está disponible. Podés escribir a segurolotengo@interseguros360.com.",
-    "cierre": "Gracias por escribir a SeguroLoTengo. Si necesitás algo más, acá estoy."
+    "derivacion": "Puede escribir a segurolotengo@interseguros360.com o acercarse a las oficinas de Interseguros S.A. (Avda. Aviadores del Chaco 2351, Edificio Plaza Center 7.º piso, Asunción) en horario hábil, y una persona le atiende.",
+    "entradaBloqueada": "Por su seguridad, por este chat no recibo cédula, datos de salud, condición PEP, tarjetas ni códigos de verificación: esos datos se completan solo dentro del proceso seguro del sitio. Cuénteme su consulta sin esos datos y le ayudo.",
+    "suspendido": "En este momento el asistente no está disponible. Puede escribir a segurolotengo@interseguros360.com.",
+    "cierre": "Gracias por escribir a SeguroLoTengo. Si necesita algo más, aquí estoy."
   },
   "modelo": {
     "proveedor": "vertex",
@@ -122,7 +122,7 @@
       "orientacion": {
         "facetas": [],
         "reglas": [],
-        "aclaracion": "Esto es una orientación general para que sepas qué plan mirar primero; no es una oferta, ni una evaluación de tu caso, ni una decisión sobre cobertura."
+        "aclaracion": "Esto es una orientación general para que sepa qué plan mirar primero; no es una oferta, ni una evaluación de su caso, ni una decisión sobre cobertura."
       }
     },
     "VIDA": {
@@ -136,7 +136,7 @@
         { "id": "otros-seguros", "titulo": "Otros seguros del canal", "version": "v1.0", "ruta": "segurolotengo/proximamente/otros-seguros.md" },
         { "id": "consultas-contacto", "titulo": "Consultas, reclamos y contacto", "version": "v1.1", "ruta": "segurolotengo/comunes/consultas-reclamos-y-contacto.md" }
       ] },
-      "mensajes": { "bienvenida": "Hola, soy Terra. El Seguro de Vida todavía no se contrata en línea en SeguroLoTengo; puedo contarte cómo dejar tu interés o informarte sobre el Seguro de Vida Oncológico CONFÍO, que sí está disponible." }
+      "mensajes": { "bienvenida": "Hola, soy Terra. El Seguro de Vida todavía no se contrata en línea en SeguroLoTengo; puedo contarle cómo dejar su interés o informarle sobre el Seguro de Vida Oncológico CONFÍO, que sí está disponible." }
     },
     "ACCIDENTES_PERSONALES": {
       "nombre": "Accidentes Personales",
@@ -149,7 +149,7 @@
         { "id": "otros-seguros", "titulo": "Otros seguros del canal", "version": "v1.0", "ruta": "segurolotengo/proximamente/otros-seguros.md" },
         { "id": "consultas-contacto", "titulo": "Consultas, reclamos y contacto", "version": "v1.1", "ruta": "segurolotengo/comunes/consultas-reclamos-y-contacto.md" }
       ] },
-      "mensajes": { "bienvenida": "Hola, soy Terra. El seguro de Accidentes Personales todavía no se contrata en línea en SeguroLoTengo; puedo contarte cómo dejar tu interés o informarte sobre el Seguro de Vida Oncológico CONFÍO, que sí está disponible." }
+      "mensajes": { "bienvenida": "Hola, soy Terra. El seguro de Accidentes Personales todavía no se contrata en línea en SeguroLoTengo; puedo contarle cómo dejar su interés o informarle sobre el Seguro de Vida Oncológico CONFÍO, que sí está disponible." }
     },
     "RESPONSABILIDAD_CIVIL": {
       "nombre": "Responsabilidad Civil",
@@ -162,7 +162,7 @@
         { "id": "otros-seguros", "titulo": "Otros seguros del canal", "version": "v1.0", "ruta": "segurolotengo/proximamente/otros-seguros.md" },
         { "id": "consultas-contacto", "titulo": "Consultas, reclamos y contacto", "version": "v1.1", "ruta": "segurolotengo/comunes/consultas-reclamos-y-contacto.md" }
       ] },
-      "mensajes": { "bienvenida": "Hola, soy Terra. El seguro de Responsabilidad Civil todavía no se contrata en línea en SeguroLoTengo; puedo contarte cómo dejar tu interés o informarte sobre el Seguro de Vida Oncológico CONFÍO, que sí está disponible." }
+      "mensajes": { "bienvenida": "Hola, soy Terra. El seguro de Responsabilidad Civil todavía no se contrata en línea en SeguroLoTengo; puedo contarle cómo dejar su interés o informarle sobre el Seguro de Vida Oncológico CONFÍO, que sí está disponible." }
     }
   }
 }

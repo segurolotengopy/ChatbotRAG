@@ -79,3 +79,34 @@ describe('alcance del asistente de SeguroLoTengo: funcionamiento, no producto', 
     expect(bloqueados).toContain('precios');
   });
 });
+
+/** Todas las cadenas de la configuración, a cualquier profundidad. */
+function cadenas(valor: unknown, acc: string[] = []): string[] {
+  if (typeof valor === 'string') acc.push(valor);
+  else if (Array.isArray(valor)) for (const v of valor) cadenas(v, acc);
+  else if (valor !== null && typeof valor === 'object') for (const v of Object.values(valor)) cadenas(v, acc);
+  return acc;
+}
+const crudo: unknown = JSON.parse(readFileSync(RUTA, 'utf8'));
+
+/**
+ * Voseo y tuteo en lo que el asistente le dice a la persona. El portal y el corpus
+ * de orientación van en «usted»; una respuesta en voseo dentro de esa misma
+ * pantalla se lee como dos voces distintas. Se midió el 2026-10-11: la primera
+ * respuesta real salió con «recibís» porque `voz.tratamiento` valía `vos` y los
+ * textos fijos estaban en voseo. Se usan límites de letra Unicode porque `\b` de
+ * JavaScript no reconoce las vocales acentuadas.
+ */
+const VOSEO_O_TUTEO = /(?<![\p{L}])(?:vos|tu|tus|te|ti|podés|querés|necesitás|tenés|sabés|repetís|recibís|contame|decime|escribime|tené|fijate|acercarte|contarte|informarte|explicarte|acá)(?![\p{L}])/iu;
+
+describe('trato de usted con quien consulta', () => {
+  it('el tratamiento configurado es usted', () => {
+    expect(config.voz.tratamiento).toBe('usted');
+  });
+
+  it('ningún texto de la configuración está en voseo ni en tuteo', () => {
+    for (const c of cadenas(crudo)) {
+      expect(c, 'un texto de la configuración usa voseo o tuteo').not.toMatch(VOSEO_O_TUTEO);
+    }
+  });
+});
