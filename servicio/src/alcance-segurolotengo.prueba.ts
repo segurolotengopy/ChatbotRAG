@@ -110,3 +110,21 @@ describe('trato de usted con quien consulta', () => {
     }
   });
 });
+
+/**
+ * El producto se llamó «CONFÍO» y hoy se llama «VIVE». El verificador de salida
+ * del portal retiene toda respuesta que nombre «CONFÍO» como plan, así que un
+ * texto fijo con el nombre viejo lo descartaría y lo reemplazaría por la
+ * derivación. No se citan nombres de plan de VIVE: este repositorio no los tiene.
+ */
+describe('nombre vigente del producto', () => {
+  it('ningún texto de la configuración usa el nombre anterior', () => {
+    for (const c of cadenas(crudo)) {
+      expect(c, 'un texto de la configuración nombra el producto como CONFÍO').not.toMatch(/conf[ií]o/i);
+    }
+  });
+
+  it('el perfil con producto disponible se llama VIVE', () => {
+    expect(config.perfiles['VIDA_ONCOLOGICO']?.nombre).toBe('Seguro de Vida Oncológico VIVE');
+  });
+});

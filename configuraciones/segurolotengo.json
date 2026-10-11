@@ -32,7 +32,7 @@
       "comisiones e información comercial interna"
     ],
     "hechos": [
-      "El único seguro que hoy se contrata en línea es el Seguro de Vida Oncológico CONFÍO; Seguro de Vida, Accidentes Personales y Responsabilidad Civil están anunciados como «próximamente».",
+      "El único seguro que hoy se contrata en línea es el Seguro de Vida Oncológico VIVE; Seguro de Vida, Accidentes Personales y Responsabilidad Civil están anunciados como «próximamente».",
       "Los premios publicados son anuales, finales y con IVA incluido, en guaraníes."
     ]
   },
@@ -107,8 +107,8 @@
   "perfilPorDefecto": "VIDA_ONCOLOGICO",
   "perfiles": {
     "VIDA_ONCOLOGICO": {
-      "nombre": "Seguro de Vida Oncológico CONFÍO",
-      "descripcion": "Producto disponible para contratación en línea: planes CONFÍO, CONFÍO+ y CONFÍO TOTAL.",
+      "nombre": "Seguro de Vida Oncológico VIVE",
+      "descripcion": "Producto disponible para contratación en línea.",
       "conocimiento": {
         "fuentes": [
           { "id": "proceso", "titulo": "Cómo se contrata en SeguroLoTengo", "version": "v1.1", "ruta": "segurolotengo/vida-oncologico/proceso-contratacion.md" },
@@ -129,40 +129,40 @@
       "nombre": "Seguro de Vida",
       "descripcion": "Producto anunciado como «próximamente»; todavía no se contrata en línea.",
       "alcance": {
-        "temasPermitidos": ["disponibilidad del producto", "cómo dejar interés para ser avisado", "el Seguro de Vida Oncológico CONFÍO como alternativa disponible"],
+        "temasPermitidos": ["disponibilidad del producto", "cómo dejar interés para ser avisado", "el Seguro de Vida Oncológico VIVE como alternativa disponible"],
         "temasBloqueados": ["planes, precios o coberturas del Seguro de Vida (no publicados)", "elegibilidad de un caso particular", "otras aseguradoras"]
       },
       "conocimiento": { "fuentes": [
         { "id": "otros-seguros", "titulo": "Otros seguros del canal", "version": "v1.0", "ruta": "segurolotengo/proximamente/otros-seguros.md" },
         { "id": "consultas-contacto", "titulo": "Consultas, reclamos y contacto", "version": "v1.1", "ruta": "segurolotengo/comunes/consultas-reclamos-y-contacto.md" }
       ] },
-      "mensajes": { "bienvenida": "Hola, soy Terra. El Seguro de Vida todavía no se contrata en línea en SeguroLoTengo; puedo contarle cómo dejar su interés o informarle sobre el Seguro de Vida Oncológico CONFÍO, que sí está disponible." }
+      "mensajes": { "bienvenida": "Hola, soy Terra. El Seguro de Vida todavía no se contrata en línea en SeguroLoTengo; puedo contarle cómo dejar su interés o informarle sobre el Seguro de Vida Oncológico VIVE, que sí está disponible." }
     },
     "ACCIDENTES_PERSONALES": {
       "nombre": "Accidentes Personales",
       "descripcion": "Producto anunciado como «próximamente»; todavía no se contrata en línea.",
       "alcance": {
-        "temasPermitidos": ["disponibilidad del producto", "cómo dejar interés para ser avisado", "el Seguro de Vida Oncológico CONFÍO como alternativa disponible"],
+        "temasPermitidos": ["disponibilidad del producto", "cómo dejar interés para ser avisado", "el Seguro de Vida Oncológico VIVE como alternativa disponible"],
         "temasBloqueados": ["planes, precios o coberturas de Accidentes Personales (no publicados)", "elegibilidad de un caso particular", "otras aseguradoras"]
       },
       "conocimiento": { "fuentes": [
         { "id": "otros-seguros", "titulo": "Otros seguros del canal", "version": "v1.0", "ruta": "segurolotengo/proximamente/otros-seguros.md" },
         { "id": "consultas-contacto", "titulo": "Consultas, reclamos y contacto", "version": "v1.1", "ruta": "segurolotengo/comunes/consultas-reclamos-y-contacto.md" }
       ] },
-      "mensajes": { "bienvenida": "Hola, soy Terra. El seguro de Accidentes Personales todavía no se contrata en línea en SeguroLoTengo; puedo contarle cómo dejar su interés o informarle sobre el Seguro de Vida Oncológico CONFÍO, que sí está disponible." }
+      "mensajes": { "bienvenida": "Hola, soy Terra. El seguro de Accidentes Personales todavía no se contrata en línea en SeguroLoTengo; puedo contarle cómo dejar su interés o informarle sobre el Seguro de Vida Oncológico VIVE, que sí está disponible." }
     },
     "RESPONSABILIDAD_CIVIL": {
       "nombre": "Responsabilidad Civil",
       "descripcion": "Producto anunciado como «próximamente»; todavía no se contrata en línea.",
       "alcance": {
-        "temasPermitidos": ["disponibilidad del producto", "cómo dejar interés para ser avisado", "el Seguro de Vida Oncológico CONFÍO como alternativa disponible"],
+        "temasPermitidos": ["disponibilidad del producto", "cómo dejar interés para ser avisado", "el Seguro de Vida Oncológico VIVE como alternativa disponible"],
         "temasBloqueados": ["planes, precios o coberturas de Responsabilidad Civil (no publicados)", "elegibilidad de un caso particular", "otras aseguradoras"]
       },
       "conocimiento": { "fuentes": [
         { "id": "otros-seguros", "titulo": "Otros seguros del canal", "version": "v1.0", "ruta": "segurolotengo/proximamente/otros-seguros.md" },
         { "id": "consultas-contacto", "titulo": "Consultas, reclamos y contacto", "version": "v1.1", "ruta": "segurolotengo/comunes/consultas-reclamos-y-contacto.md" }
       ] },
-      "mensajes": { "bienvenida": "Hola, soy Terra. El seguro de Responsabilidad Civil todavía no se contrata en línea en SeguroLoTengo; puedo contarle cómo dejar su interés o informarle sobre el Seguro de Vida Oncológico CONFÍO, que sí está disponible." }
+      "mensajes": { "bienvenida": "Hola, soy Terra. El seguro de Responsabilidad Civil todavía no se contrata en línea en SeguroLoTengo; puedo contarle cómo dejar su interés o informarle sobre el Seguro de Vida Oncológico VIVE, que sí está disponible." }
     }
   }
 }
