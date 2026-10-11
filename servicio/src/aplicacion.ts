@@ -81,11 +81,27 @@ export async function crearAplicacion(opciones: OpcionesAplicacion): Promise<Fas
     errorResponseBuilder: () => ({ ok: false, motivo: 'LIMITE_EXCEDIDO' }),
   });
 
-  // Cabeceras de seguridad mínimas para una API JSON.
+  // Cabeceras de seguridad para una API JSON.
+  //
+  // HSTS y CSP las exige la prueba de humo del pipeline (`exigir_cabeceras`) y
+  // faltaban: el primer despliegue real las echó de menos. Tres decisiones:
+  //  - HSTS sin `preload`: preload es un compromiso casi irreversible con el
+  //    dominio completo, y este servicio vive en un subdominio que no es nuestro
+  //    (`*.run.app`). Cloud Run solo sirve HTTPS, así que no cambia el
+  //    comportamiento real; deja la política dicha por escrito.
+  //  - CSP `default-src 'none'; frame-ancestors 'none'`: una respuesta JSON no
+  //    carga ni incrusta nada, así que el valor más estricto no rompe a nadie. El
+  //    widget web se sirve aparte (`dist-web/`), no desde este servicio.
+  //  - Van en TODA respuesta, también en los errores 401/404/429: la prueba de
+  //    humo las mide sobre la raíz, que responde 404.
+  // Qué NO garantiza: protege a un navegador que abra la API directamente; no
+  // sustituye la autenticación por clave ni la validación de entrada.
   app.addHook('onSend', async (_p, r) => {
     r.header('cache-control', 'no-store');
     r.header('x-content-type-options', 'nosniff');
     r.header('referrer-policy', 'no-referrer');
+    r.header('strict-transport-security', 'max-age=31536000; includeSubDomains');
+    r.header('content-security-policy', "default-src 'none'; frame-ancestors 'none'");
   });
 
   // Cupo por cliente, aparte del cupo por IP.

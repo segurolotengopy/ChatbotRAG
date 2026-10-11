@@ -73,6 +73,22 @@ describe('servicio HTTP', () => {
     expect(r.headers['cache-control']).toBe('no-store');
   });
 
+  // El pipeline (`exigir_cabeceras`) mide HSTS y CSP sobre la RAÍZ, que responde
+  // 404, así que tienen que salir también en las respuestas de error.
+  it('manda HSTS y CSP en toda respuesta, incluidos los errores', async () => {
+    const casos = [
+      await app.inject({ method: 'GET', url: '/salud' }), // 200
+      await app.inject({ method: 'GET', url: '/' }), // 404: lo que mide la prueba de humo
+      await app.inject({ method: 'GET', url: '/v1/agente' }), // 401 sin clave
+    ];
+    expect(casos.map((c) => c.statusCode)).toEqual([200, 404, 401]);
+    for (const c of casos) {
+      expect(c.headers['strict-transport-security'], `HSTS ausente en ${c.statusCode}`).toBe('max-age=31536000; includeSubDomains');
+      expect(c.headers['content-security-policy'], `CSP ausente en ${c.statusCode}`).toBe("default-src 'none'; frame-ancestors 'none'");
+      expect(c.headers['strict-transport-security']).not.toContain('preload');
+    }
+  });
+
   // El estándar verifica la salud por `HEALTH_PATH`; `/health` es el alias que
   // evita que un valor por defecto distinto de `/salud` deje el chequeo en 404.
   // Debe devolver exactamente lo mismo que la ruta del dominio.
