@@ -131,8 +131,8 @@ export const esquemaConocimiento = z
     /** Con true, sin fragmentos por encima del umbral no hay afirmación: se deriva. */
     exigirRespaldo: z.boolean().default(true),
     /**
-     * Cómo usa el modelo el texto recuperado. `citar` conserva su redacción;
-     * `parafrasear` le pide explicarlo con sus palabras (ver `FRASE_USO_RESPALDO`).
+     * Cómo usa el modelo el texto recuperado. `citar` no agrega ninguna instrucción
+     * (el comportamiento de siempre; no tiene relación con citar la fuente); `parafrasear` le pide explicarlo con sus palabras (ver `FRASE_USO_RESPALDO`).
      * Es un enumerado: selecciona una frase fija, jamás se interpola.
      */
     usoDelRespaldo: z.enum(['citar', 'parafrasear']).default('citar'),
