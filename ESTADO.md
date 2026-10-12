@@ -2,6 +2,41 @@
 
 Se actualiza al final de cada sesión. **Nunca contiene secretos.** Lo más reciente arriba.
 
+## 2026-10-11 · Del repositorio publicado al primer despliegue real en staging
+
+### Punto de retorno
+
+**Qué estaba haciendo.** Dejar listo el asistente de SeguroLoTengo para la demostración del lunes 12-oct: solo orientación sobre el funcionamiento del sitio y los procedimientos, en lenguaje llano, con índice en memoria. Staging está desplegado y sano, el demo ya lo llamó con éxito, y el trato de usted y el nombre vigente del producto ya están desplegados (PR #25, fusionado).
+
+**Qué sigue, por orden.**
+1. **PR #26** (datos de contacto confirmados: WhatsApp, domicilio exacto con «Campos Cervera», un único correo, y retiro del horario que nadie confirmó): **fusionado y desplegado**.
+2. **Cargar el corpus de orientación** (`ORIENTACION-v1.0`, 22 archivos; lo escribe SeguroLoTengo y vive en su repositorio, en `docs/asistente/corpus-orientacion/`). Andres confirmó con Interseguros y dispuso que **la firma de la checklist C4 ya no es un bloqueo**: él define y aprueba. Falta su «sí» para publicarlo (este repositorio es público). Al cargarlo: quitar el encabezado `fuente:`, fijar la versión `ORIENTACION-v1.0`, reemplazar los dos archivos viejos que hoy usa el perfil (`proceso-contratacion.md` y `consultas-reclamos-y-contacto.md`, que mencionan el nombre anterior del producto) y ajustar el prompt para que parafrasee los textos de pantalla redactados como orden (el verificador de salida del demo descarta toda respuesta que parezca un pedido de datos). Hasta entonces el asistente responde desde esos dos archivos viejos.
+3. **Sincronización con el estándar**, en un solo PR: seis cambios, entre ellos el `ignorefile` de Trivy en `construir` y la prueba de humo contra la ruta de salud. `_reusable-dast.yml` es del estándar: la corrección de #22 es local y una sincronización la revertiría.
+4. **Producción.** La cuenta de facturación está en su tope de proyectos; el proyecto de producción sigue sin facturación. La URL de producción en `.devsecops.yml` está marcada SIN CONFIRMAR y tiene el formato que resultó equivocado en staging.
+5. **Monitoreo.** Hoy nada vigila el servicio de staging fuera de los chequeos que corren al desplegar. La política del 11-oct pide monitores externos y gratuitos, con reporte periódico y alerta por un canal distinto. Es una propuesta, no está implementada, y nada de este proyecto depende de la laptop.
+6. El PR #2 (Node 22 → 26) sigue sin fusionar, a propósito.
+
+**Decisiones que esperan a Andres.** Cómo resolver la cuota de facturación para producción. El «sí» para cargar el corpus ya lo dio el 12-oct. Resuelto hoy: `.claude/settings.json` quedó idéntico al original, sin los tres permisos temporales que se habían añadido para crear secretos y abrir el servicio.
+
+### Qué se hizo
+- **Pipeline en verde por primera vez**, de punta a punta: construcción de la imagen, firma keyless con SBOM y attestation, despliegue, prueba de humo y ZAP. Fusionados #10 a #12, #14 y #16 a #24.
+- **Cinco defectos latentes**, destapados al desplegar por primera vez (el job moría antes de llegar a ellos): el `ignorefile` de Trivy ausente en `construir` (#18), la imagen base con `perl-base` y el `npm` incluido vulnerables (#19), `GCP_PROYECTO` sin pasar al servicio (#20), la URL de staging con el formato equivocado (#21), la prueba de humo contra la raíz en vez de la ruta de salud (#22) y las cabeceras HSTS y CSP ausentes (#24).
+- **Dependencias.** vitest 4 y retiro de sus dos excepciones (#16); `source-map-js` forzado a 1.2.2; main volvió a CRITICAL 0, HIGH 0, MEDIUM 0 y cero alertas de Dependabot.
+- **Nube.** Facturación y APIs de staging, Workload Identity Federation, dos cuentas de servicio con roles mínimos, repositorio de imágenes, secretos y variables. Servicio abierto a invocación pública con la clave de cliente como control real: sin clave o con clave inválida responde 401.
+- **Alcance del asistente (#23).** Pasó de informar sobre el producto a explicar el funcionamiento del sitio. Se sacaron las fuentes de coberturas y precios, la herramienta de recomendación (devolvía montos como texto fijo, sin pasar por el modelo) y los mensajes que prometían explicarlos. Una prueba lee la configuración real y falla si se amplía el alcance.
+
+### Verificaciones
+- `pnpm verificar`: 82 pruebas en verde. `./security-local.sh`: CRITICAL 0, HIGH 0, MEDIUM 0, cero exceptuadas, las siete herramientas corridas.
+- Servicio en staging medido por fuera: `/salud` y `/health` responden 200, HSTS y CSP presentes, `/v1/agente` sin clave responde 401.
+- **Primera llamada real del demo** (11-oct, 17:59 UTC), vista en los registros de Cloud Run: `GET /v1/agente` 200 y `POST …/mensajes` 200 en 1,6 s. Prueba que la clave del secreto de staging es válida y que Gemini responde en Vertex AI. La clave en claro nunca se leyó, a propósito.
+- **No verificado:** la calidad de las respuestas con el corpus nuevo, ni que el modelo mantenga el usted en toda frase.
+
+### Correcciones de lo que yo afirmé durante la jornada
+- Di por cerrado el cambio de alcance (#23) y no lo estaba: dejé textos fijos en voseo (cinco los escribí yo), el nombre anterior del producto en cuatro perfiles y un hecho sobre premios dentro del prompt. Lo descubrió la primera respuesta real del modelo; lo corrige el PR #25, con pruebas que recorren toda la configuración.
+- Dije que los `overrides` de pnpm podían no llegar a la imagen. Era falso: el árbol de producción los respeta. Los hallazgos eran del `npm` incluido en la imagen base.
+- `gcloud billing projects link` devolvió un error de cuota y la vinculación se hizo igual. Se verifica con `describe`, no con el código de salida.
+- La URL de staging no sigue el formato que suponía el manifiesto; el hash lo asigna Cloud Run y no se deriva.
+
 ## 2026-10-01 · El estándar en producción de verdad: fusión, protecciones y costos
 
 ### Qué se hizo
