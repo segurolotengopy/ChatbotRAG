@@ -99,7 +99,9 @@ git push origin vX.Y.Z
 # Modo A/B: el push del tag ejecuta desplegar-produccion del ci-<stack>.yml;
 #           aprobar el Environment 'production' en ese run.
 # Modo B0: el push del tag NO despliega. Ejecutar el workflow_dispatch del ci-<stack>.yml:
-#   gh workflow run ci-<stack>.yml -f tag=vX.Y.Z -f confirmar=DESPLEGAR
+#   gh workflow run ci-<stack>.yml --ref vX.Y.Z -f tag=vX.Y.Z -f confirmar=DESPLEGAR
+#   (se lanza SOBRE el tag con --ref; en node-firebase, python-cloudrun y multicloud el paso
+#   Verificar aprobación lo comprueba como control de coherencia, no como barrera; en ECS y OCI el --ref es inofensivo)
 #   (el actor debe estar en vars.APROBADORES_PROD)
 ```
 

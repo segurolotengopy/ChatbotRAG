@@ -1,13 +1,13 @@
 # =============================================================================
 # ci-node-cloudrun.yml — servicio Node (Fastify, pnpm) contenerizado → Cloud Run
-# Versión: 2.0 | Fecha: 2026-08-24
+# Versión: 2.1 | Fecha: 2026-10-12 | Base: ci-python-cloudrun.yml 2.7 del estándar
 # -----------------------------------------------------------------------------
 # Flujo:
 #   PR → main ............ preparar, calidad, seguridad-estatica, construir
 #   push main ............ + desplegar-staging → dast-y-humo
 #   push tag v* .......... + desplegar-produccion (10 % → 100 % de tráfico)
-#                            → post-despliegue (health check + rollback)
-#   workflow_dispatch .... Modo B0: confirmar=DESPLEGAR
+#                            (health check y rollback incluidos) → post-despliegue (registro)
+#   workflow_dispatch .... Modo B0: producción manual con confirmar=DESPLEGAR, lanzado sobre el tag (--ref vX.Y.Z)
 #
 # Cadena de suministro en construir: imagen multi-stage → push a Artifact
 # Registry → Trivy image (bloquea CRITICAL/HIGH) → SBOM (Syft) → firma keyless
@@ -48,8 +48,19 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # Un PR cancela su corrida anterior (misma ref); cualquier otra corrida (push a main,
+  # tag, workflow_dispatch) tiene su grupo único y nunca se cancela. Es `github.run_id`
+  # y NO `github.sha`: con sha, el push de un tag vX.Y.Z y un workflow_dispatch sobre
+  # ese mismo commit compartirían grupo y la segunda corrida cancelaría la corrida
+  # ENTERA de la primera, incluido un despliegue a producción en curso (la concurrency
+  # propia del job, deploy-production, no lo evita: protege al job de otros jobs, no de
+  # que cancelen su corrida). Lo señaló la sesión de novuchat-site el 2026-10-01.
+  # La condición va en `group` y NO en
+  # `cancel-in-progress`: Checkov descarta en silencio, sin error ni aviso, todo
+  # workflow cuyo `cancel-in-progress` sea una expresión (medido el 2026-10-01 con
+  # checkov 3.3.13), y el job `iac` pasaba en verde sin analizarlo.
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: true
 
 env:
   NODE_VERSION: ${{ vars.NODE_VERSION || '22' }}
@@ -74,7 +85,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # En workflow_dispatch se analiza/despliega el tag aprobado (D3)
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
 
       - name: Detectar gestor de paquetes
         id: pm
@@ -114,7 +125,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # En workflow_dispatch se analiza/despliega el tag aprobado (D3)
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
 
       - name: Habilitar corepack (pnpm/yarn)
         if: needs.preparar.outputs.pm != 'npm'
@@ -174,13 +185,17 @@ jobs:
       # Sin pull-requests: write: los escáneres no comentan en el PR.
       security-events: write
       actions: read
+      # Lo pide el job `secretos` del reusable (Gitleaks lista los commits del PR):
+      # un llamador no puede conceder menos de lo que el reusable pide, y sin esto
+      # el CI entero no arranca. Solo lectura: sigue sin `pull-requests: write`.
+      pull-requests: read
     uses: ./.github/workflows/_reusable-security.yml
     with:
       ruta: '.'
       stack: node
       bloquear_en: ${{ vars.BLOQUEAR_EN || 'CRITICAL,HIGH' }}
       subir_sarif: ${{ github.event.repository.visibility == 'public' || vars.GHAS_ENABLED == 'true' }}
-      ref: ${{ inputs.tag || '' }}
+      ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || '' }}
     # Mínimo privilegio: se mapean solo los dos secretos que el reusable declara
     # en `on.workflow_call.secrets` (ambos opcionales). `secrets: inherit` pasaba
     # también los de despliegue (WIF, Cloud Run), que ningún escáner necesita.
@@ -191,7 +206,7 @@ jobs:
   # ---------------------------------------------------------------------------
   # Fase 3 — construir: imagen → registro → escaneo → SBOM → firma → attestation.
   # No corre en PRs de forks (no tienen OIDC). En PRs propios sí construye y
-  # publica con tag pr-N para poder escanearla (se puede limitar con `if`).
+  # publica con el tag del sha para poder escanearla (se puede limitar con `if`).
   # ---------------------------------------------------------------------------
   construir:
     name: construir
@@ -212,7 +227,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # En workflow_dispatch se analiza/despliega el tag aprobado (D3)
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
 
       # WIF con impersonación de la SA de deploy y token_format: access_token
       # para autenticar Docker. Alternativa "Direct WIF" (sin SA): omitir
@@ -241,11 +256,13 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ${{ env.IMAGEN }}
+          # Solo etiquetas que no se mueven: el sha completo y, en un release, el tag
+          # vX.Y.Z. Artifact Registry con tags inmutables (AR-02, bloqueante) rechaza
+          # el segundo push a una etiqueta existente, y `main` o `pr-N` se movían en cada
+          # commit. Nada las usaba: se despliega por digest, y Trivy y cosign también.
           tags: |
             type=sha,format=long,prefix=
             type=ref,event=tag
-            type=ref,event=pr
-            type=raw,value=main,enable={{is_default_branch}}
 
       - name: Build y push
         id: build
@@ -255,9 +272,11 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Caché de capas en el propio registro (rápido y sin límite de GHA)
-          cache-from: type=registry,ref=${{ env.IMAGEN }}:buildcache
-          cache-to: type=registry,ref=${{ env.IMAGEN }}:buildcache,mode=max
+          # Caché de capas en la caché de GitHub Actions, no en una etiqueta del registro:
+          # `:buildcache` se reescribía en cada build y choca con los tags inmutables de
+          # Artifact Registry (AR-02). Es lo que ya usan ci-aws-ecs.yml y ci-multicloud.yml.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           provenance: false # la procedencia la genera attest-build-provenance
           build-args: |
             APP_VERSION=${{ github.ref_name }}
@@ -441,7 +460,7 @@ jobs:
   # ---------------------------------------------------------------------------
   # Fase 6 — desplegar-produccion: misma imagen (digest) que staging. Despliega
   # SIN tráfico, mueve 10 %, verifica salud y luego 100 %. Guarda la revisión
-  # anterior para el rollback de post-despliegue.
+  # anterior para el rollback de este mismo job.
   # ---------------------------------------------------------------------------
   desplegar-produccion:
     name: desplegar-produccion
@@ -451,7 +470,7 @@ jobs:
         && !contains(github.ref_name, '-') && vars.MODO != 'B0')
       || (github.event_name == 'workflow_dispatch' && inputs.confirmar == 'DESPLEGAR')
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     environment:
       name: production
       url: ${{ vars.PROD_URL }}
@@ -464,6 +483,7 @@ jobs:
     outputs:
       revision_anterior: ${{ steps.anterior.outputs.revision }}
       revision_nueva: ${{ steps.nueva.outputs.revision }}
+      salud_ok: ${{ steps.salud.outputs.ok }}
     env:
       SERVICIO: ${{ vars.CLOUD_RUN_SERVICE }}
       REGION: ${{ vars.GCP_REGION }}
@@ -472,7 +492,7 @@ jobs:
       - name: Checkout (historial completo para verificar la aprobación)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
           fetch-depth: 0
 
       # D3 — Verificación de aprobación previa a producción (todos los modos).
@@ -483,10 +503,26 @@ jobs:
           ACTOR: ${{ github.actor }}
           APROBADORES: ${{ vars.APROBADORES_PROD }}
           FIRMA_REQUERIDA: ${{ vars.TAG_FIRMADO_REQUERIDO }}
+          REF_EJECUCION: ${{ github.ref }}
         run: |
           set -euo pipefail
           git fetch --quiet origin main
           if [[ "$EVENTO" == "workflow_dispatch" ]]; then
+            # 0) El dispatch se lanza SOBRE el mismo tag estable que despliega. Control de coherencia del propio
+            #    workflow (NO es una barrera: quien edita el workflow en una rama puede quitarlo; la barrera de
+            #    identidad es la condición del provider de producción, setup-oidc-gcp.sh 2.3, PR-B, pendiente).
+            if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::El tag del dispatch debe tener la forma vX.Y.Z (versión estable; un prerelease no se despliega a producción)."
+              exit 1
+            fi
+            if [[ "$REF_EJECUCION" != "refs/tags/$TAG" ]]; then
+              wf="${GITHUB_WORKFLOW_REF%%@*}"; wf="${wf##*/}"
+              echo "::error::Lance el workflow_dispatch sobre el mismo tag que despliega: gh workflow run ${wf} --ref ${TAG} -f tag=${TAG} -f confirmar=DESPLEGAR (ref de esta ejecución: ${REF_EJECUCION})"
+              exit 1
+            fi
+            # 0b) El código descargado es el del tag aprobado, no el de una rama con el mismo nombre.
+            [[ "$(git rev-parse HEAD)" == "$(git rev-parse "refs/tags/$TAG^{commit}")" ]] \
+              || { echo "::error::El código del workspace no es el del tag $TAG (¿existe una rama con el mismo nombre?)"; exit 1; }
             git rev-parse -q --verify "refs/tags/$TAG" >/dev/null \
               || { echo "::error::El tag '$TAG' no existe en el repositorio"; exit 1; }
             [[ "$TAG" != *-* ]] \
@@ -619,34 +655,7 @@ jobs:
           gcloud run services update-traffic "$SERVICIO" --region "$REGION" --project "$PROYECTO" --to-latest
           echo "### Producción: $URL_PROD → revisión $REVISION" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Revertir tráfico si el canary falló
-        if: failure() && steps.anterior.outputs.revision != ''
-        env:
-          ANTERIOR: ${{ steps.anterior.outputs.revision }}
-        run: |
-          gcloud run services update-traffic "$SERVICIO" --region "$REGION" --project "$PROYECTO" \
-            --to-revisions="$ANTERIOR=100"
-          echo "::warning::Tráfico devuelto al 100 % a $ANTERIOR"
-
-  # ---------------------------------------------------------------------------
-  # Fase 7 — post-despliegue: health check final; rollback automático a la
-  # revisión anterior si falla. Registra el resultado como Deployment status.
-  # ---------------------------------------------------------------------------
-  post-despliegue:
-    name: post-despliegue
-    needs: desplegar-produccion
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      id-token: write
-      deployments: write
-    env:
-      SERVICIO: ${{ vars.CLOUD_RUN_SERVICE }}
-      REGION: ${{ vars.GCP_REGION }}
-      PROYECTO: ${{ vars.GCP_PROJECT_ID_PROD }}
-    steps:
-      - name: Health check de producción (10 intentos)
+      - name: Health check final de producción (10 intentos, 15 s)
         id: salud
         env:
           URL: ${{ vars.PROD_URL }}
@@ -659,35 +668,55 @@ jobs:
             echo "Intento $i: $codigo"; sleep 15
           done
           echo "ok=false" >> "$GITHUB_OUTPUT"
-          echo "::error::Producción no responde 200 en $RUTA_SALUD"
+          echo "::error::Producción no responde 200 en $RUTA_SALUD tras 10 intentos; se revierte el tráfico"
+          exit 1
 
-      - name: Autenticar en GCP para rollback
-        if: steps.salud.outputs.ok == 'false' && needs.desplegar-produccion.outputs.revision_anterior != ''
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_SA_DEPLOY_PROD }}
-
-      - name: Rollback automático a la revisión anterior
-        if: steps.salud.outputs.ok == 'false' && needs.desplegar-produccion.outputs.revision_anterior != ''
+      - name: Revertir tráfico si el canary o el health check final fallaron
+        if: failure() && steps.anterior.outputs.revision != ''
         env:
-          ANTERIOR: ${{ needs.desplegar-produccion.outputs.revision_anterior }}
+          ANTERIOR: ${{ steps.anterior.outputs.revision }}
         run: |
           set -euo pipefail
           gcloud run services update-traffic "$SERVICIO" --region "$REGION" --project "$PROYECTO" \
             --to-revisions="$ANTERIOR=100"
           echo "::warning::ROLLBACK: 100 % del tráfico devuelto a $ANTERIOR. Ver 01-seguridad/06-rollback-e-incidentes.md"
 
+  # ---------------------------------------------------------------------------
+  # Fase 7 — post-despliegue: registra el resultado como Deployment status.
+  # El health check final y el rollback del tráfico corren al final de
+  # desplegar-produccion, el único job aprobado por el Environment (los secretos del
+  # Environment solo llegan a los jobs que lo declaran). Cuando exista la condición
+  # del provider de producción (03-scripts/setup-oidc-gcp.sh 2.3, PR-B, pendiente),
+  # la identidad de producción en GCP solo aceptará tokens de un tag v* estable y,
+  # en Modos A/B, de un job con environment: production. Declarar aquí el
+  # Environment pediría otra aprobación. Este job no recibe credenciales de nube.
+  # ---------------------------------------------------------------------------
+  post-despliegue:
+    name: post-despliegue
+    needs: desplegar-produccion
+    if: >-
+      always() && contains(fromJSON('["success","failure"]'), needs.desplegar-produccion.result)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      deployments: write
+    steps:
       - name: Registrar resultado del despliegue
-        if: always()
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          SALUD_OK: ${{ steps.salud.outputs.ok }}
+          RESULTADO: ${{ needs.desplegar-produccion.result }}
+          SALUD_OK: ${{ needs.desplegar-produccion.outputs.salud_ok }}
           URL_PROD: ${{ vars.PROD_URL }}
           REV: ${{ needs.desplegar-produccion.outputs.revision_nueva }}
         with:
           script: |
-            const ok = process.env.SALUD_OK === 'true';
+            const ok = process.env.RESULTADO === 'success';
+            const descripcion = ok
+              ? 'Health check correcto'
+              : process.env.SALUD_OK === 'false'
+                ? 'Health check final fallido en desplegar-produccion; se intentó revertir el tráfico (ver el job)'
+                : 'desplegar-produccion falló (canary, despliegue o health check final); revise el job';
             const { data: d } = await github.rest.repos.createDeployment({
               owner: context.repo.owner, repo: context.repo.repo,
               ref: context.ref, environment: 'production', auto_merge: false,
@@ -698,9 +727,9 @@ jobs:
               deployment_id: d.id, state: ok ? 'success' : 'failure',
               environment_url: process.env.URL_PROD,
               log_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-              description: ok ? 'Health check correcto' : 'Health check fallido; rollback ejecutado'
+              description: descripcion
             });
-            if (!ok) core.setFailed('Health check de producción fallido');
+            if (!ok) core.setFailed('Despliegue a producción fallido: vea el job desplegar-produccion');
 
   # ---------------------------------------------------------------------------
   # compuerta-pr (D1): ÚNICO status check que exigen los rulesets de main.
