@@ -206,7 +206,7 @@ jobs:
   # ---------------------------------------------------------------------------
   # Fase 3 — construir: imagen → registro → escaneo → SBOM → firma → attestation.
   # No corre en PRs de forks (no tienen OIDC). En PRs propios sí construye y
-  # publica con tag pr-N para poder escanearla (se puede limitar con `if`).
+  # publica con el tag del sha para poder escanearla (se puede limitar con `if`).
   # ---------------------------------------------------------------------------
   construir:
     name: construir
@@ -256,11 +256,13 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ${{ env.IMAGEN }}
+          # Solo etiquetas que no se mueven: el sha completo y, en un release, el tag
+          # vX.Y.Z. Artifact Registry con tags inmutables (AR-02, bloqueante) rechaza
+          # el segundo push a una etiqueta existente, y `main` o `pr-N` se movían en cada
+          # commit. Nada las usaba: se despliega por digest, y Trivy y cosign también.
           tags: |
             type=sha,format=long,prefix=
             type=ref,event=tag
-            type=ref,event=pr
-            type=raw,value=main,enable={{is_default_branch}}
 
       - name: Build y push
         id: build
@@ -270,9 +272,11 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Caché de capas en el propio registro (rápido y sin límite de GHA)
-          cache-from: type=registry,ref=${{ env.IMAGEN }}:buildcache
-          cache-to: type=registry,ref=${{ env.IMAGEN }}:buildcache,mode=max
+          # Caché de capas en la caché de GitHub Actions, no en una etiqueta del registro:
+          # `:buildcache` se reescribía en cada build y choca con los tags inmutables de
+          # Artifact Registry (AR-02). Es lo que ya usan ci-aws-ecs.yml y ci-multicloud.yml.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           provenance: false # la procedencia la genera attest-build-provenance
           build-args: |
             APP_VERSION=${{ github.ref_name }}
