@@ -32,6 +32,25 @@ export const FRASE_REGISTRO: Record<Voz['registro'], string> = {
   cercano: 'Registro cercano y amable, sin perder claridad.',
 };
 
+/**
+ * Cómo usar el RESPALDO DOCUMENTAL. `citar` no agrega ninguna instrucción: es el
+ * comportamiento de siempre. `parafrasear` existe para corpus que describen
+ * pantallas y están redactados como orden («ingrese su número»): si el modelo los
+ * copia, la respuesta parece un pedido de datos y el verificador del cliente la
+ * descarta.
+ *
+ * Lo que NO garantiza: es una instrucción al modelo. Hoy ninguna compuerta de
+ * salida de este servicio detecta un pedido de datos en la respuesta; el único
+ * control que lo hace es el verificador del cliente, externo a este repositorio.
+ * La frase no debe pedir explicar lo que el documento no dice (regla 1: no
+ * inventar) ni vedar al agente los datos que sus propias herramientas necesitan.
+ */
+export const FRASE_USO_RESPALDO: Record<'citar' | 'parafrasear', string | null> = {
+  citar: null,
+  parafrasear:
+    'USO DEL RESPALDO: explique con sus propias palabras, en tono explicativo, lo que dicen los documentos. Si un texto está redactado como orden o pedido dirigido a quien usa una pantalla (por ejemplo «ingrese…», «suba…», «escriba…»), no lo reproduzca ni lo presente como pedido suyo: cuente qué se solicita en ese paso y, solo si el documento lo dice, para qué (por ejemplo, «en este paso el sitio solicita…»).',
+};
+
 export function instruccionesDeVoz(voz: Voz): string[] {
   return [FRASE_TRATAMIENTO[voz.tratamiento], FRASE_EMOJIS[voz.emojis], FRASE_LONGITUD[voz.longitud], FRASE_REGISTRO[voz.registro]];
 }
