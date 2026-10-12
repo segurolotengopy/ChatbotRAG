@@ -1,0 +1,48 @@
+# =============================================================================
+# MONITOREO DE STAGING — reporte diario
+#
+# Una vez al día comenta en el issue «Monitoreo staging» cuántas veces corrió la sonda
+# (scripts/reporte-monitoreo.sh) y hace ping al chequeo «reporte-diario» de
+# Healthchecks.io. Si el reporte no llega, Healthchecks avisa: el silencio total
+# también es una alerta. 11:41 UTC = 07:41 en Bolivia, a propósito fuera del inicio de
+# hora, que es cuando GitHub más retrasa los cron.
+#
+# Qué NO garantiza: no mide la salud del servicio (eso lo hace la sonda); y no crea el
+# issue: debe existir, abierto y con ese título.
+#
+# Requiere:  secreto de repositorio  HEALTHCHECKS_PING_REPORTE  (UUID de «reporte-diario»)
+# =============================================================================
+name: Monitoreo de staging · reporte diario
+
+on:
+  schedule:
+    - cron: '41 11 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: monitoreo-staging-reporte
+  cancel-in-progress: false
+
+jobs:
+  reporte:
+    name: Reporte diario
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Reportar
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PING: ${{ secrets.HEALTHCHECKS_PING_REPORTE }}
+        run: bash scripts/reporte-monitoreo.sh
