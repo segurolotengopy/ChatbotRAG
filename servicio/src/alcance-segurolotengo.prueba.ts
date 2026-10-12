@@ -136,3 +136,58 @@ describe('nombre vigente del producto', () => {
     expect(config.perfiles['VIDA_ONCOLOGICO']?.nombre).toBe('Seguro de Vida Oncológico VIVE');
   });
 });
+
+/**
+ * DATOS DE CONTACTO. La fuente única es `src/domain/entidades.ts` del repositorio
+ * del portal (`WHATSAPP_ATENCION`, `INTERSEGUROS.domicilio`, `CORREO_RETRACTO_Y_DATOS`).
+ * Aquí no se inventan: se copian y esta prueba los ancla. Si el portal los cambia,
+ * hay que cambiarlos en la configuración y en esta prueba a la vez.
+ *
+ * El verificador de salida del portal retiene toda respuesta con un teléfono o un
+ * correo que no sea de las entidades, así que un dato distinto aquí haría que el
+ * mensaje de derivación se descarte.
+ */
+const WHATSAPP_ATENCION = '+595 991 478 468';
+const WHATSAPP_DIGITOS = '595991478468';
+const CORREO_UNICO = 'segurolotengo@interseguros360.com';
+const DOMICILIO = 'Avda. Aviadores del Chaco 2351, Campos Cervera, Edificio Plaza Center 7.º piso, Asunción';
+const CORREO = /[\p{L}\p{N}._%+-]+@[\p{L}\p{N}.-]+\.[a-z]{2,}/giu;
+const TELEFONO = /(?<!\d)\+?\d(?:[\s().-]{0,2}\d){8,12}(?!\d)/g;
+
+describe('datos de contacto de Interseguros', () => {
+  it('el WhatsApp de atención figura en la derivación, en el servicio suspendido y en el contacto humano', () => {
+    expect(config.mensajes.derivacion).toContain(WHATSAPP_ATENCION);
+    expect(config.mensajes.suspendido).toContain(WHATSAPP_ATENCION);
+    expect(config.operacion.contactoHumano.texto).toContain(WHATSAPP_ATENCION);
+    expect(config.operacion.contactoHumano.whatsapp).toBe(WHATSAPP_DIGITOS);
+  });
+
+  it('el domicilio es el exacto, con «Campos Cervera», en todo lugar donde se nombra', () => {
+    expect(config.mensajes.derivacion).toContain(DOMICILIO);
+    expect(config.operacion.contactoHumano.texto).toContain(DOMICILIO);
+    expect(config.datos.direccion).toContain(DOMICILIO);
+  });
+
+  it('el único correo que se informa es el de contacto', () => {
+    const correos = cadenas(crudo).flatMap((c) => c.match(CORREO) ?? []);
+    expect([...new Set(correos.map((c) => c.toLowerCase()))]).toEqual([CORREO_UNICO]);
+  });
+
+  it('el único teléfono que se informa es el WhatsApp de atención, no el de la aseguradora', () => {
+    const telefonos = cadenas(crudo).flatMap((c) => c.match(TELEFONO) ?? []);
+    expect(telefonos.length, 'debería haber al menos un teléfono informado').toBeGreaterThan(0);
+    for (const tel of telefonos) {
+      expect(tel.replace(/\D/g, ''), `un teléfono distinto del WhatsApp de atención: ${tel}`).toBe(WHATSAPP_DIGITOS);
+    }
+    // Alianza Garantía tiene teléfono propio, pero NO es canal de atención de este asistente.
+    expect(cadenas(crudo).join(' ')).not.toMatch(/236\s*0000/);
+  });
+
+  it('no declara un horario de atención que nadie confirmó', () => {
+    // Se pidió a Interseguros y no hay horario confirmado: solo se sabe «en horario
+    // hábil». Un horario con cifras sería un dato inventado dicho como cierto, y la
+    // herramienta `consultar_horarios` lo repetiría tal cual. Cuando se confirme, se
+    // carga en `operacion.horarios` y se actualiza esta prueba.
+    expect(Object.keys(config.operacion.horarios)).toEqual([]);
+  });
+});

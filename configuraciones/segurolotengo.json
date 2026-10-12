@@ -13,10 +13,11 @@
   "voz": { "tratamiento": "usted", "emojis": "ninguno", "longitud": "breve", "registro": "cercano" },
   "operacion": {
     "estado": "operativo",
-    "horarios": { "lun": "08:00-17:00", "mar": "08:00-17:00", "mie": "08:00-17:00", "jue": "08:00-17:00", "vie": "08:00-17:00" },
+    "horarios": {},
     "contactoHumano": {
+      "whatsapp": "595991478468",
       "correo": "segurolotengo@interseguros360.com",
-      "texto": "Un asesor de Interseguros S.A. atiende en días y horarios hábiles. También puede acercarse a sus oficinas de Avda. Aviadores del Chaco 2351, Edificio Plaza Center 7.º piso, Asunción."
+      "texto": "Una persona de Interseguros S.A. atiende en horario hábil. Puede escribir al WhatsApp de atención, +595 991 478 468, o acercarse a sus oficinas de Avda. Aviadores del Chaco 2351, Campos Cervera, Edificio Plaza Center 7.º piso, Asunción."
     }
   },
   "datos": {
@@ -27,7 +28,7 @@
     },
     "datosQueNoTenemos": [
       "el plazo exacto del derecho de retracto (pendiente de definición legal)",
-      "teléfono de atención de Interseguros S.A.",
+      "el horario de atención exacto (solo se sabe que es en horario hábil)",
       "estado de trámites, pólizas o reclamos de una persona en particular",
       "comisiones e información comercial interna"
     ],
@@ -88,9 +89,9 @@
     "errorTemporal": "Tuve un problema técnico momentáneo. ¿Me repite lo último, por favor?",
     "fueraDeAlcance": "Eso no se lo puedo responder por este medio. Yo le explico cómo funciona el sitio y qué le pide cada paso; lo que tiene que ver con qué cubre el producto o con su caso en particular lo atiende una persona de Interseguros.",
     "sinRespaldo": "No cuento con información aprobada para responder eso con precisión, y prefiero no adivinar.",
-    "derivacion": "Puede escribir a segurolotengo@interseguros360.com o acercarse a las oficinas de Interseguros S.A. (Avda. Aviadores del Chaco 2351, Edificio Plaza Center 7.º piso, Asunción) en horario hábil, y una persona le atiende.",
+    "derivacion": "Puede escribir al WhatsApp de atención de Interseguros, +595 991 478 468, o a segurolotengo@interseguros360.com, o acercarse a las oficinas de Interseguros S.A. (Avda. Aviadores del Chaco 2351, Campos Cervera, Edificio Plaza Center 7.º piso, Asunción) en horario hábil, y una persona le atiende.",
     "entradaBloqueada": "Por su seguridad, por este chat no recibo cédula, datos de salud, condición PEP, tarjetas ni códigos de verificación: esos datos se completan solo dentro del proceso seguro del sitio. Cuénteme su consulta sin esos datos y le ayudo.",
-    "suspendido": "En este momento el asistente no está disponible. Puede escribir a segurolotengo@interseguros360.com.",
+    "suspendido": "En este momento el asistente no está disponible. Puede escribir al WhatsApp de atención de Interseguros, +595 991 478 468, o a segurolotengo@interseguros360.com.",
     "cierre": "Gracias por escribir a SeguroLoTengo. Si necesita algo más, aquí estoy."
   },
   "modelo": {
