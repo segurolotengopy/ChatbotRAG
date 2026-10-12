@@ -6,17 +6,18 @@ Se actualiza al final de cada sesión. **Nunca contiene secretos.** Lo más reci
 
 ### Punto de retorno
 
-**Qué estaba haciendo.** Dejar listo el asistente de SeguroLoTengo para la demostración del lunes 12-oct: solo orientación sobre el funcionamiento del sitio y los procedimientos, en lenguaje llano, con índice en memoria. El servicio está desplegado en staging y sano; falta que el demo se conecte.
+**Qué estaba haciendo.** Dejar listo el asistente de SeguroLoTengo para la demostración del lunes 12-oct: solo orientación sobre el funcionamiento del sitio y los procedimientos, en lenguaje llano, con índice en memoria. Staging está desplegado y sano, y **el demo ya lo llamó una vez con éxito**. Quedó abierto el PR #25 (trato de usted, nombre vigente del producto y un dato de precios que se coló en el prompt).
 
 **Qué sigue, por orden.**
-1. **Primera llamada real del demo.** Hasta hoy no llegó ninguna: en los registros de Cloud Run no hay `/v1/*`. Cuando llegue, 200 = clave válida y 401 = clave distinta. La sesión de SeguroLoTengo debe aplicar su Terraform (`asistente_ambiente=staging`, autorizado por Andres el 11-oct) y pasar de `mock` a `live`.
-2. **Corpus de orientación** (`ORIENTACION-v1.0`, 22 archivos, lo escribe SeguroLoTengo en su repositorio). Llegó como borrador y **no se carga** hasta que Interseguros firme la checklist C4: este repositorio es público. Al cargarlo: quitar el encabezado `fuente:`, fijar la versión y ajustar el prompt para que parafrasee los textos de pantalla redactados como orden (el verificador de salida del demo descarta toda respuesta que parezca un pedido de datos).
-3. **Contacto de derivación.** El mensaje fijo informa un correo; la checklist C4 (ítem 2) dice que no se informa ninguno. Andres pidió mantenerlo si no perjudica; técnicamente no perjudica (el verificador del demo lo aprueba). Falta corregir la checklist o sacarlo.
-4. **Sincronización con el estándar**, en un solo PR: ahora son seis cambios, entre ellos el `ignorefile` de Trivy en `construir` y la prueba de humo contra la ruta de salud. `_reusable-dast.yml` es del estándar: la corrección de #22 es local y una sincronización la revertiría.
+1. **PR #25.** Espera la aprobación de Andres. Hasta que se fusione y se despliegue, el asistente sigue respondiendo en voseo y con el nombre viejo del producto.
+2. **Datos de contacto.** La sesión de SeguroLoTengo dice que ya los tiene confirmados; se los pedí (WhatsApp, domicilio exacto, si el correo se informa o no, horario). Con eso se actualizan `mensajes.derivacion`, `mensajes.suspendido`, `operacion.contactoHumano` y `datos.datosQueNoTenemos` en un PR aparte, con una prueba que verifique que coinciden con los de ellos.
+3. **Corpus de orientación** (`ORIENTACION-v1.0`, 22 archivos; lo escribe SeguroLoTengo). Es un borrador y **no se carga** hasta que Interseguros firme la checklist C4: este repositorio es público. Hasta entonces el perfil `VIDA_ONCOLOGICO` responde desde dos archivos viejos de `configuraciones/corpus/segurolotengo/` (`proceso-contratacion.md` y `consultas-reclamos-y-contacto.md`, v1.1), que todavía mencionan el nombre anterior del producto. Al cargar el nuevo: quitar el encabezado `fuente:`, fijar la versión y ajustar el prompt para que parafrasee los textos de pantalla redactados como orden (el verificador de salida del demo descarta toda respuesta que parezca un pedido de datos).
+4. **Sincronización con el estándar**, en un solo PR: seis cambios, entre ellos el `ignorefile` de Trivy en `construir` y la prueba de humo contra la ruta de salud. `_reusable-dast.yml` es del estándar: la corrección de #22 es local y una sincronización la revertiría.
 5. **Producción.** La cuenta de facturación está en su tope de proyectos; el proyecto de producción sigue sin facturación. La URL de producción en `.devsecops.yml` está marcada SIN CONFIRMAR y tiene el formato que resultó equivocado en staging.
-6. El PR #2 (Node 22 → 26) sigue sin fusionar, a propósito.
+6. **Monitoreo.** Hoy nada vigila el servicio de staging fuera de los chequeos que corren al desplegar. La política del 11-oct pide monitores externos y gratuitos, con reporte periódico y alerta por un canal distinto. Es una propuesta, no está implementada, y nada de este proyecto depende de la laptop.
+7. El PR #2 (Node 22 → 26) sigue sin fusionar, a propósito.
 
-**Decisiones que esperan a Andres.** Si la demostración se hace con el corpus aún sin firmar (el asistente responde poco); la firma de Interseguros; qué hacer con el correo; si confirma `.claude/settings.json`, hoy modificado sin confirmar, que publicaría reglas de permisos en el repositorio; y cómo resolver la cuota de facturación para producción.
+**Decisiones que esperan a Andres.** Aprobar el #25; si la demostración se hace con el corpus aún sin firmar (el asistente responde poco y desde contenido anterior); la firma de Interseguros; qué hacer con el correo de derivación; si confirma `.claude/settings.json`, hoy modificado sin confirmar, que publicaría tres reglas de permisos en el repositorio; y cómo resolver la cuota de facturación para producción.
 
 ### Qué se hizo
 - **Pipeline en verde por primera vez**, de punta a punta: construcción de la imagen, firma keyless con SBOM y attestation, despliegue, prueba de humo y ZAP. Fusionados #10 a #12, #14 y #16 a #24.
@@ -28,9 +29,11 @@ Se actualiza al final de cada sesión. **Nunca contiene secretos.** Lo más reci
 ### Verificaciones
 - `pnpm verificar`: 82 pruebas en verde. `./security-local.sh`: CRITICAL 0, HIGH 0, MEDIUM 0, cero exceptuadas, las siete herramientas corridas.
 - Servicio en staging medido por fuera: `/salud` y `/health` responden 200, HSTS y CSP presentes, `/v1/agente` sin clave responde 401.
-- **No verificado:** ninguna llamada autenticada de punta a punta (la clave en claro nunca se leyó, a propósito), ni respuestas reales del modelo.
+- **Primera llamada real del demo** (11-oct, 17:59 UTC), vista en los registros de Cloud Run: `GET /v1/agente` 200 y `POST …/mensajes` 200 en 1,6 s. Prueba que la clave del secreto de staging es válida y que Gemini responde en Vertex AI. La clave en claro nunca se leyó, a propósito.
+- **No verificado:** la calidad de las respuestas con el corpus nuevo, ni que el modelo mantenga el usted en toda frase.
 
 ### Correcciones de lo que yo afirmé durante la jornada
+- Di por cerrado el cambio de alcance (#23) y no lo estaba: dejé textos fijos en voseo (cinco los escribí yo), el nombre anterior del producto en cuatro perfiles y un hecho sobre premios dentro del prompt. Lo descubrió la primera respuesta real del modelo; lo corrige el PR #25, con pruebas que recorren toda la configuración.
 - Dije que los `overrides` de pnpm podían no llegar a la imagen. Era falso: el árbol de producción los respeta. Los hallazgos eran del `npm` incluido en la imagen base.
 - `gcloud billing projects link` devolvió un error de cuota y la vinculación se hizo igual. Se verifica con `describe`, no con el código de salida.
 - La URL de staging no sigue el formato que suponía el manifiesto; el hash lo asigna Cloud Run y no se deriva.
