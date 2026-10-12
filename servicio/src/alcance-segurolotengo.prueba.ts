@@ -73,9 +73,66 @@ describe('alcance del asistente de SeguroLoTengo: funcionamiento, no producto', 
     }
   });
 
+  it('los hechos que se inyectan al prompt no hablan de precios ni de premios', () => {
+    // `datos.hechos` va al prompt del modelo como verdad establecida. Un hecho
+    // sobre premios lo invita a hablar de precios, que está fuera de alcance.
+    for (const h of config.datos.hechos) {
+      expect(h, 'un hecho del prompt habla de precios o premios').not.toMatch(/premio|precio|prima|gs\.?\s*\d|guaran/i);
+    }
+  });
+
   it('declara como bloqueados los temas de producto que se sacaron del alcance', () => {
     const bloqueados = config.alcance.temasBloqueados.join(' | ').toLowerCase();
     expect(bloqueados).toContain('cubre');
     expect(bloqueados).toContain('precios');
+  });
+});
+
+/** Todas las cadenas de la configuración, a cualquier profundidad. */
+function cadenas(valor: unknown, acc: string[] = []): string[] {
+  if (typeof valor === 'string') acc.push(valor);
+  else if (Array.isArray(valor)) for (const v of valor) cadenas(v, acc);
+  else if (valor !== null && typeof valor === 'object') for (const v of Object.values(valor)) cadenas(v, acc);
+  return acc;
+}
+const crudo: unknown = JSON.parse(readFileSync(RUTA, 'utf8'));
+
+/**
+ * Voseo y tuteo en lo que el asistente le dice a la persona. El portal y el corpus
+ * de orientación van en «usted»; una respuesta en voseo dentro de esa misma
+ * pantalla se lee como dos voces distintas. Se midió el 2026-10-11: la primera
+ * respuesta real salió con «recibís» porque `voz.tratamiento` valía `vos` y los
+ * textos fijos estaban en voseo. Se usan límites de letra Unicode porque `\b` de
+ * JavaScript no reconoce las vocales acentuadas.
+ */
+const VOSEO_O_TUTEO = /(?<![\p{L}])(?:vos|tu|tus|te|ti|podés|querés|necesitás|tenés|sabés|repetís|recibís|contame|decime|escribime|tené|fijate|acercarte|contarte|informarte|explicarte|acá)(?![\p{L}])/iu;
+
+describe('trato de usted con quien consulta', () => {
+  it('el tratamiento configurado es usted', () => {
+    expect(config.voz.tratamiento).toBe('usted');
+  });
+
+  it('ningún texto de la configuración está en voseo ni en tuteo', () => {
+    for (const c of cadenas(crudo)) {
+      expect(c, 'un texto de la configuración usa voseo o tuteo').not.toMatch(VOSEO_O_TUTEO);
+    }
+  });
+});
+
+/**
+ * El producto se llamó «CONFÍO» y hoy se llama «VIVE». El verificador de salida
+ * del portal retiene toda respuesta que nombre «CONFÍO» como plan, así que un
+ * texto fijo con el nombre viejo lo descartaría y lo reemplazaría por la
+ * derivación. No se citan nombres de plan de VIVE: este repositorio no los tiene.
+ */
+describe('nombre vigente del producto', () => {
+  it('ningún texto de la configuración usa el nombre anterior', () => {
+    for (const c of cadenas(crudo)) {
+      expect(c, 'un texto de la configuración nombra el producto como CONFÍO').not.toMatch(/conf[ií]o/i);
+    }
+  });
+
+  it('el perfil con producto disponible se llama VIVE', () => {
+    expect(config.perfiles['VIDA_ONCOLOGICO']?.nombre).toBe('Seguro de Vida Oncológico VIVE');
   });
 });
