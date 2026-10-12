@@ -28,14 +28,18 @@ El servicio escala a 0: la primera llamada tras inactividad tardó 10,7 s en la 
 
 ## Puesta en marcha (cada paso lo autoriza Andres)
 
+Las claves nunca pasan por el chat ni por la línea de comandos: `scripts/configurar-monitoreo.sh` las lee de archivos de modo 600 y carga los UUID en GitHub por entrada estándar, sin imprimirlos.
+
 1. Cuentas en Healthchecks.io y Better Stack (las crea Andres).
-2. Healthchecks: chequeos `sonda-15min` y `reporte-diario`; activar el informe semanal por correo.
-3. Better Stack: monitor a `/salud` esperando 200 y `"ok":true`, alerta por correo.
-4. Variable de repositorio `URL_STAGING` (`https://host`, sin ruta) y secretos `HEALTHCHECKS_PING_SONDA` y `HEALTHCHECKS_PING_REPORTE`. El repositorio es público: **los UUID van como secretos, nunca como variables**, y se cargan con un script que no muestra el valor.
+2. Andres crea una clave de API de Healthchecks **con escritura** (Settings → API Access) y un token de API de Better Stack Uptime (Settings → API tokens), y los guarda en `~/.config/chatbotrag/healthchecks-api-key` y `~/.config/chatbotrag/betterstack-api-token`, con modo 600.
+3. `scripts/configurar-monitoreo.sh plan` (solo lee: lista los chequeos y monitores existentes, sin secretos). Se revisa qué hay de prueba para borrar.
+4. `scripts/configurar-monitoreo.sh aplicar --borrar-hc NOMBRE --borrar-bs ID`, con `URL_STAGING` y `GH_CONFIG_DIR` de la cuenta propietaria del repositorio. Crea los chequeos `sonda-15min` y `reporte-diario`, la variable `URL_STAGING`, los secretos `HEALTHCHECKS_PING_SONDA` y `HEALTHCHECKS_PING_REPORTE` (el repositorio es público: los UUID son secretos, nunca variables) y el monitor de Better Stack; borra solo lo que se nombra. Es idempotente. Cargar secretos exige que Andres agregue antes una regla puntual de permiso para `gh secret set` y la retire después.
 5. Crear el issue abierto «Monitoreo staging» (el reporte falla a propósito si no existe).
-6. Disparar ambos workflows con `workflow_dispatch` y verificar el ping y el comentario.
+6. Activar el informe semanal por correo en Healthchecks. Disparar ambos workflows con `workflow_dispatch` y verificar el ping y el comentario.
 7. Prueba de caída: apuntar una corrida manual a una URL inexistente y confirmar el correo. Prueba de silencio: desactivar la sonda un momento y confirmar que Healthchecks avisa; reactivarla.
 8. Confirmar que los correos llegan al teléfono.
+
+El host de la API de Better Stack se toma de `BS_HOST` (por omisión `https://uptime.betterstack.com`; la documentación oficial nombra también `incidents.betterstack.com`): la primera lectura con `plan` lo confirma.
 
 ## Límites del plan gratuito (consultados el 2026-10-12; releer al contratar)
 
@@ -45,4 +49,4 @@ El servicio escala a 0: la primera llamada tras inactividad tardó 10,7 s en la 
 
 ## Prueba
 
-`scripts/sondear-staging.prueba.ts` ejecuta la sonda de verdad contra un servidor local y comprueba que pase cuando todo está bien y que falle cuando algo se rompe (200 distinto, cuerpo sin `ok`, falta de HSTS o CSP, `/v1/agente` abierto, servicio caído, arranque en frío, falla puntual con reintento, URL inválida). Corre con `pnpm pruebas`.
+Las pruebas de `scripts/` (sonda, reporte y configuración) ejecutan los scripts de verdad con servidores y herramientas simulados. `scripts/sondear-staging.prueba.ts` ejecuta la sonda de verdad contra un servidor local y comprueba que pase cuando todo está bien y que falle cuando algo se rompe (200 distinto, cuerpo sin `ok`, falta de HSTS o CSP, `/v1/agente` abierto, servicio caído, arranque en frío, falla puntual con reintento, URL inválida). Corre con `pnpm pruebas`.
