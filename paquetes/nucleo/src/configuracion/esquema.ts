@@ -130,6 +130,12 @@ export const esquemaConocimiento = z
     umbral: z.number().min(0).max(1).default(0.35),
     /** Con true, sin fragmentos por encima del umbral no hay afirmación: se deriva. */
     exigirRespaldo: z.boolean().default(true),
+    /**
+     * Cómo usa el modelo el texto recuperado. `citar` conserva su redacción;
+     * `parafrasear` le pide explicarlo con sus palabras (ver `FRASE_USO_RESPALDO`).
+     * Es un enumerado: selecciona una frase fija, jamás se interpola.
+     */
+    usoDelRespaldo: z.enum(['citar', 'parafrasear']).default('citar'),
     tamanoFragmento: z.number().int().min(200).max(4000).default(900),
     solapamiento: z.number().int().min(0).max(1000).default(120),
     fuentes: z.array(esquemaFuente).max(200).default([]),

@@ -164,7 +164,7 @@
               "type": "string",
               "maxLength": 254,
               "format": "email",
-              "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+              "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
             },
             "telefono": {
               "type": "string",
@@ -290,6 +290,14 @@
         "exigirRespaldo": {
           "default": true,
           "type": "boolean"
+        },
+        "usoDelRespaldo": {
+          "default": "citar",
+          "type": "string",
+          "enum": [
+            "citar",
+            "parafrasear"
+          ]
         },
         "tamanoFragmento": {
           "default": 900,
@@ -488,7 +496,7 @@
           },
           "url": {
             "type": "string",
-            "format": "uri",
+            "format": "starts_with",
             "pattern": "^https:\\/\\/.*"
           },
           "maxPorTurno": {
@@ -834,7 +842,7 @@
                     "type": "string",
                     "maxLength": 254,
                     "format": "email",
-                    "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                    "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
                   },
                   "telefono": {
                     "type": "string",
@@ -947,6 +955,13 @@
               },
               "exigirRespaldo": {
                 "type": "boolean"
+              },
+              "usoDelRespaldo": {
+                "type": "string",
+                "enum": [
+                  "citar",
+                  "parafrasear"
+                ]
               },
               "tamanoFragmento": {
                 "type": "integer",
@@ -1123,7 +1138,7 @@
                 },
                 "url": {
                   "type": "string",
-                  "format": "uri",
+                  "format": "starts_with",
                   "pattern": "^https:\\/\\/.*"
                 },
                 "maxPorTurno": {
