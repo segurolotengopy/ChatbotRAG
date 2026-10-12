@@ -67,7 +67,7 @@
     "umbral": 0.3,
     "exigirRespaldo": true,
     "fuentes": [
-      { "id": "consultas-contacto", "titulo": "Consultas, reclamos y contacto", "version": "v1.1", "ruta": "segurolotengo/comunes/consultas-reclamos-y-contacto.md" },
+      { "id": "orientacion-16-contacto-con-la-atencion", "titulo": "Cómo contactar a la atención oficial de Interseguros", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/16-contacto-con-la-atencion.md" },
       { "id": "otros-seguros", "titulo": "Otros seguros del canal", "version": "v1.0", "ruta": "segurolotengo/proximamente/otros-seguros.md" },
       { "id": "notas-internas", "titulo": "Notas comerciales internas", "version": "v1.0", "visibilidad": "interno", "ruta": "segurolotengo/interno/notas-comerciales.md" }
     ]
@@ -111,8 +111,28 @@
       "descripcion": "Producto disponible para contratación en línea.",
       "conocimiento": {
         "fuentes": [
-          { "id": "proceso", "titulo": "Cómo se contrata en SeguroLoTengo", "version": "v1.1", "ruta": "segurolotengo/vida-oncologico/proceso-contratacion.md" },
-          { "id": "consultas-contacto", "titulo": "Consultas, reclamos y contacto", "version": "v1.1", "ruta": "segurolotengo/comunes/consultas-reclamos-y-contacto.md" }
+          { "id": "orientacion-00-vision-general-del-tramite", "titulo": "Cómo es el trámite de contratación, de principio a fin", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/00-vision-general-del-tramite.md" },
+          { "id": "orientacion-01-elegir-el-plan", "titulo": "Paso 1 · Elija su plan (qué se hace en esa pantalla)", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/01-elegir-el-plan.md" },
+          { "id": "orientacion-02-verificar-su-whatsapp", "titulo": "Paso 2 · Verifique su número de WhatsApp", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/02-verificar-su-whatsapp.md" },
+          { "id": "orientacion-03-preparar-lo-necesario", "titulo": "Paso 3 · Prepare lo necesario", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/03-preparar-lo-necesario.md" },
+          { "id": "orientacion-04-verificar-su-identidad", "titulo": "Paso 4 · Verifique su identidad (cédula, selfie y correo)", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/04-verificar-su-identidad.md" },
+          { "id": "orientacion-05-completar-sus-datos", "titulo": "Paso 5 · Complete sus datos", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/05-completar-sus-datos.md" },
+          { "id": "orientacion-06-actividad-e-ingresos", "titulo": "Paso 6 · Actividad e ingresos", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/06-actividad-e-ingresos.md" },
+          { "id": "orientacion-07-declaraciones-y-consentimientos", "titulo": "Pasos 7 y 8 · Datos y declaraciones, y Consentimientos", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/07-declaraciones-y-consentimientos.md" },
+          { "id": "orientacion-08-revisar-y-firmar", "titulo": "Paso 9 · Revisión y firma final (con código de un solo uso)", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/08-revisar-y-firmar.md" },
+          { "id": "orientacion-09-realizar-el-pago", "titulo": "Paso 10 · Realice el pago (QR Bancard o tarjeta)", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/09-realizar-el-pago.md" },
+          { "id": "orientacion-10-confirmacion-y-documentos", "titulo": "Paso 11 · Contratación confirmada y qué se puede descargar", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/10-confirmacion-y-documentos.md" },
+          { "id": "orientacion-11-mensajes-del-codigo", "titulo": "Qué significan los mensajes del código de un solo uso (WhatsApp y firma)", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/11-mensajes-del-codigo.md" },
+          { "id": "orientacion-12-mensajes-de-cedula-y-selfie", "titulo": "Qué significan los mensajes de la cédula y la selfie", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/12-mensajes-de-cedula-y-selfie.md" },
+          { "id": "orientacion-13-sesion-conexion-y-avance", "titulo": "Sesión perdida, falla de conexión y qué pasa con el avance", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/13-sesion-conexion-y-avance.md" },
+          { "id": "orientacion-14-mensajes-del-pago-y-del-plazo", "titulo": "Qué significan los mensajes del pago y del plazo de 10 minutos", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/14-mensajes-del-pago-y-del-plazo.md" },
+          { "id": "orientacion-15-pantallas-de-aviso", "titulo": "Pantallas de aviso que puede mostrar el sistema (evaluación, asistencia de identidad y solicitud vencida)", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/15-pantallas-de-aviso.md" },
+          { "id": "orientacion-16-contacto-con-la-atencion", "titulo": "Cómo contactar a la atención oficial de Interseguros", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/16-contacto-con-la-atencion.md" },
+          { "id": "orientacion-17-si-algo-falla", "titulo": "Qué hacer si algo falla durante el trámite", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/17-si-algo-falla.md" },
+          { "id": "orientacion-18-portada-menu-e-informacion-legal", "titulo": "La portada, el menú y la «Información legal»", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/18-portada-menu-e-informacion-legal.md" },
+          { "id": "orientacion-19-glosario-en-palabras-simples", "titulo": "Glosario en palabras simples", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/19-glosario-en-palabras-simples.md" },
+          { "id": "orientacion-20-lo-que-este-asistente-no-responde", "titulo": "Lo que este asistente no responde y a dónde derivar", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/20-lo-que-este-asistente-no-responde.md" },
+          { "id": "orientacion-21-datos-que-no-se-comparten-en-este-chat", "titulo": "Datos que no debe escribir en este chat", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/21-datos-que-no-se-comparten-en-este-chat.md" }
         ]
       },
       "herramientas": [
@@ -134,7 +154,7 @@
       },
       "conocimiento": { "fuentes": [
         { "id": "otros-seguros", "titulo": "Otros seguros del canal", "version": "v1.0", "ruta": "segurolotengo/proximamente/otros-seguros.md" },
-        { "id": "consultas-contacto", "titulo": "Consultas, reclamos y contacto", "version": "v1.1", "ruta": "segurolotengo/comunes/consultas-reclamos-y-contacto.md" }
+        { "id": "orientacion-16-contacto-con-la-atencion", "titulo": "Cómo contactar a la atención oficial de Interseguros", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/16-contacto-con-la-atencion.md" }
       ] },
       "mensajes": { "bienvenida": "Hola, soy Terra. El Seguro de Vida todavía no se contrata en línea en SeguroLoTengo; puedo contarle cómo dejar su interés o informarle sobre el Seguro de Vida Oncológico VIVE, que sí está disponible." }
     },
@@ -147,7 +167,7 @@
       },
       "conocimiento": { "fuentes": [
         { "id": "otros-seguros", "titulo": "Otros seguros del canal", "version": "v1.0", "ruta": "segurolotengo/proximamente/otros-seguros.md" },
-        { "id": "consultas-contacto", "titulo": "Consultas, reclamos y contacto", "version": "v1.1", "ruta": "segurolotengo/comunes/consultas-reclamos-y-contacto.md" }
+        { "id": "orientacion-16-contacto-con-la-atencion", "titulo": "Cómo contactar a la atención oficial de Interseguros", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/16-contacto-con-la-atencion.md" }
       ] },
       "mensajes": { "bienvenida": "Hola, soy Terra. El seguro de Accidentes Personales todavía no se contrata en línea en SeguroLoTengo; puedo contarle cómo dejar su interés o informarle sobre el Seguro de Vida Oncológico VIVE, que sí está disponible." }
     },
@@ -160,7 +180,7 @@
       },
       "conocimiento": { "fuentes": [
         { "id": "otros-seguros", "titulo": "Otros seguros del canal", "version": "v1.0", "ruta": "segurolotengo/proximamente/otros-seguros.md" },
-        { "id": "consultas-contacto", "titulo": "Consultas, reclamos y contacto", "version": "v1.1", "ruta": "segurolotengo/comunes/consultas-reclamos-y-contacto.md" }
+        { "id": "orientacion-16-contacto-con-la-atencion", "titulo": "Cómo contactar a la atención oficial de Interseguros", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/16-contacto-con-la-atencion.md" }
       ] },
       "mensajes": { "bienvenida": "Hola, soy Terra. El seguro de Responsabilidad Civil todavía no se contrata en línea en SeguroLoTengo; puedo contarle cómo dejar su interés o informarle sobre el Seguro de Vida Oncológico VIVE, que sí está disponible." }
     }
