@@ -18,6 +18,26 @@ Se actualiza al final de cada sesión. **Nunca contiene secretos.** Lo más reci
 
 **Decisiones que esperan a Andres.** Cómo resolver la cuota de facturación para producción. Resuelto hoy: `.claude/settings.json` quedó idéntico al original, sin los tres permisos temporales que se habían añadido para crear secretos y abrir el servicio.
 
+
+**Pendientes que la sesión antigua llevaba solo en la cabeza** (traspasados el 12-oct; los «informados» no los verifiqué):
+- **P13 · espera a un tercero.** Legal e Interseguros deben aprobar el texto de privacidad (uso de IA de un tercero) y la página de retracto **antes de abrir al público**. Checklist C4 §5, repositorio del demo. *Informado.*
+- **P14 · decisión de Andres.** Avisar a la sesión de SeguroLoTengo que la firma de la C4 ya no bloquea. FinOps se lo comunicó el 12-oct; falta que Andres lo confirme en esta sesión.
+- **P15 · decisión de Andres.** La ficha `~/Claude-Proyectos/proyectos/chatbotrag.md` está reescrita y sin confirmar (el registro está en `master` con cambios ajenos); la cierra ProyectosClaude. *Informado.*
+- **Tope diario de 200 mensajes** propuesto por SeguroLoTengo en su Terraform: sin confirmar, decisión de Andres.
+
+**Reglas operativas de este proyecto:**
+1. **Nunca leer la clave en claro del cliente** (`CHATBOTRAG_CLAVE_STAGING_DEMO`). Se verifica con los registros de Cloud Run: 200 = clave válida, 401 = distinta.
+2. **Los PR se abren con la cuenta del propietario** (`GH_CONFIG_DIR=$HOME/.config/gh-pro`) o nadie puede aprobarlos. Claude no aprueba sus propios PR. `update-branch` conserva la aprobación.
+3. **El clasificador bloquea que Claude se escriba permisos, secretos o IAM.** Andres agrega una regla puntual y luego la retira; `.claude/settings.json` debe quedar idéntico a HEAD.
+4. **Dispensa de la firma C4** («yo apruebo o defino»): la dijo Andres en el chat de la sesión antigua. **Pendiente de confirmar en esta sesión**; hasta entonces no la tomo como dicha aquí.
+5. **El correo de contacto es el que Andres decidió informar; el horario queda vacío a propósito.** Una prueba lo exige (`servicio/src/alcance-segurolotengo.prueba.ts`); al confirmar el horario hay que cargarlo y actualizar la prueba. *Verificado.*
+6. **El demo tiene dos secretos**, el de `main` y el de staging; cuenta el de staging. Cloud Run lee el secreto al arrancar la instancia. *Informado.*
+7. **El corpus cargado es la copia con huella `9cf2c6cb76a2`**, confirmada por SeguroLoTengo contra su `main`. Sus copias viven en worktrees del demo y su `main` local está desactualizado: **no hacer fetch ni pull allí**; el repositorio del demo se lee solo en modo lectura. *Informado.*
+8. **Las pruebas de contacto copian a propósito los valores del portal**: si Andres los cambia, hay que cambiar ambos lados. *Informado.*
+9. **Los cuatro archivos de la entrega** (`CLAUDE.local.md`, `PRIMEROS-PASOS.md`, `chatbotrag.bundle`, `iniciar.sh`) **nunca se confirman**. *Verificado: ninguno está versionado.*
+
+**Estado al cierre del 12-oct.** PR #29 (este) y #30 (`usoDelRespaldo`) esperan aprobación de Andres. En rama local, sin publicar: la sincronización con el estándar (5 commits) y el monitor externo de staging (aprobado por Andres; faltan las cuentas de Healthchecks.io y Better Stack, que crea él). La sincronización no se fusiona antes de la demostración.
+
 ### Qué se hizo
 - **Pipeline en verde por primera vez**, de punta a punta: construcción de la imagen, firma keyless con SBOM y attestation, despliegue, prueba de humo y ZAP. Fusionados #10 a #12, #14 y #16 a #24.
 - **Cinco defectos latentes**, destapados al desplegar por primera vez (el job moría antes de llegar a ellos): el `ignorefile` de Trivy ausente en `construir` (#18), la imagen base con `perl-base` y el `npm` incluido vulnerables (#19), `GCP_PROYECTO` sin pasar al servicio (#20), la URL de staging con el formato equivocado (#21), la prueba de humo contra la raíz en vez de la ruta de salud (#22) y las cabeceras HSTS y CSP ausentes (#24).
