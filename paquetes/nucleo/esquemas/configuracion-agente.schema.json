@@ -424,6 +424,14 @@
           "minimum": 50,
           "maximum": 8000
         },
+        "vocabularioEntrada": {
+          "default": "palabra",
+          "type": "string",
+          "enum": [
+            "palabra",
+            "dato"
+          ]
+        },
         "marcasPermitidas": {
           "default": [
             "DERIVAR"
@@ -1077,6 +1085,13 @@
                 "type": "integer",
                 "minimum": 50,
                 "maximum": 8000
+              },
+              "vocabularioEntrada": {
+                "type": "string",
+                "enum": [
+                  "palabra",
+                  "dato"
+                ]
               },
               "marcasPermitidas": {
                 "maxItems": 10,

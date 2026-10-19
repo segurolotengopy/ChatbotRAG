@@ -158,6 +158,16 @@ export const esquemaSeguridad = z
     /** Términos que jamás deben aparecer en una respuesta (nombres internos, márgenes…). */
     terminosConfidenciales: z.array(textoCorto(80)).max(100).default([]),
     maxCaracteresEntrada: z.number().int().min(50).max(8000).default(2000),
+    /**
+     * Qué detecta la compuerta de entrada en `tarjeta` y `otp`. `palabra` (por omisión) bloquea
+     * el vocabulario («tarjeta», «código de verificación»); `dato` bloquea solo el DATO (número
+     * con forma de tarjeta, CVV con dígitos, código numérico aislado) y deja pasar las preguntas
+     * de procedimiento. Origen: batería de SeguroLoTengo del 12 y 19-oct-2026, donde 11 preguntas
+     * legítimas («¿puedo pagar con tarjeta?») fueron rechazadas. Es un enumerado: jamás se
+     * interpola texto libre. NO garantiza que un dato escrito en palabras o con otro formato
+     * («cuatro uno uno uno…») sea detectado; `clave`, `cedula`, `salud`, `pep` e `inyeccion` no cambian.
+     */
+    vocabularioEntrada: z.enum(['palabra', 'dato']).default('palabra'),
     /** Marcas de control `[MARCA]` que el modelo puede emitir. Cualquier otra se borra. */
     marcasPermitidas: z.array(z.string().regex(/^[A-Z_]{3,30}$/)).max(10).default(['DERIVAR']),
   })

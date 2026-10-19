@@ -80,6 +80,30 @@ export function pareceOtp(texto: string): boolean {
 }
 
 /**
+ * DATO DE TARJETA (modo `dato` de la compuerta de entrada). Origen: la batería de
+ * SeguroLoTengo del 12 y 19-oct-2026, donde «¿puedo pagar con tarjeta?» se rechazaba
+ * por la palabra. Acá se mira el dato: 8 o más dígitos en total (un fragmento de PAN o
+ * fecha más número, ignorando espacios, guiones y puntos) o un CVV/CVC con sus dígitos.
+ * Qué NO garantiza: un dato escrito en palabras o con letras intercaladas no se detecta.
+ */
+export function hayDatoDeTarjeta(texto: string): boolean {
+  const n = normalizar(texto);
+  const soloDigitos = n.replace(/[\s.-]/g, '');
+  if (/\d{8,}/.test(soloDigitos)) return true;
+  return /\b(cvv|cvc|codigo de seguridad)\b\D{0,15}\d{3,4}\b/.test(n);
+}
+
+/**
+ * DATO DE CÓDIGO (modo `dato`). La palabra «codigo» acompañada, a 25 caracteres o
+ * menos, de una secuencia aislada de 4 a 8 dígitos: «código 482913», «mi código es
+ * 4829». Qué NO garantiza: un código alfanumérico o separado en grupos no se detecta.
+ */
+export function hayDatoDeCodigo(texto: string): boolean {
+  const n = normalizar(texto);
+  return /\bcodigo\b.{0,25}(?<!\d)\d{4,8}(?!\d)/.test(n);
+}
+
+/**
  * INYECCIÓN DE INSTRUCCIONES. Frases que intentan redefinir al asistente. No
  * bloquean por sí solas el diálogo (mucha gente escribe «ignora lo anterior» sin
  * mala intención): la compuerta las marca y el orquestador decide según la

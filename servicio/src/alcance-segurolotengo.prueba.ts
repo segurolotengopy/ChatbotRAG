@@ -243,3 +243,15 @@ describe('datos de contacto de Interseguros', () => {
     expect(r.texto).toContain(efectiva.mensajes.derivacion);
   });
 });
+
+describe('compuerta de entrada de SeguroLoTengo: por dato, no por palabra', () => {
+  it('usa vocabularioEntrada «dato»', () => {
+    expect(config.seguridad.vocabularioEntrada).toBe('dato');
+  });
+
+  it('sigue bloqueando todas las categorías de datos sensibles', () => {
+    for (const c of ['cedula', 'tarjeta', 'salud', 'pep', 'otp', 'clave', 'inyeccion'] as const) {
+      expect(config.seguridad.bloquearEntrada).toContain(c);
+    }
+  });
+});
