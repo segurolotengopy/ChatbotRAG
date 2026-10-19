@@ -39,7 +39,7 @@ Flujo: trabajo en ramas `feat/*`, `fix/*`, `chore/*`, `hotfix/*` → PR hacia `m
 | Widget web | `pnpm --filter @chatbotrag/canal-web run construir` → `paquetes/canal-web/dist-web/` |
 | Imagen | `docker build -t chatbotrag .` |
 | Seguridad estática local | `./security-local.sh` (informe en `.security-reports/ultimo/resumen.md`) |
-| Desplegar a staging | `HEALTH_PATH=/salud ./deploy.sh staging` (`--dry-run` para ver los comandos). El valor por defecto de `deploy.sh` es el del estándar y no coincide con la ruta de este servicio; en CI no hace falta porque `ci-node-cloudrun.yml` ya usa `/salud`. |
+| Desplegar a staging | `./deploy.sh staging` (`--dry-run` para ver los comandos). El valor por defecto de `HEALTH_PATH` en `deploy.sh` es `/health`, el alias que este servicio sirve junto a `/salud`; en CI se usa `/salud`. |
 | Desplegar a producción | **No lo ejecute.** Lo hace una persona: tag `vX.Y.Z` + aprobación del Environment (A/B) o `workflow_dispatch` del `ci-*` con `confirmar=DESPLEGAR` (B0). Ver `/pase-a-produccion`. |
 | Validar workflows | `actionlint .github/workflows/*.yml` |
 
