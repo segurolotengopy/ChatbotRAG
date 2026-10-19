@@ -164,7 +164,8 @@ export const esquemaSeguridad = z
      * con forma de tarjeta, CVV con dígitos, código numérico aislado) y deja pasar las preguntas
      * de procedimiento. Origen: batería de SeguroLoTengo del 12 y 19-oct-2026, donde 11 preguntas
      * legítimas («¿puedo pagar con tarjeta?») fueron rechazadas. Es un enumerado: jamás se
-     * interpola texto libre. NO garantiza que un dato escrito en palabras o con otro formato
+     * interpola texto libre. Como las demás claves de seguridad, un perfil puede aflojarlo
+     * (o endurecerlo) con su propia sección `seguridad`. NO garantiza que un dato escrito en palabras o con otro formato
      * («cuatro uno uno uno…») sea detectado; `clave`, `cedula`, `salud`, `pep` e `inyeccion` no cambian.
      */
     vocabularioEntrada: z.enum(['palabra', 'dato']).default('palabra'),

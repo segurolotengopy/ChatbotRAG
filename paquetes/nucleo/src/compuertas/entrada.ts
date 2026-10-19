@@ -16,6 +16,8 @@ import {
   normalizar,
   pareceNumeroDeDocumento,
   pareceNumeroDeTarjeta,
+  pareceNumeroDeTarjetaFlexible,
+  PERIFRASIS_CVV,
   pareceOtp,
   PATRON_INYECCION,
   VOCABULARIO_SENSIBLE,
@@ -55,8 +57,9 @@ export function detectarCategorias(texto: string, modo: Seguridad['vocabularioEn
   // Datos por FORMA (lo importante): número de documento, tarjeta, OTP.
   if (pareceNumeroDeDocumento(texto)) detectadas.push('cedula');
   if (modo === 'dato') {
-    if (pareceNumeroDeTarjeta(texto) || (VOCABULARIO_SENSIBLE.tarjeta.test(n) && hayDatoDeTarjeta(texto))) detectadas.push('tarjeta');
-    if (pareceOtp(texto) || (VOCABULARIO_SENSIBLE.otp.test(n) && hayDatoDeCodigo(texto)) || (/\bcodigo\b/.test(n) && hayDatoDeCodigo(texto))) detectadas.push('otp');
+    const vocabularioTarjeta = VOCABULARIO_SENSIBLE.tarjeta.test(n) || PERIFRASIS_CVV.test(n);
+    if (pareceNumeroDeTarjetaFlexible(texto) || (vocabularioTarjeta && hayDatoDeTarjeta(texto))) detectadas.push('tarjeta');
+    if (pareceOtp(texto) || hayDatoDeCodigo(texto)) detectadas.push('otp');
   } else {
     if (pareceNumeroDeTarjeta(texto) || VOCABULARIO_SENSIBLE.tarjeta.test(n)) detectadas.push('tarjeta');
     if (pareceOtp(texto) || VOCABULARIO_SENSIBLE.otp.test(n)) detectadas.push('otp');
