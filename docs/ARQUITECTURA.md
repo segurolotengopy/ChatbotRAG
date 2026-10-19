@@ -64,6 +64,7 @@ Secciones:
   "datos":       { direccion, politicas:{…}, datosQueNoTenemos:[…], instruccionesExtra }, // TEXTO LIBRE rotulado
   "alcance":     { temasPermitidos:[…], temasBloqueados:[…], accionesProhibidas:[…] },
   "conocimiento":{ modo:"rag|solo_prompt", coleccion, topK, umbral, exigirRespaldo:true,
+                   usoDelRespaldo:"citar|parafrasear",
                    fuentes:[{id, titulo, version, visibilidad:"publico|interno", ruta}] },
   "seguridad":   { bloquearEntrada:["cedula","tarjeta","salud","pep","otp","clave"],
                    compuertasSalida:["niega_ia","promesa_indemnizacion","decision_elegibilidad",
