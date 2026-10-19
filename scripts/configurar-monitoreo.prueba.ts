@@ -161,6 +161,15 @@ describe('configurar-monitoreo: aplicar', () => {
     sinSecretos(r.salida);
   });
 
+  it('con --sin-github crea los chequeos y el monitor pero no toca GitHub ni imprime secretos', async () => {
+    const r = await ejecutar(['aplicar', '--sin-github']);
+    expect(r.codigo).toBe(0);
+    expect(r.llamadas.filter((l) => l.startsWith('POST '))).toHaveLength(3);
+    expect(r.gh).toEqual([]);
+    expect(r.salida).toContain('--sin-github');
+    sinSecretos(r.salida);
+  });
+
   it('no duplica el monitor de Better Stack si ya existe', async () => {
     const r = await ejecutar(['aplicar'], { bsExistentes: [{ id: '9', pronounceable_name: 'ChatbotRAG staging /salud', url: 'https://x/salud' }] });
     expect(r.codigo).toBe(0);

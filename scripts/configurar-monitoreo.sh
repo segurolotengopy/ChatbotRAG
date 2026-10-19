@@ -11,7 +11,9 @@
 #
 # Uso:
 #   scripts/configurar-monitoreo.sh plan                     solo LEE: lista lo que hay y qué haría
-#   scripts/configurar-monitoreo.sh aplicar [--borrar-hc NOMBRE]... [--borrar-bs ID]...
+#   scripts/configurar-monitoreo.sh aplicar [--sin-github] [--borrar-hc NOMBRE]... [--borrar-bs ID]...
+#   --sin-github: no carga la variable ni los secretos (para cuando `gh secret set` aún no
+#   está autorizado); volver a correr sin la opción los carga, porque el script es idempotente.
 #
 # Entradas (el propietario las deja en archivos de modo 600; el script se niega si
 # otros usuarios pueden leerlos y nunca los imprime):
@@ -43,14 +45,16 @@ MODO="${1:-}"
 shift || true
 BORRAR_HC=()
 BORRAR_BS=()
+SIN_GITHUB=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --borrar-hc) BORRAR_HC+=("${2:?falta el nombre}"); shift 2 ;;
+    --sin-github) SIN_GITHUB=1; shift ;;
     --borrar-bs) BORRAR_BS+=("${2:?falta el id}"); shift 2 ;;
     *) echo "Argumento desconocido: $1" >&2; exit 2 ;;
   esac
 done
-[[ "$MODO" == "plan" || "$MODO" == "aplicar" ]] || { echo "Uso: $0 plan|aplicar [--borrar-hc NOMBRE] [--borrar-bs ID]" >&2; exit 2; }
+[[ "$MODO" == "plan" || "$MODO" == "aplicar" ]] || { echo "Uso: $0 plan|aplicar [--sin-github] [--borrar-hc NOMBRE] [--borrar-bs ID]" >&2; exit 2; }
 
 HC_BASE="${HC_BASE:-https://healthchecks.io}"
 BS_HOST="${BS_HOST:-https://uptime.betterstack.com}"
@@ -125,6 +129,11 @@ crear_chequeo() { # $1 nombre, $2 período s, $3 gracia s, $4 secreto de GitHub
     '{name:$n, tags:"chatbotrag staging", timeout:$t, grace:$g, channels:"*", unique:["name"]}')"
   exigir "$(api "$TMP/hc.hdr" POST "$HC_BASE/api/v3/checks/" "$json")" '200|201' "crear el chequeo «$1»"
   # El UUID pasa por tubería a `gh secret set`: no se imprime ni se guarda.
+  if [[ $SIN_GITHUB -eq 1 ]]; then
+    rm -f "$TMP/cuerpo"
+    echo "Chequeo «$1» listo; el secreto $4 NO se cargó (--sin-github)."
+    return 0
+  fi
   jq -r '.uuid' "$TMP/cuerpo" | tr -d '\n' | gh secret set "$4" --repo "$REPO" >/dev/null
   rm -f "$TMP/cuerpo"
   echo "Chequeo «$1» listo y secreto $4 cargado en $REPO."
@@ -132,8 +141,12 @@ crear_chequeo() { # $1 nombre, $2 período s, $3 gracia s, $4 secreto de GitHub
 crear_chequeo 'sonda-15min' 900 1800 HEALTHCHECKS_PING_SONDA
 crear_chequeo 'reporte-diario' 86400 14400 HEALTHCHECKS_PING_REPORTE
 
-gh variable set URL_STAGING --repo "$REPO" --body "$URL_STAGING" >/dev/null
-echo "Variable URL_STAGING cargada en $REPO."
+if [[ $SIN_GITHUB -eq 1 ]]; then
+  echo "Variable URL_STAGING NO cargada (--sin-github)."
+else
+  gh variable set URL_STAGING --repo "$REPO" --body "$URL_STAGING" >/dev/null
+  echo "Variable URL_STAGING cargada en $REPO."
+fi
 
 NOMBRE_BS='ChatbotRAG staging /salud'
 if jq -e --arg n "$NOMBRE_BS" '[.data[] | select(.attributes.pronounceable_name == $n)] | length > 0' "$TMP/bs-lista.json" >/dev/null; then
