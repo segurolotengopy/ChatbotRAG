@@ -18,6 +18,7 @@ import type { ConfiguracionEfectiva, Herramienta } from '../configuracion/esquem
 import type { ContextoHerramienta, ResultadoHerramienta } from '../puertos/herramienta.js';
 import type { DefinicionHerramientaLLM } from '../puertos/proveedor-llm.js';
 import { normalizar } from '../compuertas/vocabulario.js';
+import { INDICACION_DERIVAR, INDICACION_SIN_REGLA } from '../prompt/frases.js';
 
 export type FuncionInterna = (argumentos: Record<string, unknown>, ctx: ContextoHerramienta) => Promise<ResultadoHerramienta>;
 
@@ -28,7 +29,7 @@ const derivarHumano: FuncionInterna = async (argumentos, ctx) => {
     resultado: {
       derivado: true,
       contacto: { whatsapp: c.whatsapp ?? null, telefono: c.telefono ?? null, correo: c.correo ?? null, texto: c.texto ?? null },
-      indicacion: 'Informe a la persona que su consulta pasa a una persona del equipo y comparta el contacto disponible.',
+      indicacion: INDICACION_DERIVAR[c.modo],
     },
     derivacion: { motivo },
   };
@@ -64,7 +65,7 @@ const recomendarOpcion: FuncionInterna = async (argumentos, ctx) => {
         faltan,
         indicacion: faltan.length
           ? 'Faltan facetas para recomendar: pregunte por la siguiente de la lista, de a una.'
-          : 'No hay una regla configurada para esta combinación: explique que necesita derivar a una persona.',
+          : INDICACION_SIN_REGLA[ctx.config.operacion.contactoHumano.modo],
       },
     };
   }

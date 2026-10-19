@@ -1,6 +1,6 @@
 # =============================================================================
 # _reusable-security.yml — Fase 2 "seguridad-estatica" (workflow reutilizable)
-# Versión: 2.5 | Fecha: 2026-09-30
+# Versión: 2.8 | Fecha: 2026-10-01
 # -----------------------------------------------------------------------------
 # Propósito: concentrar en un solo lugar todas las comprobaciones de seguridad
 # estática que corren en TODOS los modos (A público, B privado con licencias,
@@ -349,7 +349,7 @@ jobs:
       # outputs tienen límite de tamaño y no admiten archivos). Uno por
       # componente: el nombre lleva su `slug`.
       - name: Publicar archivos de excepciones generados
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: excepciones-generadas-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.excepciones.outputs.slug }}
           path: excepciones-generadas/
@@ -374,6 +374,7 @@ jobs:
   # Config: .github/gitleaks.toml (misma que pre-commit y security-local.sh).
   # Sin `pull-requests: write`: los comentarios en PR están desactivados
   # (GITLEAKS_ENABLE_COMMENTS=false); el resultado va al Step Summary y artifact.
+  # Con `pull-requests: read`: la acción lo necesita para listar los commits del PR.
   # ---------------------------------------------------------------------------
   secretos:
     name: Secretos (Gitleaks)
@@ -382,6 +383,10 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+      # gitleaks-action lista los commits del PR (GET pulls/{n}/commits). En un repositorio
+      # privado, sin este permiso la API responde 403 «Resource not accessible by integration»
+      # y Gitleaks falla. Es solo lectura; los comentarios en el PR siguen desactivados.
+      pull-requests: read
     steps:
       - name: Checkout con historial completo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -390,7 +395,7 @@ jobs:
           fetch-depth: 0
 
       - name: Descargar excepciones generadas (.gitleaksignore)
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: excepciones-generadas-${{ github.run_id }}-${{ github.run_attempt }}-${{ needs.preparar.outputs.slug }}
           path: excepciones-generadas
@@ -403,6 +408,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_CONFIG: .github/gitleaks.toml
+          # Sin esta variable la acción instala SU versión por defecto (8.24.3 en este
+          # SHA), distinta de la de security-local.sh y pre-commit. Medido el 2026-10-01:
+          # la 8.24.3 IGNORA la sección global [[allowlists]] de gitleaks.toml (tests/,
+          # lockfiles, artefactos...), que la 8.28.0 y la 8.30.1 sí aplican; los tres
+          # motores tienen que ser el mismo. Mismo valor que GITLEAKS_VERSION de
+          # 03-scripts/security-local.sh (lo comprueba pruebas-workflows/gitleaks_docs.py).
+          GITLEAKS_VERSION: 8.30.1
           # Obligatoria SOLO cuando el repositorio pertenece a una organización
           # (licencia gratuita en gitleaks.io). En cuentas personales queda vacía.
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
@@ -514,7 +526,7 @@ jobs:
 
       - name: Subir SARIF a Code Scanning (Modo A/B)
         if: inputs.subir_sarif && always()
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4
         with:
           # Sin los exceptuados con nosemgrep (paso anterior).
           sarif_file: semgrep-code-scanning.sarif
@@ -524,7 +536,7 @@ jobs:
       # la constancia de lo exceptuado, que Code Scanning ya no muestra.
       - name: Guardar SARIF completo como artifact (auditoría; única salida en B0)
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: sarif-semgrep-${{ needs.preparar.outputs.slug }}
           path: |
@@ -555,7 +567,7 @@ jobs:
           ref: ${{ env.REF }}
 
       - name: Descargar excepciones generadas (.trivyignore.yaml)
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: excepciones-generadas-${{ github.run_id }}-${{ github.run_attempt }}-${{ needs.preparar.outputs.slug }}
           path: excepciones-generadas
@@ -594,7 +606,7 @@ jobs:
 
       - name: Node.js
         if: needs.preparar.outputs.hay_node == 'true'
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: ${{ vars.NODE_VERSION || '22' }}
 
@@ -787,14 +799,14 @@ jobs:
 
       - name: Subir SARIF a Code Scanning (Modo A/B)
         if: inputs.subir_sarif && always()
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4
         with:
           sarif_file: trivy-fs.sarif
           category: trivy-fs${{ needs.preparar.outputs.sufijo_sarif }}
 
       - name: Guardar SARIF como artifact (Modo B0)
         if: inputs.subir_sarif == false && always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: sarif-trivy-fs-${{ needs.preparar.outputs.slug }}
           path: trivy-fs.sarif
@@ -822,7 +834,7 @@ jobs:
           ref: ${{ env.REF }}
 
       - name: Descargar excepciones generadas (.trivyignore.yaml)
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: excepciones-generadas-${{ github.run_id }}-${{ github.run_attempt }}-${{ needs.preparar.outputs.slug }}
           path: excepciones-generadas
@@ -831,10 +843,12 @@ jobs:
         run: cp excepciones-generadas/trivyignore.yaml .trivyignore.yaml
 
       - name: Checkov
-        uses: bridgecrewio/checkov-action@5798bad4f6dd9c1fb67ae3ec10d42d8fb67037c4 # master @ 2026-09-27 (sin release vigente)
+        uses: bridgecrewio/checkov-action@29be5868bfa968f099ae80169f61f42887494b8f # master @ 2026-09-27 (sin release vigente)
         with:
           directory: ${{ inputs.ruta }}
-          framework: terraform,dockerfile,kubernetes,github_actions
+          # github_actions NO va aquí: lo analiza el job `workflows`, que corre siempre y sobre
+          # `.github/workflows` (este job solo ve `ruta` y solo corre si hay IaC).
+          framework: terraform,dockerfile,kubernetes
           soft_fail: false
           quiet: true
           output_format: cli,sarif
@@ -862,7 +876,7 @@ jobs:
       # razón que nada tiene que ver con la seguridad del código.
       - name: Subir SARIF a Code Scanning (Modo A/B)
         if: inputs.subir_sarif && always() && hashFiles('trivy-config.sarif') != ''
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4
         with:
           sarif_file: trivy-config.sarif
           category: trivy-config${{ needs.preparar.outputs.sufijo_sarif }}
@@ -904,19 +918,117 @@ jobs:
 
       - name: Subir SARIF de Checkov a Code Scanning (Modo A/B)
         if: inputs.subir_sarif && always() && steps.sarif_checkov.outputs.archivo != ''
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4
         with:
           sarif_file: ${{ steps.sarif_checkov.outputs.archivo }}
           category: checkov${{ needs.preparar.outputs.sufijo_sarif }}
 
       - name: Guardar SARIF como artifact (Modo B0)
         if: inputs.subir_sarif == false && always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: sarif-iac-${{ needs.preparar.outputs.slug }}
           path: |
             trivy-config.sarif
             resultados-checkov/results_sarif.sarif
+          retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  # workflows: Checkov (github_actions) sobre `.github/workflows`, SIEMPRE.
+  # Hasta la 2.6 los workflows solo los analizaba el job `iac`, que corre únicamente si
+  # `ruta` tiene IaC y solo mira esa `ruta`: en un repositorio sin Terraform ni Dockerfile,
+  # o en un monorepo con componentes en subdirectorios, Checkov nunca los veía.
+  # Checkov descarta en silencio, sin error ni `skipped`, el workflow que no cumple su
+  # esquema (una expresión en `cancel-in-progress`, el permiso `attestations`). Por eso
+  # se usa el CLI con salida JSON y se comprueba que cada workflow produjo resultados:
+  # el que no, se avisa por su nombre en vez de pasar en verde sin haberse mirado.
+  # Versión fijada: la misma que mide la prueba checkov_workflows.py del estándar.
+  # Las excepciones vigentes del manifiesto (CKV_*) se aplican igual que en `iac`.
+  # ---------------------------------------------------------------------------
+  workflows:
+    name: Workflows (Checkov)
+    needs: preparar
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write # solo se usa si subir_sarif = true
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.REF }}
+          persist-credentials: false
+
+      - name: Instalar Checkov
+        if: hashFiles('.github/workflows/*.yml', '.github/workflows/*.yaml') != ''
+        run: python3 -m pip install --quiet checkov==3.3.13
+
+      - name: Checkov sobre .github/workflows
+        id: checkov
+        env:
+          SKIP: ${{ needs.preparar.outputs.checkov_skip }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          if ! compgen -G '.github/workflows/*.yml' >/dev/null && ! compgen -G '.github/workflows/*.yaml' >/dev/null; then
+            echo "Sin workflows en .github/workflows: nada que analizar."
+            exit 0
+          fi
+          mkdir -p resultados-workflows
+          args=(-d .github/workflows --framework github_actions -o json -o sarif
+                --output-file-path "resultados-workflows/resultados.json,resultados-workflows/resultados.sarif")
+          if [[ -n "${SKIP:-}" ]]; then args+=(--skip-check "$SKIP"); fi
+          rc=0
+          checkov "${args[@]}" >/dev/null 2>resultados-workflows/checkov-stderr.txt || rc=$?
+          # rc 1 = hallazgos; cualquier otro código distinto de 0 = Checkov no pudo correr.
+          if [[ "$rc" -gt 1 ]]; then
+            echo "::error::Checkov terminó con código $rc sin analizar:"
+            sed 's/^/  /' resultados-workflows/checkov-stderr.txt
+            exit "$rc"
+          fi
+          python3 - <<'PY'
+          import glob, json, os, sys
+          try:
+              j = json.load(open("resultados-workflows/resultados.json", encoding="utf-8"))
+          except (OSError, ValueError) as e:
+              print(f"::error::Checkov no dejó un JSON legible ({e}): no se sabe qué workflows se analizaron")
+              sys.exit(3)
+          j = j if isinstance(j, dict) else j[0]
+          res = j.get("results", {})
+          vistos = {os.path.basename(x["file_path"]) for k in ("passed_checks", "failed_checks", "skipped_checks") for x in res.get(k, [])}
+          todos = sorted(os.path.basename(f) for f in glob.glob(".github/workflows/*.y*ml"))
+          omitidos = [f for f in todos if f not in vistos]
+          fallos = res.get("failed_checks", [])
+          resumen = [f"Checkov analizó {len(todos) - len(omitidos)} de {len(todos)} workflows; {len(fallos)} hallazgo(s)."]
+          for x in fallos:
+              print(f"::error file=.github/workflows/{os.path.basename(x['file_path'])}::{x['check_id']} {x.get('check_name', '')} ({x.get('resource', '')})")
+          for f in omitidos:
+              print(f"::warning file=.github/workflows/{f}::Checkov no analizó este workflow: lo descartó sin avisar porque no cumple su esquema (una expresión en concurrency.cancel-in-progress o un permiso que no conoce, como attestations). El job pasa, pero este archivo no se miró.")
+              resumen.append(f"- SIN ANALIZAR: {f}")
+          print("\n".join(resumen))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
+              out.write("### Checkov sobre .github/workflows\n" + "\n".join(resumen) + "\n")
+          PY
+          guardia=$?
+          # La guardia fallando (JSON ilegible) pesa más que un rc 0 de Checkov: no se sabe qué se miró.
+          if [[ "$guardia" -ne 0 ]]; then exit "$guardia"; fi
+          exit "$rc"
+
+      - name: Subir SARIF de los workflows a Code Scanning (Modo A/B)
+        if: inputs.subir_sarif && always() && hashFiles('resultados-workflows/resultados.sarif') != ''
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4
+        with:
+          sarif_file: resultados-workflows/resultados.sarif
+          category: checkov-workflows${{ needs.preparar.outputs.sufijo_sarif }}
+
+      - name: Guardar SARIF como artifact (Modo B0)
+        if: inputs.subir_sarif == false && always() && hashFiles('resultados-workflows/resultados.sarif') != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: sarif-workflows-${{ needs.preparar.outputs.slug }}
+          path: resultados-workflows/resultados.sarif
           retention-days: 30
 
   # ---------------------------------------------------------------------------
@@ -944,7 +1056,7 @@ jobs:
         # docker...). El SHA fija el repositorio COMPLETO, por lo que el mismo
         # pin sirve para snyk/actions/setup o snyk/actions/python si se cambia
         # la subruta; el comentario de versión aplica a todo el repo.
-        uses: snyk/actions/node@b075801f26076be9bb50521154cafab73f44da0c # master (2026-09-29)
+        uses: snyk/actions/node@11b673cfb4b0dc0d860a1323caa199d54950dcce # master (2026-09-29)
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
@@ -959,7 +1071,7 @@ jobs:
   # ---------------------------------------------------------------------------
   resumen:
     name: Resumen de seguridad
-    needs: [preparar, secretos, sast, sca, iac, snyk]
+    needs: [preparar, secretos, sast, sca, iac, workflows, snyk]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -971,6 +1083,7 @@ jobs:
           R_SAST: ${{ needs.sast.result }}
           R_SCA: ${{ needs.sca.result }}
           R_IAC: ${{ needs.iac.result }}
+          R_WORKFLOWS: ${{ needs.workflows.result }}
           R_SNYK: ${{ needs.snyk.result }}
           STACK: ${{ needs.preparar.outputs.stack }}
           BLOQUEAR_EN: ${{ inputs.bloquear_en }}
@@ -985,12 +1098,13 @@ jobs:
             echo "| SAST | Semgrep CE | $R_SAST |"
             echo "| SCA | Trivy fs + npm audit / pnpm audit / pip-audit | $R_SCA |"
             echo "| IaC | Checkov + Trivy config | $R_IAC |"
+            echo "| Workflows | Checkov (github_actions) | $R_WORKFLOWS |"
             echo "| SCA (opcional) | Snyk | $R_SNYK |"
             echo ""
             echo "Excepciones vigentes aplicadas desde .devsecops.yml: $HAY_EXCEPCIONES (ver job 'Detectar stack y excepciones')."
           } >> "$GITHUB_STEP_SUMMARY"
           # 'skipped' es aceptable (job no aplicable); 'failure'/'cancelled' bloquea.
-          for r in "$R_PREPARAR" "$R_SECRETOS" "$R_SAST" "$R_SCA" "$R_IAC" "$R_SNYK"; do
+          for r in "$R_PREPARAR" "$R_SECRETOS" "$R_SAST" "$R_SCA" "$R_IAC" "$R_WORKFLOWS" "$R_SNYK"; do
             if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
               echo "::error::Al menos un control de seguridad falló. Revise los jobs anteriores."
               exit 1

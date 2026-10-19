@@ -1,16 +1,25 @@
 # =============================================================================
 # gitleaks.toml — Configuración de Gitleaks para _reusable-security.yml,
 #                 pre-commit y security-local.sh
-# Versión: 2.1 | Fecha: 2026-10-01 | Destino: .github/gitleaks.toml
+# Versión: 2.2 | Fecha: 2026-10-01 | Destino: .github/gitleaks.toml
 # -----------------------------------------------------------------------------
 # Extiende la configuración por defecto de Gitleaks (≈170 reglas: AWS, GCP,
 # GitHub, Slack, claves privadas, JWT, etc.) y añade:
 #   - Reglas propias para credenciales de OCI y GCP que el default no cubre
 #     bien (config de OCI con fingerprint + OCID, JSON de service account).
-#   - Allowlist de rutas de pruebas/fixtures/documentación (con cuidado:
+#   - Allowlist de rutas de pruebas/fixtures/artefactos (con cuidado:
 #     un secreto real en un fixture sigue siendo un secreto; la allowlist solo
 #     evita falsos positivos de datos claramente sintéticos).
-# Sintaxis de Gitleaks >= 8.21 ([[allowlists]]). Verificar con:
+#   - La documentación (docs/**/*.md) SÍ se analiza. Hasta la 2.1 estaba excluida
+#     entera y era un punto ciego: en proyectos cuyos informes operativos viven en
+#     docs/, una credencial pegada ahí no la veía ninguna regla (medido el 2026-10-01:
+#     una clave con formato AWS en docs/*.md pasaba limpia). Solo la regla genérica
+#     `generic-api-key` queda eximida en .md de docs/ (ver el final del archivo),
+#     porque ahí marca identificadores y tokens de ejemplo de las respuestas de API.
+# Sintaxis de [[allowlists]] (global y por regla). La versión de Gitleaks está fijada y es la
+# misma en CI (_reusable-security.yml), security-local.sh y pre-commit: la 8.24.3, que era la
+# de la acción en CI, ignora la sección global [[allowlists]] (medido); la 8.28.0 y la 8.30.1
+# la aplican. Verificar con:
 #   gitleaks detect --config .github/gitleaks.toml --redact -v
 # =============================================================================
 title = "Estándar DevSecOps — Gitleaks"
@@ -80,11 +89,10 @@ tags = ["firebase", "token"]
 # Allowlist global (aplica a todas las reglas)
 # -----------------------------------------------------------------------------
 [[allowlists]]
-description = "Rutas de pruebas, fixtures, documentación y artefactos generados"
+description = "Rutas de pruebas, fixtures y artefactos generados"
 paths = [
   '''(^|/)(test|tests|__tests__|spec|fixtures|__fixtures__|mocks|__mocks__)/''',
   '''\.(test|spec)\.(js|jsx|ts|tsx|py)$''',
-  '''(^|/)docs?/.*\.md$''',
   '''(^|/)package-lock\.json$''',
   '''(^|/)pnpm-lock\.yaml$''',
   '''(^|/)yarn\.lock$''',
@@ -117,3 +125,19 @@ regexes = [
   '''wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY''',
 ]
 stopwords = ["ejemplo", "example", "placeholder", "sample"]
+
+# -----------------------------------------------------------------------------
+# Documentación: se analiza con todas las reglas de proveedor (AWS, GitHub, claves
+# privadas, JWT, las propias de OCI y GCP…). Solo se exime `generic-api-key`, la regla
+# por entropía y nombre de variable, porque en un .md de docs/ marca los ids y tokens de
+# EJEMPLO de las respuestas de API (caso real: un id de muestra en el contrato de
+# ManejoQRSimple, 2026-10-01). En código y en cualquier otra ruta sigue activa.
+# Qué se pierde: un token pegado en un .md sin formato de proveedor reconocible. Para
+# repositorios con informes operativos en docs/, revisarlos al publicarlos o quitar esta
+# exención en su copia.
+# -----------------------------------------------------------------------------
+[[rules]]
+id = "generic-api-key"
+[[rules.allowlists]]
+description = "Ids y tokens de ejemplo en la documentación"
+paths = ['''(^|/)docs?/.*\.md$''']
