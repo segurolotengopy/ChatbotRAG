@@ -17,9 +17,9 @@
  * Qué NO garantiza: que el modelo respete el alcance ante un mensaje adverso.
  * Eso lo miden las baterías de casos fuera de alcance, no esta prueba.
  */
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { aplicarCompuertasSalida, cargarConfiguracionDesdeJson, resolverConfiguracion } from '@chatbotrag/nucleo';
+import { aplicarCompuertasSalida, cargarConfiguracionDesdeJson, normalizar, resolverConfiguracion } from '@chatbotrag/nucleo';
 
 const RUTA = new URL('../../configuraciones/segurolotengo.json', import.meta.url);
 const config = cargarConfiguracionDesdeJson(readFileSync(RUTA, 'utf8'));
@@ -200,19 +200,46 @@ describe('datos de contacto de Interseguros', () => {
     for (const h of herramientas) expect(h.descripcion, h.nombre).not.toMatch(/asesor|deriva a|transfiere a/i);
   });
 
-  it('el modelo no puede revelar el motor: «Gemini», «Vertex» y «Google» reemplazan la respuesta', () => {
+  it('el modelo no puede revelar el motor: la respuesta se reemplaza y trae el canal oficial', () => {
     // Batería del 12-oct-2026: INY-010 e INY-021 respondieron «soy Gemini» y «modelo
-    // entrenado por Google». La compuerta de salida los frena aunque el modelo ceda.
+    // entrenado por Google». Se frenan frases que REVELAN el motor, no la palabra
+    // «Google» suelta: «Google Chrome», «Google Maps» o «Google Play» son respuestas
+    // legítimas de orientación (cámara bloqueada en el navegador, la app, el mapa).
     const efectiva = resolverConfiguracion(config, 'VIDA_ONCOLOGICO');
-    for (const frase of ['Soy Gemini, un modelo de lenguaje.', 'Fui entrenado por Google.', 'Corro sobre Vertex AI.']) {
+    for (const frase of ['Soy Gemini, un modelo de lenguaje.', 'Fui entrenado por Google.', 'Soy un modelo de Google.', 'Corro sobre Vertex AI.']) {
       const r = aplicarCompuertasSalida(frase, { config: efectiva });
       expect(r.reemplazada, frase).toBe(true);
-      expect(r.texto).toBe(efectiva.mensajes.fueraDeAlcance);
+      expect(r.texto, frase).toContain(efectiva.mensajes.fueraDeAlcance);
+      expect(r.texto, frase).toContain(efectiva.mensajes.derivacion);
+    }
+    for (const frase of ['Pruebe con otro navegador, como Google Chrome o Firefox.', 'Puede buscarla en Google Maps.', 'Descargue la app desde Google Play.']) {
+      expect(aplicarCompuertasSalida(frase, { config: efectiva }).reemplazada, frase).toBe(false);
     }
   });
 
-  it('el corpus y los mensajes fijos no nombran el motor, para no frenar respuestas legítimas', () => {
-    const textos = JSON.stringify(config.mensajes) + JSON.stringify(config.datos);
-    expect(textos).not.toMatch(/gemini|vertex|google/i);
+  it('ningún texto del corpus ni de la configuración contiene un término confidencial', () => {
+    // Un documento o un perfil futuro que nombre el motor quedaría bloqueado sin aviso.
+    const resto = { ...config, modelo: undefined, seguridad: undefined };
+    const textos = [JSON.stringify(resto)];
+    const carpeta = new URL('../../configuraciones/corpus/segurolotengo/', import.meta.url);
+    const recorrer = (dir: URL): void => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        // `interno/` no se indexa ni se muestra: puede nombrar los términos que se vedan.
+        if (e.isDirectory()) { if (e.name !== 'interno') recorrer(new URL(`${e.name}/`, dir)); }
+        else if (e.name.endsWith('.md')) textos.push(readFileSync(new URL(e.name, dir), 'utf8'));
+      }
+    };
+    recorrer(carpeta);
+    const todo = normalizar(textos.join('\n'));
+    for (const t of config.seguridad.terminosConfidenciales) expect(todo, t).not.toContain(normalizar(t));
+  });
+
+  it('promete_traspaso está activa: quita la oración que ofrece un asesor y agrega el canal', () => {
+    const efectiva = resolverConfiguracion(config, 'VIDA_ONCOLOGICO');
+    const r = aplicarCompuertasSalida('Eso lo explica el paso 3. Le derivo con un asesor humano para que lo ayude.', { config: efectiva });
+    expect(r.avisos).toContain('promete_traspaso');
+    expect(r.texto).toContain('Eso lo explica el paso 3.');
+    expect(r.texto).not.toMatch(/asesor/i);
+    expect(r.texto).toContain(efectiva.mensajes.derivacion);
   });
 });

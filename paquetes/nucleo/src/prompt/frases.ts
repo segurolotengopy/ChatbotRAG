@@ -57,14 +57,29 @@ export const FRASE_USO_RESPALDO: Record<'citar' | 'parafrasear', string | null> 
  * un asesor humano» —17 de ellos sin dar el canal— en un canal donde no existe tal
  * traspaso: una promesa que nadie puede cumplir.
  *
- * Lo que NO garantiza: es una instrucción al modelo. La derivación automática que
- * añade el servicio (`mensajes.derivacion`) sí lleva siempre el canal, pero un
- * modelo puede igual decir «un asesor lo contactará» en el cuerpo de la respuesta.
+ * Lo que NO garantiza: es una instrucción al modelo. El control duro es la compuerta
+ * de salida `promete_traspaso`, que quita la frase prometida y agrega el canal;
+ * incluso ella solo detecta las formas que su expresión conoce.
  */
 export const FRASE_CONTACTO_HUMANO: Record<'traspaso' | 'canal', string | null> = {
   traspaso: null,
   canal:
-    'CONTACTO CON UNA PERSONA: desde este chat NO existe ningún traspaso a una persona. Nunca diga ni insinúe que va a derivar, transferir, pasar o comunicar la conversación con un asesor, ni que alguien se pondrá en contacto con la persona. Cuando corresponda hablar con una persona, indique el canal de «Contacto humano» de DATOS (WhatsApp, correo u oficinas) para que sea la persona quien escriba o acuda por su cuenta.',
+    'CONTACTO CON UNA PERSONA: desde este chat NO existe ningún traspaso a una persona. Nunca diga ni insinúe que va a derivar, transferir, pasar o comunicar la conversación con un asesor, ni que alguien se pondrá en contacto con la persona. Cuando corresponda hablar con una persona, indique los datos de «Contacto humano» de DATOS tal como figuran, para que sea la persona quien escriba o acuda por su cuenta.',
+};
+
+/**
+ * Lo que la herramienta `derivar_humano` le ordena al modelo en su resultado. Debe
+ * coincidir con el modo de contacto: en «canal» no puede mandar a decir que la
+ * conversación pasa a una persona, que es justo lo que la frase de arriba prohíbe.
+ */
+export const INDICACION_DERIVAR: Record<'traspaso' | 'canal', string> = {
+  traspaso: 'Informe a la persona que su consulta pasa a una persona del equipo y comparta el contacto disponible.',
+  canal: 'Comparta el contacto disponible para que la persona escriba o acuda por su cuenta. No diga que la conversación pasa a una persona ni que alguien la va a contactar.',
+};
+
+export const INDICACION_SIN_REGLA: Record<'traspaso' | 'canal', string> = {
+  traspaso: 'No hay una regla configurada para esta combinación: explique que necesita derivar a una persona.',
+  canal: 'No hay una regla configurada para esta combinación: explique que no puede orientar sobre eso y comparta el contacto disponible, sin decir que la derivará.',
 };
 
 export function instruccionesDeVoz(voz: Voz): string[] {

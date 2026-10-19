@@ -54,6 +54,7 @@ export const COMPUERTAS_SALIDA = [
   'dato_confidencial',
   'marca_no_declarada',
   'afirma_cobro_real',
+  'promete_traspaso',
 ] as const;
 
 export const esquemaVoz = z
@@ -316,6 +317,10 @@ export const esquemaConfiguracionAgente = z
     perfilPorDefecto: z.string().regex(ID_PERFIL).optional(),
   })
   .strict()
+  .refine((c) => c.operacion.contactoHumano.modo !== 'canal' || Boolean(c.operacion.contactoHumano.whatsapp ?? c.operacion.contactoHumano.correo ?? c.operacion.contactoHumano.telefono), {
+    message: 'operacion.contactoHumano.modo «canal» exige al menos una vía de contacto (whatsapp, correo o telefono)',
+    path: ['operacion', 'contactoHumano'],
+  })
   .refine((c) => !c.perfilPorDefecto || c.perfilPorDefecto in c.perfiles, {
     message: 'perfilPorDefecto debe existir en perfiles',
     path: ['perfilPorDefecto'],

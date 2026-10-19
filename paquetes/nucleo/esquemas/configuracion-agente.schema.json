@@ -404,7 +404,8 @@
               "decision_elegibilidad",
               "dato_confidencial",
               "marca_no_declarada",
-              "afirma_cobro_real"
+              "afirma_cobro_real",
+              "promete_traspaso"
             ]
           }
         },
@@ -1059,7 +1060,8 @@
                     "decision_elegibilidad",
                     "dato_confidencial",
                     "marca_no_declarada",
-                    "afirma_cobro_real"
+                    "afirma_cobro_real",
+                    "promete_traspaso"
                   ]
                 }
               },

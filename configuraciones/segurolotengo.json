@@ -75,8 +75,8 @@
   },
   "seguridad": {
     "bloquearEntrada": ["cedula", "tarjeta", "salud", "pep", "otp", "clave", "inyeccion"],
-    "compuertasSalida": ["niega_ia", "promesa_indemnizacion", "decision_elegibilidad", "dato_confidencial", "marca_no_declarada"],
-    "terminosConfidenciales": ["margen interno", "comisión de intermediación", "meta comercial", "Gemini", "Vertex", "Google"],
+    "compuertasSalida": ["niega_ia", "promesa_indemnizacion", "decision_elegibilidad", "dato_confidencial", "marca_no_declarada", "promete_traspaso"],
+    "terminosConfidenciales": ["margen interno", "comisión de intermediación", "meta comercial", "Gemini", "Vertex", "entrenado por Google", "modelo de Google", "creado por Google", "desarrollado por Google", "Google AI"],
     "maxCaracteresEntrada": 1500,
     "marcasPermitidas": ["DERIVAR"]
   },
