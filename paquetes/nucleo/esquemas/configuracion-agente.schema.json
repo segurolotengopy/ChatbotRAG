@@ -173,6 +173,14 @@
             "texto": {
               "type": "string",
               "maxLength": 300
+            },
+            "modo": {
+              "default": "traspaso",
+              "type": "string",
+              "enum": [
+                "traspaso",
+                "canal"
+              ]
             }
           },
           "additionalProperties": false
@@ -396,7 +404,8 @@
               "decision_elegibilidad",
               "dato_confidencial",
               "marca_no_declarada",
-              "afirma_cobro_real"
+              "afirma_cobro_real",
+              "promete_traspaso"
             ]
           }
         },
@@ -851,6 +860,13 @@
                   "texto": {
                     "type": "string",
                     "maxLength": 300
+                  },
+                  "modo": {
+                    "type": "string",
+                    "enum": [
+                      "traspaso",
+                      "canal"
+                    ]
                   }
                 },
                 "additionalProperties": false
@@ -1044,7 +1060,8 @@
                     "decision_elegibilidad",
                     "dato_confidencial",
                     "marca_no_declarada",
-                    "afirma_cobro_real"
+                    "afirma_cobro_real",
+                    "promete_traspaso"
                   ]
                 }
               },

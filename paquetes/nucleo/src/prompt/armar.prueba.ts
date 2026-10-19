@@ -68,3 +68,30 @@ describe('uso del respaldo y perfiles', () => {
     expect(promptDePerfil('citar', { conocimiento: { usoDelRespaldo: 'parafrasear' } })).toContain('USO DEL RESPALDO');
   });
 });
+
+describe('modo de contacto humano', () => {
+  function promptConModo(modo?: 'traspaso' | 'canal'): string {
+    const config = validarConfiguracion({
+      ...CONFIG_PRUEBA,
+      operacion: { ...CONFIG_PRUEBA.operacion, contactoHumano: { ...CONFIG_PRUEBA.operacion?.contactoHumano, ...(modo ? { modo } : {}) } },
+    });
+    return armarPrompt({ config, ahora: new Date('2026-10-18T14:00:00Z'), fragmentos: [fragmento], orientacion: { facetas: {} }, canal: 'web' });
+  }
+
+  it('por omisión no agrega nada: el prompt de siempre', () => {
+    expect(promptConModo()).not.toContain('CONTACTO CON UNA PERSONA');
+    expect(promptConModo('traspaso')).toBe(promptConModo());
+  });
+
+  it('«canal» prohíbe prometer traspaso y manda indicar el canal, dentro de ALCANCE y fuera de los datos', () => {
+    const p = promptConModo('canal');
+    const i = p.indexOf('CONTACTO CON UNA PERSONA');
+    expect(i).toBeGreaterThan(p.indexOf('ALCANCE'));
+    expect(i).toBeLessThan(p.indexOf('INICIO DE DATOS'));
+    expect(p).toContain('NO existe ningún traspaso');
+  });
+
+  it('rechaza valores fuera del enumerado', () => {
+    expect(() => promptConModo('transferir' as never)).toThrow();
+  });
+});
