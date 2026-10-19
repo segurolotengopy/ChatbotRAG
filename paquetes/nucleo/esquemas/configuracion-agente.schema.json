@@ -173,6 +173,14 @@
             "texto": {
               "type": "string",
               "maxLength": 300
+            },
+            "modo": {
+              "default": "traspaso",
+              "type": "string",
+              "enum": [
+                "traspaso",
+                "canal"
+              ]
             }
           },
           "additionalProperties": false
@@ -851,6 +859,13 @@
                   "texto": {
                     "type": "string",
                     "maxLength": 300
+                  },
+                  "modo": {
+                    "type": "string",
+                    "enum": [
+                      "traspaso",
+                      "canal"
+                    ]
                   }
                 },
                 "additionalProperties": false

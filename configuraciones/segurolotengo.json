@@ -17,7 +17,8 @@
     "contactoHumano": {
       "whatsapp": "595991478468",
       "correo": "segurolotengo@interseguros360.com",
-      "texto": "Una persona de Interseguros S.A. atiende en horario hábil. Puede escribir al WhatsApp de atención, +595 991 478 468, o acercarse a sus oficinas de Avda. Aviadores del Chaco 2351, Campos Cervera, Edificio Plaza Center 7.º piso, Asunción."
+      "texto": "Una persona de Interseguros S.A. atiende en horario hábil. Puede escribir al WhatsApp de atención, +595 991 478 468, o acercarse a sus oficinas de Avda. Aviadores del Chaco 2351, Campos Cervera, Edificio Plaza Center 7.º piso, Asunción.",
+      "modo": "canal"
     }
   },
   "datos": {
@@ -75,12 +76,12 @@
   "seguridad": {
     "bloquearEntrada": ["cedula", "tarjeta", "salud", "pep", "otp", "clave", "inyeccion"],
     "compuertasSalida": ["niega_ia", "promesa_indemnizacion", "decision_elegibilidad", "dato_confidencial", "marca_no_declarada"],
-    "terminosConfidenciales": ["margen interno", "comisión de intermediación", "meta comercial"],
+    "terminosConfidenciales": ["margen interno", "comisión de intermediación", "meta comercial", "Gemini", "Vertex", "Google"],
     "maxCaracteresEntrada": 1500,
     "marcasPermitidas": ["DERIVAR"]
   },
   "herramientas": [
-    { "nombre": "derivar_humano", "descripcion": "Deriva la conversación a un asesor humano de Interseguros cuando la persona lo pide, cuando la consulta excede el alcance o cuando insiste tres veces en algo que no se puede resolver por este medio.", "parametros": { "motivo": { "tipo": "string", "descripcion": "Motivo breve de la derivación, sin datos personales." } } },
+    { "nombre": "derivar_humano", "descripcion": "Indica a la persona el canal oficial de contacto de Interseguros (WhatsApp, correo u oficinas) cuando lo pide, cuando la consulta excede el alcance o cuando insiste tres veces en algo que no se puede resolver por este medio. No transfiere la conversación: no existe traspaso a una persona.", "parametros": { "motivo": { "tipo": "string", "descripcion": "Motivo breve de la derivación, sin datos personales." } } },
     { "nombre": "consultar_horarios", "descripcion": "Devuelve el horario de atención humana." }
   ],
   "orientacion": { "facetas": [], "reglas": [] },
@@ -136,7 +137,7 @@
         ]
       },
       "herramientas": [
-        { "nombre": "derivar_humano", "descripcion": "Deriva la conversación a un asesor humano de Interseguros cuando la persona lo pide, cuando la consulta excede el alcance o cuando insiste tres veces en algo que no se puede resolver por este medio.", "parametros": { "motivo": { "tipo": "string", "descripcion": "Motivo breve de la derivación, sin datos personales." } } },
+        { "nombre": "derivar_humano", "descripcion": "Indica a la persona el canal oficial de contacto de Interseguros (WhatsApp, correo u oficinas) cuando lo pide, cuando la consulta excede el alcance o cuando insiste tres veces en algo que no se puede resolver por este medio. No transfiere la conversación: no existe traspaso a una persona.", "parametros": { "motivo": { "tipo": "string", "descripcion": "Motivo breve de la derivación, sin datos personales." } } },
         { "nombre": "consultar_horarios", "descripcion": "Devuelve el horario de atención humana." }
       ],
       "orientacion": {

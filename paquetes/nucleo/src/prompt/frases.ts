@@ -51,6 +51,22 @@ export const FRASE_USO_RESPALDO: Record<'citar' | 'parafrasear', string | null> 
     'USO DEL RESPALDO: explique con sus propias palabras, en tono explicativo, lo que dicen los documentos. Si un texto está redactado como orden o pedido dirigido a quien usa una pantalla (por ejemplo «ingrese…», «suba…», «escriba…»), no lo reproduzca ni lo presente como pedido suyo: cuente qué se solicita en ese paso y, solo si el documento lo dice, para qué (por ejemplo, «en este paso el sitio solicita…»).',
 };
 
+/**
+ * Qué puede prometer el asistente sobre el contacto con una persona. `canal` nace de
+ * la batería del 12-oct-2026: en 40 de 368 casos el asistente ofreció «derivarle con
+ * un asesor humano» —17 de ellos sin dar el canal— en un canal donde no existe tal
+ * traspaso: una promesa que nadie puede cumplir.
+ *
+ * Lo que NO garantiza: es una instrucción al modelo. La derivación automática que
+ * añade el servicio (`mensajes.derivacion`) sí lleva siempre el canal, pero un
+ * modelo puede igual decir «un asesor lo contactará» en el cuerpo de la respuesta.
+ */
+export const FRASE_CONTACTO_HUMANO: Record<'traspaso' | 'canal', string | null> = {
+  traspaso: null,
+  canal:
+    'CONTACTO CON UNA PERSONA: desde este chat NO existe ningún traspaso a una persona. Nunca diga ni insinúe que va a derivar, transferir, pasar o comunicar la conversación con un asesor, ni que alguien se pondrá en contacto con la persona. Cuando corresponda hablar con una persona, indique el canal de «Contacto humano» de DATOS (WhatsApp, correo u oficinas) para que sea la persona quien escriba o acuda por su cuenta.',
+};
+
 export function instruccionesDeVoz(voz: Voz): string[] {
   return [FRASE_TRATAMIENTO[voz.tratamiento], FRASE_EMOJIS[voz.emojis], FRASE_LONGITUD[voz.longitud], FRASE_REGISTRO[voz.registro]];
 }

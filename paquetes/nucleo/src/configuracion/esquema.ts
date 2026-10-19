@@ -76,6 +76,14 @@ export const esquemaContactoHumano = z
     telefono: z.string().regex(/^[0-9+ ()-]{6,24}$/).optional(),
     /** Texto que el asistente muestra al derivar. Se rotula como DATO. */
     texto: textoOpcional(300),
+    /**
+     * Qué puede prometer el asistente. `traspaso` no agrega ninguna instrucción (el
+     * comportamiento de siempre). `canal` es para un canal donde NO existe traspaso a
+     * una persona: selecciona una frase fija que prohíbe ofrecer «derivar» o «pasar»
+     * la conversación y manda indicar siempre el canal de contacto (ver
+     * `FRASE_CONTACTO_HUMANO`). Es un enumerado: nunca se interpola texto libre.
+     */
+    modo: z.enum(['traspaso', 'canal']).default('traspaso'),
   })
   .strict();
 

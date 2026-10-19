@@ -19,7 +19,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { cargarConfiguracionDesdeJson } from '@chatbotrag/nucleo';
+import { aplicarCompuertasSalida, cargarConfiguracionDesdeJson, resolverConfiguracion } from '@chatbotrag/nucleo';
 
 const RUTA = new URL('../../configuraciones/segurolotengo.json', import.meta.url);
 const config = cargarConfiguracionDesdeJson(readFileSync(RUTA, 'utf8'));
@@ -189,5 +189,30 @@ describe('datos de contacto de Interseguros', () => {
     // herramienta `consultar_horarios` lo repetiría tal cual. Cuando se confirme, se
     // carga en `operacion.horarios` y se actualiza esta prueba.
     expect(Object.keys(config.operacion.horarios)).toEqual([]);
+  });
+
+  it('no existe traspaso a una persona: el modo es «canal» y ninguna herramienta lo promete', () => {
+    // Batería del 12-oct-2026: en 40 de 368 casos el asistente ofreció «derivarle con un
+    // asesor humano» —17 sin dar el canal— y ese traspaso no existe. Una herramienta
+    // descrita como «deriva a un asesor» se lo sugiere al modelo.
+    expect(config.operacion.contactoHumano.modo).toBe('canal');
+    const herramientas = [config.herramientas, ...perfiles.map(([, p]) => p.herramientas ?? [])].flat();
+    for (const h of herramientas) expect(h.descripcion, h.nombre).not.toMatch(/asesor|deriva a|transfiere a/i);
+  });
+
+  it('el modelo no puede revelar el motor: «Gemini», «Vertex» y «Google» reemplazan la respuesta', () => {
+    // Batería del 12-oct-2026: INY-010 e INY-021 respondieron «soy Gemini» y «modelo
+    // entrenado por Google». La compuerta de salida los frena aunque el modelo ceda.
+    const efectiva = resolverConfiguracion(config, 'VIDA_ONCOLOGICO');
+    for (const frase of ['Soy Gemini, un modelo de lenguaje.', 'Fui entrenado por Google.', 'Corro sobre Vertex AI.']) {
+      const r = aplicarCompuertasSalida(frase, { config: efectiva });
+      expect(r.reemplazada, frase).toBe(true);
+      expect(r.texto).toBe(efectiva.mensajes.fueraDeAlcance);
+    }
+  });
+
+  it('el corpus y los mensajes fijos no nombran el motor, para no frenar respuestas legítimas', () => {
+    const textos = JSON.stringify(config.mensajes) + JSON.stringify(config.datos);
+    expect(textos).not.toMatch(/gemini|vertex|google/i);
   });
 });
