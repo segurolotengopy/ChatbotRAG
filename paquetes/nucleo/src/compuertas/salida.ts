@@ -73,7 +73,38 @@ const datoConfidencial: FuncionCompuerta = (texto, ctx) => {
   const terminos = ctx.config.seguridad.terminosConfidenciales.map(normalizar).filter((t) => t.length >= 3);
   const filtrado = terminos.find((t) => n.includes(t));
   if (!filtrado) return sinCambio(texto);
-  return { texto: ctx.config.mensajes.fueraDeAlcance, aviso: 'dato_confidencial', reemplazo: true };
+  return { texto: `${ctx.config.mensajes.fueraDeAlcance} ${ctx.config.mensajes.derivacion}`.trim(), aviso: 'dato_confidencial', reemplazo: true };
+};
+
+/**
+ * Promesa de traspaso a una persona. En un canal donde no existe tal traspaso
+ * (`contactoHumano.modo = canal`) quita la oración que lo promete y agrega el canal
+ * oficial. La batería del 12-oct-2026 midió 40 de 368 respuestas con «derivarle con
+ * un asesor humano», 17 sin dar el canal.
+ *
+ * Qué NO garantiza: detecta solo las formas que esta expresión conoce («le derivo»,
+ * «derivarle con un asesor», «un asesor se pondrá en contacto», «pasar la
+ * conversación»); otra redacción pasa. Corrige la oración, no reemplaza la respuesta,
+ * para no perder la parte útil.
+ */
+const PROMETE_TRASPASO = new RegExp(
+  [
+    String.raw`\b(le|lo|la)\s+(derivo|derivamos|derivare|derivaremos|transfiero|transferimos|transferire|comunico|comunicare|pasare|pasamos\s+con|paso\s+con|pongo\s+en\s+contacto|pondre\s+en\s+contacto)\b`,
+    String.raw`\bderivar(le|lo|la|se)?\s+(con|a|hacia)\s+(un|una|el|la|nuestro|nuestra)\s+(asesor|persona|agente|ejecutiv|equipo|representante|especialista)`,
+    String.raw`\b(un|una|el|la)\s+(asesor\w*|agente|ejecutiv\w*|representante|especialista|persona\s+del\s+equipo)\s+(\S+\s+){0,3}(se\s+pondra\s+en\s+contacto|(lo|le|la)\s+(contactara|llamara|escribira)|se\s+comunicara)`,
+    String.raw`\b(pasar|transferir|derivar)(le|lo|la)?\s+(la\s+|su\s+)?(conversacion|consulta|chat)\b`,
+    String.raw`\b(su|la)\s+(consulta|conversacion)\s+(pasa|sera\s+(derivada|transferida|pasada))\s+a\b`,
+  ].join('|'),
+);
+
+const prometeTraspaso: FuncionCompuerta = (texto, ctx) => {
+  if (ctx.config.operacion.contactoHumano.modo !== 'canal') return sinCambio(texto);
+  const oraciones = texto.split(/(?<=[.!?])\s+|\n+/);
+  const buenas = oraciones.filter((o) => !PROMETE_TRASPASO.test(normalizar(o)));
+  if (buenas.length === oraciones.length) return sinCambio(texto);
+  const derivacion = ctx.config.mensajes.derivacion;
+  const base = buenas.join(' ').trim();
+  return { texto: base.includes(derivacion) ? base : `${base} ${derivacion}`.trim(), aviso: 'promete_traspaso', reemplazo: false };
 };
 
 /** Marcas `[X]` que el modelo inventa se borran; las declaradas se extraen aparte. */
@@ -121,6 +152,7 @@ export const COMPUERTAS: Record<CompuertaSalida, FuncionCompuerta> = {
   dato_confidencial: datoConfidencial,
   marca_no_declarada: marcaNoDeclarada,
   afirma_cobro_real: afirmaCobroReal,
+  promete_traspaso: prometeTraspaso,
 };
 
 /** Orden fijo: primero las que reemplazan (más graves), luego las que corrigen. */
@@ -128,6 +160,7 @@ const ORDEN: CompuertaSalida[] = [
   'dato_confidencial',
   'promesa_indemnizacion',
   'decision_elegibilidad',
+  'promete_traspaso',
   'niega_ia',
   'afirma_cobro_real',
   'marca_no_declarada',

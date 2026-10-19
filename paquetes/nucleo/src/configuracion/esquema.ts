@@ -54,6 +54,7 @@ export const COMPUERTAS_SALIDA = [
   'dato_confidencial',
   'marca_no_declarada',
   'afirma_cobro_real',
+  'promete_traspaso',
 ] as const;
 
 export const esquemaVoz = z
@@ -76,6 +77,14 @@ export const esquemaContactoHumano = z
     telefono: z.string().regex(/^[0-9+ ()-]{6,24}$/).optional(),
     /** Texto que el asistente muestra al derivar. Se rotula como DATO. */
     texto: textoOpcional(300),
+    /**
+     * Qué puede prometer el asistente. `traspaso` no agrega ninguna instrucción (el
+     * comportamiento de siempre). `canal` es para un canal donde NO existe traspaso a
+     * una persona: selecciona una frase fija que prohíbe ofrecer «derivar» o «pasar»
+     * la conversación y manda indicar siempre el canal de contacto (ver
+     * `FRASE_CONTACTO_HUMANO`). Es un enumerado: nunca se interpola texto libre.
+     */
+    modo: z.enum(['traspaso', 'canal']).default('traspaso'),
   })
   .strict();
 
@@ -308,6 +317,10 @@ export const esquemaConfiguracionAgente = z
     perfilPorDefecto: z.string().regex(ID_PERFIL).optional(),
   })
   .strict()
+  .refine((c) => c.operacion.contactoHumano.modo !== 'canal' || Boolean(c.operacion.contactoHumano.whatsapp ?? c.operacion.contactoHumano.correo ?? c.operacion.contactoHumano.telefono), {
+    message: 'operacion.contactoHumano.modo «canal» exige al menos una vía de contacto (whatsapp, correo o telefono)',
+    path: ['operacion', 'contactoHumano'],
+  })
   .refine((c) => !c.perfilPorDefecto || c.perfilPorDefecto in c.perfiles, {
     message: 'perfilPorDefecto debe existir en perfiles',
     path: ['perfilPorDefecto'],
