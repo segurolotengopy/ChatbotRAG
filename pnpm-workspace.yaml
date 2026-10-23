@@ -64,3 +64,9 @@ overrides:
   # bucle de eventos girando. Lo arrastran postcss (vía vite) y magicast, las
   # dos cadenas de herramientas de desarrollo.
   source-map-js@1: 1.2.2
+  # CVE-2026-112942: inyección de comandos por validación incorrecta de la ruta
+  # de archivo en launch-editor, que trae vite (HIGH, corregido en 7.3.7). Lo
+  # arrastra vitest por @vitest/mocker: es una dependencia de desarrollo y el
+  # servidor de desarrollo de vite no se usa, pero Trivy bloquea el pipeline
+  # (bloquear_en: CRITICAL,HIGH) y 7.3.7 pasa la cuarentena (publicada el 2026-10-06).
+  vite@7: 7.3.7
