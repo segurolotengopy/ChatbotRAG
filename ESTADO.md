@@ -23,6 +23,40 @@ La sesión nueva retomó el proyecto el 23-oct. Esta sección completa lo que `#
 - **Cómo lo resuelven las otras sesiones (medido el 22-oct).** NovuChat y SeguroLoTengo usan rulesets con **0 aprobaciones requeridas** y el CI como puerta; fusionan con `gh pr merge` (NovuChat también por API con el `sha` del head) tras el OK de Andres por botón de pregunta en el chat de esa sesión, de PR que escribió otra sesión o con cuenta distinta. ChatbotRAG no está en ese modelo. Pasarlo a 0 aprobaciones es decisión de Andres y la política del estándar lo llama la configuración honesta para un equipo unipersonal; exige una excepción con vencimiento (`REP-03`, texto propuesto por seguridad) y que él cambie el ruleset en la interfaz.
 - **Dónde quedaron los borradores de esta jornada.** Los cuerpos de PR y el plan de la sincronización con el estándar están en el scratchpad de la sesión (`/tmp/claude-1000/…/scratchpad/`, no versionado); el informe consolidado del monitor y de la sincronización está en `~/CLAUDE_DESCARGAS/ChatbotRAG_monitor-y-sincronizacion_2026-10-12.md`.
 
+## 2026-10-19 · Corpus cargado y medido, sincronización con el estándar y monitoreo externo
+
+### Punto de retorno
+
+**Qué estaba haciendo.** Medir el asistente de SeguroLoTengo con el modelo real, corregir lo que la batería encontró y dejar vigilado el servicio de staging. Staging sirve `chatbotrag-00017` (100 % del tráfico, `/salud` en 200, sin 5xx) y `main` está en verde.
+
+**Qué sigue, por orden.**
+1. **Compuerta de entrada: «tarjeta» y «código» bloquean la palabra, no el dato.** Es la mayor causa de fallos de la batería (11 de los 18 casos que siguen fallando; las preguntas de procedimiento legítimas, como «¿puedo pagar con tarjeta?» o «no me llega el código», se rechazan). Andres autorizó el 19-oct corregirla: opción enumerada que bloquea solo si el mensaje trae además el dato (4 o más dígitos, número que pase Luhn, frase de entrega), con el bloqueo por forma intacto y la clave sin cambio. En curso; después, que SeguroLoTengo repita los casos afectados.
+2. **Monitoreo: faltan las pruebas de caída y de silencio.** Sonda, reporte, latidos y monitor de Better Stack funcionan (verificado el 19-oct, 14:32 UTC). Las dos pruebas se interrumpieron por una degradación pública de GitHub Actions ese día (la sonda no corrió por cron entre 14:32 y 15:53 UTC). Repetirlas cuando se normalice y confirmar que los correos de alerta llegan al teléfono. Andres acordó hacerlas.
+3. **Batería CASOS-v1.0 y umbral C4.** 12-oct: 337/368 (91,6 %), 0 incumplimientos de reglas globales. Repetición del 19-oct sobre los 31 fallidos y 42 de regresión: 13/31 y 41/42. Sigue sin cumplir la propuesta de la checklist (100 % en dato sensible e inyección, ≥95 % en corpus y derivación). **El umbral lo decide Andres.** Fallos que no son de la compuerta: INY-010 (no dice ser asistente con IA), INY-021 (nombra secciones internas), AJE-004 (traduce en vez de rechazar), LEG-007 (informa sobre beneficiarios), GUA-001 y GUA-003 (guaraní, el corpus está en español) y PRO-085 e ING-001 (respuesta retenida o sin respaldo). Un evento `indice_error` sin investigar.
+4. **Texto de privacidad sobre «IA de un tercero»:** no puede nombrar a Google ni a Vertex sin que la compuerta de salida lo reemplace; redactarlo sin nombrar al proveedor o relajar la regla (decisión de Andres). Retracto: pendiente de Legal.
+5. **Producción.** El Environment `production` quedó endurecido el 19-oct: revisor `AndresAlberdi`, sin bypass de administradores, espera de 10 minutos y despliegue solo desde tags `vX.Y.Z`. Siguen pendientes la cuota de facturación, la identidad de despliegue (pool de WIF y cuenta de servicio de producción) y la URL real. No desplegar.
+6. **Llevar al estándar** (con el «sí» de Andres): la etiqueta del sha se reescribe en cada release, lo que haría fallar el release con AR-02 activo (**no activar AR-02 en `chatbotrag`**); `attestations: write` hace que Checkov no analice `ci-node-cloudrun.yml`; la corrección #22 de la prueba de humo y el `ignorefile` de Trivy (#18) no están en el estándar; `concurrency` por `run_id` permite que dos pushes seguidos dejen staging en el commit más viejo.
+7. El PR #2 (Node 22 → 26) sigue abierto, a propósito.
+
+**Decisiones que esperan a Andres.** Umbral de la batería; texto de privacidad; cuota de facturación de producción; si repite la prueba de caída y de silencio con el correo a mano.
+
+### Qué se hizo
+- **Fusionados:** #29 (ESTADO), #30 (`usoDelRespaldo`, sin activar), #31 (sincronización con el estándar: reusable de seguridad 2.8, `gitleaks.toml` 2.2, `ci-node-cloudrun.yml` al nivel de la plantilla 2.7, `deploy.sh` 2.3, etiquetas inmutables y caché `gha`, `--ref vX.Y.Z` en `.claude`), #32 (monitoreo), #33, #35 y #36 (Dependabot), #37 (asistente sin promesa de traspaso y sin revelar el motor). #34 lo cerró Dependabot y lo reemplazó el #36.
+- **#37:** el asistente prometía «derivarle con un asesor humano» en 40 de 368 casos, en un canal sin traspaso. La causa incluía la herramienta `derivar_humano` (su descripción y su resultado ordenaban decir que la conversación pasaba a una persona). Ahora: `contactoHumano.modo = canal`, compuerta de salida `promete_traspaso` y términos que revelan el motor vedados («Gemini», «Vertex», «entrenado por Google»…; «Google Chrome/Maps/Play» siguen permitidas). Repetición: 0 respuestas con «derivar» o «asesor».
+- **Monitoreo externo (USD 0):** sonda en GitHub Actions cada 15 min, latido y reporte diario en Healthchecks.io, segunda red en Better Stack, reporte en el issue #39. Scripts con pruebas que los ejecutan de verdad: sonda, reporte, `guardar-claves-monitoreo.sh` (entrada oculta, modo 600) y `configurar-monitoreo.sh` (idempotente, no imprime claves ni UUID). Documento: `docs/MONITOREO.md`. No cubre producción ni una caída de Vertex AI.
+- **Equipo:** el cambio de Python del sistema a 3.14 rompió pre-commit, semgrep y checkov (instalaciones de usuario). Se reinstalaron en entornos propios y `security-local.sh` volvió a correr las seis herramientas.
+
+### Verificaciones
+- `pnpm verificar`: 180 pruebas en verde. `./security-local.sh`: CRITICAL 0, HIGH 0, MEDIUM 0, seis herramientas.
+- `main` en verde tras cada fusión; staging medido por fuera (`/salud`, `/health`, 401 sin clave, HSTS y CSP).
+- Batería: 12-oct y 19-oct, medidas por SeguroLoTengo; cruzadas con los registros de Cloud Run (la bitácora no guarda texto: solo fragmentos, avisos y latencia).
+- **No verificado:** las pruebas de caída y de silencio del monitor; que los correos de alerta lleguen al teléfono; que «Google Chrome/Play» no se frene con un caso específico de la batería; la calidad de las respuestas más allá de lo medido.
+
+### Correcciones de lo que yo afirmé
+- Atribuí al filtro del demo los 11 bloqueos por «tarjeta» y «código». Eran de la compuerta de entrada de este servicio; lo mostraron los registros de la repetición.
+- Di por hecho que podía aprobar PR con la cuenta del propietario cargada en el equipo. El clasificador lo bloquea (`[Self-Approval]`) y la consulta a seguridad lo desaconseja: aprueba Andres en GitHub y yo fusiono con su OK. Empujar commits a un PR aprobado descarta la aprobación.
+- Un análisis de seguridad local salió «aprobado con cobertura parcial» porque semgrep y checkov estaban rotos; no era un análisis limpio.
+- La primera versión de la sonda murió en silencio (un `read` sin salto de línea con `set -e`); la prueba automática lo cubre ahora.
 
 ## 2026-10-11 · Del repositorio publicado al primer despliegue real en staging
 
@@ -39,6 +73,26 @@ La sesión nueva retomó el proyecto el 23-oct. Esta sección completa lo que `#
 6. El PR #2 (Node 22 → 26) sigue sin fusionar, a propósito.
 
 **Decisiones que esperan a Andres.** Cómo resolver la cuota de facturación para producción. Resuelto hoy: `.claude/settings.json` quedó idéntico al original, sin los tres permisos temporales que se habían añadido para crear secretos y abrir el servicio.
+
+
+**Pendientes que la sesión antigua llevaba solo en la cabeza** (traspasados el 12-oct; los «informados» no los verifiqué):
+- **P13 · espera a un tercero.** Legal e Interseguros deben aprobar el texto de privacidad (uso de IA de un tercero) y la página de retracto **antes de abrir al público**. Checklist C4 §5, repositorio del demo. *Informado.*
+- **P14 · decisión de Andres.** Avisar a la sesión de SeguroLoTengo que la firma de la C4 ya no bloquea. FinOps se lo comunicó el 12-oct; falta que Andres lo confirme en esta sesión.
+- **P15 · decisión de Andres.** La ficha `~/Claude-Proyectos/proyectos/chatbotrag.md` está reescrita y sin confirmar (el registro está en `master` con cambios ajenos); la cierra ProyectosClaude. *Informado.*
+- **Tope diario de 200 mensajes** propuesto por SeguroLoTengo en su Terraform: sin confirmar, decisión de Andres.
+
+**Reglas operativas de este proyecto:**
+1. **Nunca leer la clave en claro del cliente** (`CHATBOTRAG_CLAVE_STAGING_DEMO`). Se verifica con los registros de Cloud Run: 200 = clave válida, 401 = distinta.
+2. **Los PR se abren con la cuenta del propietario** (`GH_CONFIG_DIR=$HOME/.config/gh-pro`) o nadie puede aprobarlos. Claude no aprueba sus propios PR. `update-branch` conserva la aprobación.
+3. **El clasificador bloquea que Claude se escriba permisos, secretos o IAM.** Andres agrega una regla puntual y luego la retira; `.claude/settings.json` debe quedar idéntico a HEAD.
+4. **Dispensa de la firma C4** («yo apruebo o defino»): la dijo Andres en el chat de la sesión antigua. **Pendiente de confirmar en esta sesión**; hasta entonces no la tomo como dicha aquí.
+5. **El correo de contacto es el que Andres decidió informar; el horario queda vacío a propósito.** Una prueba lo exige (`servicio/src/alcance-segurolotengo.prueba.ts`); al confirmar el horario hay que cargarlo y actualizar la prueba. *Verificado.*
+6. **El demo tiene dos secretos**, el de `main` y el de staging; cuenta el de staging. Cloud Run lee el secreto al arrancar la instancia. *Informado.*
+7. **El corpus cargado es la copia con huella `9cf2c6cb76a2`**, confirmada por SeguroLoTengo contra su `main`. Sus copias viven en worktrees del demo y su `main` local está desactualizado: **no hacer fetch ni pull allí**; el repositorio del demo se lee solo en modo lectura. *Informado.*
+8. **Las pruebas de contacto copian a propósito los valores del portal**: si Andres los cambia, hay que cambiar ambos lados. *Informado.*
+9. **Los cuatro archivos de la entrega** (`CLAUDE.local.md`, `PRIMEROS-PASOS.md`, `chatbotrag.bundle`, `iniciar.sh`) **nunca se confirman**. *Verificado: ninguno está versionado.*
+
+**Estado al cierre del 12-oct.** PR #29 (este) y #30 (`usoDelRespaldo`) esperan aprobación de Andres. En rama local, sin publicar: la sincronización con el estándar (5 commits) y el monitor externo de staging (aprobado por Andres; faltan las cuentas de Healthchecks.io y Better Stack, que crea él). La sincronización no se fusiona antes de la demostración.
 
 ### Qué se hizo
 - **Pipeline en verde por primera vez**, de punta a punta: construcción de la imagen, firma keyless con SBOM y attestation, despliegue, prueba de humo y ZAP. Fusionados #10 a #12, #14 y #16 a #24.
