@@ -11,6 +11,7 @@
  * que agregar una nueva sea agregar una entrada a la tabla.
  */
 import type { CompuertaSalida, ConfiguracionEfectiva } from '../configuracion/esquema.js';
+import { redactarDatosDePago } from './redaccion-salida.js';
 import { normalizar } from './vocabulario.js';
 
 export interface ContextoSalida {
@@ -134,6 +135,16 @@ const marcaNoDeclarada: FuncionCompuerta = (texto, ctx) => {
   return { texto: limpio, aviso: 'marca_no_declarada', reemplazo: false };
 };
 
+/**
+ * PAN, CVV u OTP en la respuesta: se borran y se conserva el resto (P17). Un solo aviso
+ * por respuesta, sin conteos ni dígitos. Qué NO garantiza: ver `redaccion-salida.ts`.
+ */
+const datoTarjetaCodigo: FuncionCompuerta = (texto) => {
+  const r = redactarDatosDePago(texto);
+  if (r.redactados === 0) return sinCambio(texto);
+  return { texto: r.texto, aviso: 'dato_tarjeta_codigo', reemplazo: false };
+};
+
 /** Del Demo B de NovuChat: un cobro simulado nunca puede presentarse como real. */
 const AFIRMA_COBRO =
   /((pago|cobro|transferencia|deposito|abono)\s+(\S+\s+){0,3}(verificad|confirmad|recibid|acreditad|procesad|aprobad|realizad|efectuad|exitos)|ya\s+(recibimos|se\s+acredit|te\s+cobr|le\s+cobr|se\s+cobr))/;
@@ -153,10 +164,15 @@ export const COMPUERTAS: Record<CompuertaSalida, FuncionCompuerta> = {
   marca_no_declarada: marcaNoDeclarada,
   afirma_cobro_real: afirmaCobroReal,
   promete_traspaso: prometeTraspaso,
+  dato_tarjeta_codigo: datoTarjetaCodigo,
 };
 
-/** Orden fijo: primero las que reemplazan (más graves), luego las que corrigen. */
+/**
+ * Orden fijo: `dato_tarjeta_codigo` va primero porque redacta sin reemplazar y debe correr
+ * antes de cualquier `break`; luego las que reemplazan (más graves), luego las que corrigen.
+ */
 const ORDEN: CompuertaSalida[] = [
+  'dato_tarjeta_codigo',
   'dato_confidencial',
   'promesa_indemnizacion',
   'decision_elegibilidad',
@@ -176,6 +192,8 @@ export function aplicarCompuertasSalida(texto: string, ctx: ContextoSalida): Res
   const activas = new Set<CompuertaSalida>(ctx.config.seguridad.compuertasSalida);
   // `marca_no_declarada` corre SIEMPRE: una marca inventada nunca debe llegar a una persona.
   activas.add('marca_no_declarada');
+  // `dato_tarjeta_codigo` también corre SIEMPRE: un PAN, CVV u OTP nunca debe llegar a una persona.
+  activas.add('dato_tarjeta_codigo');
   let actual = texto;
   const avisos: string[] = [];
   let reemplazada = false;
