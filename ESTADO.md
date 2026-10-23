@@ -6,7 +6,7 @@ Se actualiza al final de cada sesión. **Nunca contiene secretos.** Lo más reci
 
 La sesión nueva retomó el proyecto el 23-oct. Esta sección completa lo que `#40` (punto de retorno del 19-oct) no recogía e incluye las «Trampas operativas» escritas el 22-oct. Esas trampas se redactaron cuando `#41` y `#40` esperaban fusión; `#41` se fusionó después (ver el estado verificado).
 
-**Estado verificado el 23-oct con `gh` y `git`:** `main` en `2e91cdc`. Fusionados `#41` (compuerta de entrada por dato, `80eed1c`) y `#42` (vite 7.3.7 por CVE). `#38` cerrado y reemplazado por `#43`; `#43` y `#2` abiertos; `#40` aprobado y sin fusionar.
+**Estado verificado el 23-oct con `gh` y `git`:** `main` en `2e91cdc`. Fusionados `#41` (compuerta de entrada por dato, `80eed1c`) y `#42` (vite 7.3.7 por CVE). `#38` cerrado y reemplazado por `#43`; `#43` y `#2` abiertos; `#40` fusionado después por Andres (`981e11b`, 23-oct).
 
 **Pendientes que la sesión antigua llevaba y faltaban en la lista** (tareas de la sesión):
 - **P16.** Normalización NFKC en `normalizar`: hoy la compuerta de entrada no unifica formas Unicode equivalentes (por ejemplo dígitos de ancho completo), y eso puede dejar pasar un dato que el bloqueo por forma debería detectar.
