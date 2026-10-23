@@ -9,11 +9,15 @@
  * de salud, la condición PEP, la cédula y la tarjeta «no salen hacia servicios de
  * IA». No es una decisión por prompt, es una compuerta por código.
  */
-import type { CategoriaEntrada } from '../configuracion/esquema.js';
+import type { CategoriaEntrada, Seguridad } from '../configuracion/esquema.js';
 import {
+  hayDatoDeCodigo,
+  hayDatoDeTarjeta,
   normalizar,
   pareceNumeroDeDocumento,
   pareceNumeroDeTarjeta,
+  pareceNumeroDeTarjetaFlexible,
+  PERIFRASIS_CVV,
   pareceOtp,
   PATRON_INYECCION,
   VOCABULARIO_SENSIBLE,
@@ -41,13 +45,25 @@ export function esPreguntaGeneral(textoNormalizado: string): boolean {
   );
 }
 
-export function detectarCategorias(texto: string): CategoriaEntrada[] {
+/**
+ * `modo` `palabra` (por omisión): `tarjeta` y `otp` se detectan también por vocabulario.
+ * `modo` `dato`: solo por el dato (Luhn, CVV con dígitos, código numérico aislado); el
+ * vocabulario por sí solo deja pasar la pregunta de procedimiento. Las demás categorías
+ * no cambian en ningún modo.
+ */
+export function detectarCategorias(texto: string, modo: Seguridad['vocabularioEntrada'] = 'palabra'): CategoriaEntrada[] {
   const n = normalizar(texto);
   const detectadas: CategoriaEntrada[] = [];
   // Datos por FORMA (lo importante): número de documento, tarjeta, OTP.
   if (pareceNumeroDeDocumento(texto)) detectadas.push('cedula');
-  if (pareceNumeroDeTarjeta(texto) || VOCABULARIO_SENSIBLE.tarjeta.test(n)) detectadas.push('tarjeta');
-  if (pareceOtp(texto) || VOCABULARIO_SENSIBLE.otp.test(n)) detectadas.push('otp');
+  if (modo === 'dato') {
+    const vocabularioTarjeta = VOCABULARIO_SENSIBLE.tarjeta.test(n) || PERIFRASIS_CVV.test(n);
+    if (pareceNumeroDeTarjetaFlexible(texto) || (vocabularioTarjeta && hayDatoDeTarjeta(texto))) detectadas.push('tarjeta');
+    if (pareceOtp(texto) || hayDatoDeCodigo(texto)) detectadas.push('otp');
+  } else {
+    if (pareceNumeroDeTarjeta(texto) || VOCABULARIO_SENSIBLE.tarjeta.test(n)) detectadas.push('tarjeta');
+    if (pareceOtp(texto) || VOCABULARIO_SENSIBLE.otp.test(n)) detectadas.push('otp');
+  }
   if (VOCABULARIO_SENSIBLE.clave.test(n)) detectadas.push('clave');
   // Datos por VOCABULARIO: salud y PEP. Una pregunta general sobre el producto
   // («¿cubre cáncer?») también coincide; `esPreguntaGeneral` la deja pasar.
@@ -57,8 +73,12 @@ export function detectarCategorias(texto: string): CategoriaEntrada[] {
   return [...new Set(detectadas)];
 }
 
-export function evaluarEntrada(texto: string, bloquear: readonly CategoriaEntrada[]): ResultadoEntrada {
-  const detectadas = detectarCategorias(texto);
+export function evaluarEntrada(
+  texto: string,
+  bloquear: readonly CategoriaEntrada[],
+  modo: Seguridad['vocabularioEntrada'] = 'palabra',
+): ResultadoEntrada {
+  const detectadas = detectarCategorias(texto, modo);
   const bloqueantes = detectadas.filter((c) => bloquear.includes(c));
   return { bloqueada: bloqueantes.length > 0, detectadas, bloqueantes };
 }
