@@ -52,17 +52,19 @@ export function esPreguntaGeneral(textoNormalizado: string): boolean {
  * no cambian en ningún modo.
  */
 export function detectarCategorias(texto: string, modo: Seguridad['vocabularioEntrada'] = 'palabra'): CategoriaEntrada[] {
-  const n = normalizar(texto);
+  // Los detectores por forma leen texto crudo con \d ASCII: NFKC antes de llamarlos.
+  const t = texto.normalize('NFKC');
+  const n = normalizar(t);
   const detectadas: CategoriaEntrada[] = [];
   // Datos por FORMA (lo importante): número de documento, tarjeta, OTP.
-  if (pareceNumeroDeDocumento(texto)) detectadas.push('cedula');
+  if (pareceNumeroDeDocumento(t)) detectadas.push('cedula');
   if (modo === 'dato') {
     const vocabularioTarjeta = VOCABULARIO_SENSIBLE.tarjeta.test(n) || PERIFRASIS_CVV.test(n);
-    if (pareceNumeroDeTarjetaFlexible(texto) || (vocabularioTarjeta && hayDatoDeTarjeta(texto))) detectadas.push('tarjeta');
-    if (pareceOtp(texto) || hayDatoDeCodigo(texto)) detectadas.push('otp');
+    if (pareceNumeroDeTarjetaFlexible(t) || (vocabularioTarjeta && hayDatoDeTarjeta(t))) detectadas.push('tarjeta');
+    if (pareceOtp(t) || hayDatoDeCodigo(t)) detectadas.push('otp');
   } else {
-    if (pareceNumeroDeTarjeta(texto) || VOCABULARIO_SENSIBLE.tarjeta.test(n)) detectadas.push('tarjeta');
-    if (pareceOtp(texto) || VOCABULARIO_SENSIBLE.otp.test(n)) detectadas.push('otp');
+    if (pareceNumeroDeTarjeta(t) || VOCABULARIO_SENSIBLE.tarjeta.test(n)) detectadas.push('tarjeta');
+    if (pareceOtp(t) || VOCABULARIO_SENSIBLE.otp.test(n)) detectadas.push('otp');
   }
   if (VOCABULARIO_SENSIBLE.clave.test(n)) detectadas.push('clave');
   // Datos por VOCABULARIO: salud y PEP. Una pregunta general sobre el producto
