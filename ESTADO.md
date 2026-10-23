@@ -2,6 +2,27 @@
 
 Se actualiza al final de cada sesión. **Nunca contiene secretos.** Lo más reciente arriba.
 
+## 2026-10-23 · Relevo de la sesión principal: pendientes que faltaban
+
+La sesión nueva retomó el proyecto el 23-oct. Esta sección completa lo que `#40` (punto de retorno del 19-oct) no recogía e incluye las «Trampas operativas» escritas el 22-oct. Esas trampas se redactaron cuando `#41` y `#40` esperaban fusión; `#41` se fusionó después (ver el estado verificado).
+
+**Estado verificado el 23-oct con `gh` y `git`:** `main` en `2e91cdc`. Fusionados `#41` (compuerta de entrada por dato, `80eed1c`) y `#42` (vite 7.3.7 por CVE). `#38` cerrado y reemplazado por `#43`; `#43` y `#2` abiertos; `#40` fusionado después por Andres (`981e11b`, 23-oct).
+
+**Pendientes que la sesión antigua llevaba y faltaban en la lista** (tareas de la sesión):
+- **P16.** Normalización NFKC en `normalizar`: hoy la compuerta de entrada no unifica formas Unicode equivalentes (por ejemplo dígitos de ancho completo), y eso puede dejar pasar un dato que el bloqueo por forma debería detectar.
+- **P17.** Compuerta de salida que borre PAN, CVV y OTP del texto que sale, como defensa en profundidad además de la compuerta de entrada.
+- **P18.** Verificar la retención de datos de Vertex AI en la documentación oficial de Google, con fuente y fecha de consulta. Es un dato que respalda el texto de privacidad (decisión de Andres sobre «IA de un tercero»); no se afirma de memoria.
+
+**Incidente menor.** El UUID del chequeo de prueba de Healthchecks.io quedó expuesto en una captura de pantalla. Ese chequeo ya está borrado, así que el identificador no da acceso a nada. El UUID no se anota aquí.
+
+**No verificado en esta sección:** el detalle de P16 sale del encargo del relevo y no lo comprobé contra el código; hay que leer `normalizar` antes de planificar el cambio.
+### Trampas operativas que no estaban escritas (relevo del 2026-10-23)
+
+- **Herramientas del equipo.** El cambio de Python del sistema a 3.14 rompió pre-commit, semgrep y checkov (instalaciones de usuario): el hook de commit falla con «No module named pre_commit» y `security-local.sh` dice «aprobado con cobertura parcial», que no es lo mismo que limpio. Se reinstalaron en entornos propios, sin sudo: `~/.local/share/{pre-commit,checkov,semgrep}-venv`, enlazados desde `~/.local/bin`; `pysemgrep` apuntaba a una instalación de `uv` rota y se repuso. Si vuelve a fallar tras otra actualización del sistema, repetir eso y volver a correr `pre-commit install`. Un análisis con herramientas «no ejecutadas» no se da por aprobado.
+- **Aprobar y fusionar los PR de esta sesión no es confiable.** El ruleset `proteccion-main` exige 1 aprobación (verificado el 22-oct; se modificó por última vez el 30-sep). La aprobación la da Andres en GitHub; el clasificador de Claude Code bloquea que la sesión apruebe con `[Self-Approval]` y desde el 19-oct también bloqueó `gh pr merge` de sus propios PR, aunque con el OK de Andres en el chat y la aprobación registrada. Un día antes las mismas órdenes pasaron, así que el comportamiento varía entre días. No se esquiva con otro comando; una regla de permiso la escribe Andres, no la sesión (`[Self-Modification]`), y no está probado que supere al clasificador. Los PR #41 y #40 quedaron aprobados, con CI verde, esperando fusión.
+- **Cómo lo resuelven las otras sesiones (medido el 22-oct).** NovuChat y SeguroLoTengo usan rulesets con **0 aprobaciones requeridas** y el CI como puerta; fusionan con `gh pr merge` (NovuChat también por API con el `sha` del head) tras el OK de Andres por botón de pregunta en el chat de esa sesión, de PR que escribió otra sesión o con cuenta distinta. ChatbotRAG no está en ese modelo. Pasarlo a 0 aprobaciones es decisión de Andres y la política del estándar lo llama la configuración honesta para un equipo unipersonal; exige una excepción con vencimiento (`REP-03`, texto propuesto por seguridad) y que él cambie el ruleset en la interfaz.
+- **Dónde quedaron los borradores de esta jornada.** Los cuerpos de PR y el plan de la sincronización con el estándar están en el scratchpad de la sesión (`/tmp/claude-1000/…/scratchpad/`, no versionado); el informe consolidado del monitor y de la sincronización está en `~/CLAUDE_DESCARGAS/ChatbotRAG_monitor-y-sincronizacion_2026-10-12.md`.
+
 ## 2026-10-19 · Corpus cargado y medido, sincronización con el estándar y monitoreo externo
 
 ### Punto de retorno
