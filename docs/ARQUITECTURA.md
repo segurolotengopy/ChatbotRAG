@@ -142,6 +142,23 @@ ni Amazon.
 - **Secretos**: nunca en la configuración JSON (lista blanca de claves; el validador
   rechaza campos con aspecto de secreto).
 
+### Modo `dato` de la compuerta de entrada
+
+`seguridad.vocabularioEntrada` (`palabra` por omisión, `dato`) decide cómo se detectan
+`tarjeta` y `otp`. En `palabra` basta el vocabulario («tarjeta», «código de
+verificación») y se rechazan también las preguntas de procedimiento. En `dato` se
+bloquea solo el DATO: un número con forma de tarjeta (Luhn), un CVV/CVC con sus
+dígitos, un vencimiento mes/año, «últimos 4», una secuencia contigua de 8 o más
+dígitos que no sea monto, fecha ni celular, y un código numérico (o alfanumérico, con
+vocabulario de OTP) junto a «código», «otp» o «token». Deja pasar «¿puedo pagar con
+tarjeta?», «no me llega el código de verificación» o «¿qué es el código de seguridad
+de la tarjeta?», y los códigos de otra cosa (postal, de póliza, civil…). No cubre un
+dato en un segundo mensaje, escrito con palabras o con letras intercaladas, ni un
+CVV/OTP con otra redacción. `clave`, `cedula`, `salud`, `pep` e `inyeccion` no cambian.
+Consecuencia: lo que pasa llega al proveedor del modelo. La política de retención y de
+uso de datos de Vertex AI NO está verificada en este repositorio: pendiente de
+verificar con la documentación oficial.
+
 ## 7. Aplicación a segurolotengo-demo
 
 El demo (Next.js 15 en AWS Amplify) **no embebe** el núcleo: consume el servicio por

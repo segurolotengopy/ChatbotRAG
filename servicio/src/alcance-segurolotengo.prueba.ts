@@ -19,7 +19,19 @@
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { aplicarCompuertasSalida, cargarConfiguracionDesdeJson, normalizar, resolverConfiguracion } from '@chatbotrag/nucleo';
+import {
+  aplicarCompuertasSalida,
+  Agente,
+  BitacoraEnMemoria,
+  cargarConfiguracionDesdeJson,
+  IndiceEnMemoria,
+  MemoriaEnProceso,
+  normalizar,
+  ProveedorSimulado,
+  RegistroHerramientas,
+  resolverConfiguracion,
+} from '@chatbotrag/nucleo';
+import type { PeticionLLM } from '@chatbotrag/nucleo';
 
 const RUTA = new URL('../../configuraciones/segurolotengo.json', import.meta.url);
 const config = cargarConfiguracionDesdeJson(readFileSync(RUTA, 'utf8'));
@@ -241,5 +253,61 @@ describe('datos de contacto de Interseguros', () => {
     expect(r.texto).toContain('Eso lo explica el paso 3.');
     expect(r.texto).not.toMatch(/asesor/i);
     expect(r.texto).toContain(efectiva.mensajes.derivacion);
+  });
+});
+
+describe('compuerta de entrada de SeguroLoTengo: por dato, no por palabra', () => {
+  it('usa vocabularioEntrada «dato»', () => {
+    expect(config.seguridad.vocabularioEntrada).toBe('dato');
+  });
+
+  it('sigue bloqueando todas las categorías de datos sensibles', () => {
+    for (const c of ['cedula', 'tarjeta', 'salud', 'pep', 'otp', 'clave', 'inyeccion'] as const) {
+      expect(config.seguridad.bloquearEntrada).toContain(c);
+    }
+  });
+});
+
+describe('compuerta de entrada por dato, de punta a punta con la configuración real', () => {
+  function armar() {
+    const bitacora = new BitacoraEnMemoria();
+    const peticiones: PeticionLLM[] = [];
+    const simulado = new ProveedorSimulado();
+    const proveedor = {
+      nombre: 'simulado-contado',
+      generar: async (p: PeticionLLM) => {
+        peticiones.push(p);
+        return simulado.generar(p);
+      },
+    };
+    const agente = new Agente({
+      config,
+      proveedor,
+      indice: new IndiceEnMemoria(null),
+      memoria: new MemoriaEnProceso(),
+      herramientas: new RegistroHerramientas(),
+      bitacora,
+      reloj: () => new Date('2026-10-19T14:00:00Z'),
+    });
+    return { agente, bitacora, peticiones };
+  }
+
+  it('«¿puedo pagar con tarjeta?» llega al proveedor y no queda bloqueada', async () => {
+    const { agente, bitacora, peticiones } = armar();
+    await agente.responder({ conversacionId: 'conv_00000101', texto: '¿puedo pagar con tarjeta?', canal: 'web' });
+    expect(peticiones.length).toBeGreaterThan(0);
+    expect(bitacora.eventos.some((e) => e.tipo === 'entrada_bloqueada')).toBe(false);
+  });
+
+  it('«el cvv de mi tarjeta es 123» se bloquea antes del proveedor y la bitácora no guarda el texto', async () => {
+    const { agente, bitacora, peticiones } = armar();
+    const texto = 'el cvv de mi tarjeta es 123';
+    const r = await agente.responder({ conversacionId: 'conv_00000102', texto, canal: 'web' });
+    expect(r.texto).toBe(config.mensajes.entradaBloqueada);
+    expect(peticiones).toHaveLength(0);
+    const evento = bitacora.eventos.find((e) => e.tipo === 'entrada_bloqueada');
+    expect(evento).toMatchObject({ avisos: expect.arrayContaining(['entrada:tarjeta']) });
+    expect(JSON.stringify(bitacora.eventos)).not.toContain(texto);
+    expect(JSON.stringify(bitacora.eventos)).not.toContain('123');
   });
 });

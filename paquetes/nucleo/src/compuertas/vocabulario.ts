@@ -79,6 +79,111 @@ export function pareceOtp(texto: string): boolean {
   return /\bcodigo\b/.test(n) && /(?<!\d)\d{6}(?!\d)/.test(n);
 }
 
+/** Perífrasis del CVV sin nombrarlo: «los 3 números de atrás», «el código del reverso». */
+export const PERIFRASIS_CVV = /\b(numeros? de atras|del reverso|de atras)\b/;
+
+/** Luhn sobre una cadena de dígitos ya limpia (copia local: `pareceNumeroDeTarjeta` no se toca). */
+function pasaLuhn(digitos: string): boolean {
+  let suma = 0;
+  let doble = false;
+  for (let i = digitos.length - 1; i >= 0; i--) {
+    let d = Number(digitos[i]);
+    if (doble) {
+      d *= 2;
+      if (d > 9) d -= 9;
+    }
+    suma += d;
+    doble = !doble;
+  }
+  return suma % 10 === 0;
+}
+
+/**
+ * Variante de `pareceNumeroDeTarjeta` para el modo `dato`: acepta también `/` y `_` como
+ * separadores («4111/1111/1111/1111»). El modo `palabra` sigue usando la original.
+ */
+export function pareceNumeroDeTarjetaFlexible(texto: string): boolean {
+  const secuencias = texto.normalize('NFKC').match(/(?:\d[ \-/_]{0,3}){13,19}/g) ?? [];
+  return secuencias.some((sec) => {
+    const digitos = sec.replace(/\D/g, '');
+    return digitos.length >= 13 && digitos.length <= 19 && pasaLuhn(digitos);
+  });
+}
+
+/**
+ * DATO DE TARJETA (modo `dato` de la compuerta de entrada). Origen: la batería de
+ * SeguroLoTengo del 12 y 19-oct-2026, donde «¿puedo pagar con tarjeta?» se rechazaba
+ * por la palabra. Acá se mira el dato, no la palabra. Se llama solo cuando el texto ya
+ * trae vocabulario de tarjeta. Detecta: (1) un CVV/CVC o «código de seguridad» con sus
+ * dígitos, en ambos sentidos y aunque estén separados; (2) perífrasis del CVV («los 3
+ * números de atrás»); (3) un vencimiento mes/año; (4) «últimos 4»/«termina en»; (5) una
+ * SECUENCIA contigua de 8 o más dígitos, descartando montos, teléfonos y fechas.
+ * Opera sobre texto con NFKC (cubre dígitos de ancho completo; otros disfraces, no).
+ * Qué NO garantiza: dígitos escritos con palabras o con letras intercaladas, ni un
+ * número en un segundo mensaje, ni un CVV con otra redacción.
+ */
+export function hayDatoDeTarjeta(texto: string): boolean {
+  const n = normalizar(texto.normalize('NFKC'));
+  // 1. CVV/CVC con dígitos, en ambos sentidos (palabra → dígitos y dígitos → palabra).
+  const palabraCvv = '(?:cvv|cvc|codigo de seguridad)';
+  const digitosCvv = '\\d(?:[\\s.-]?\\d){2,3}(?!\\d)';
+  if (new RegExp(`\\b${palabraCvv}\\b\\D{0,30}(?<!\\d)${digitosCvv}`).test(n)) return true;
+  if (new RegExp(`(?<!\\d)${digitosCvv}\\D{0,15}\\b${palabraCvv}\\b`).test(n)) return true;
+  // 2. Perífrasis del CVV.
+  if (/\b(?:numeros? de atras|del reverso|de atras)\b\D{0,20}(?<!\d)\d{3,4}(?!\d)/.test(n)) return true;
+  // 3. Vencimiento mes/año (12/28, 12-2028). Una fecha completa (19-10-2026) no cuenta.
+  if (/(?<![\d/-])(?:0?[1-9]|1[0-2])\s*[/-]\s*(?:\d{4}|\d{2})(?!\d)(?![/-]\d)/.test(n)) return true;
+  // 4. Últimos cuatro dígitos.
+  if (/\b(?:termina|terminada|ultimos?)\b\D{0,15}(?<!\d)\d{4}(?!\d)/.test(n)) return true;
+  // 5. Secuencia contigua de 8 o más dígitos (fragmento de PAN, fecha más número).
+  for (const m of n.matchAll(/(?<!\d)\d(?:[ .\-/_]{0,3}\d){7,}(?!\d)/g)) {
+    const sec = m[0];
+    const inicio = m.index ?? 0;
+    const digitos = sec.replace(/\D/g, '');
+    if (/^\d{1,3}(?:\.\d{3}){2,}$/.test(sec)) continue; // monto con miles
+    if (/\b(?:gs|bs|usd|guaranies|dolares|monto|suma|importe)\b|\$/.test(n.slice(Math.max(0, inicio - 12), inicio))) continue; // monto
+    if (/^\d{1,2}[ .\-/_]\d{1,2}[ .\-/_](?:\d{2}|\d{4})$/.test(sec) || /^\d{4}[.\-/_]\d{1,2}[.\-/_]\d{1,2}$/.test(sec)) continue; // fecha
+    if (/^09\d{2}/.test(digitos)) continue; // celular paraguayo
+    return true;
+  }
+  return false;
+}
+
+/**
+ * DATO DE CÓDIGO (modo `dato`). Palabra clave (código, otp, token) acompañada, en
+ * cualquiera de los dos sentidos y a 40 caracteres o menos (70 si el texto trae
+ * vocabulario explícito de OTP: «el código que me llegó por mensaje… es 4829»), de 4 a
+ * 8 dígitos, con separadores en grupos («48 29 13», «482-913»). Con vocabulario de OTP
+ * acepta además un alfanumérico de 4 a 8 caracteres con al menos 2 dígitos
+ * («A7X9K2»). Antes de evaluar quita las frases que son códigos de otra cosa («código
+ * postal», «de póliza»…) y, sin vocabulario de OTP, no cuenta un número de 4 dígitos que
+ * parezca año. Qué NO garantiza: un código con otra forma, escrito en palabras o en un
+ * segundo mensaje, puede pasar.
+ */
+export function hayDatoDeCodigo(texto: string): boolean {
+  const limpio = normalizar(texto.normalize('NFKC')).replace(/\bcodigo (?:postal|de poliza|de cliente|de plan|de producto|de area|civil|de barras)\b/g, ' ');
+  const hayVocabularioOtp = /verificacion|\botp\b|\bsms\b|whatsapp|que me llego|me llego/.test(limpio);
+  const ventana = hayVocabularioOtp ? 70 : 40;
+  const claves = [...limpio.matchAll(/\b(?:codigo|otp|token)\b/g)].map((m) => ({ ini: m.index ?? 0, fin: (m.index ?? 0) + m[0].length }));
+  if (claves.length === 0) return false;
+  const candidatos: Array<{ ini: number; fin: number; digitos: string; soloDigitos: boolean }> = [];
+  for (const m of limpio.matchAll(/(?<!\d)\d(?:[\s-]?\d){3,7}(?!\d)/g)) {
+    const ini = m.index ?? 0;
+    candidatos.push({ ini, fin: ini + m[0].length, digitos: m[0].replace(/\D/g, ''), soloDigitos: true });
+  }
+  if (hayVocabularioOtp) {
+    for (const m of limpio.matchAll(/\b[a-z0-9]{4,8}\b/g)) {
+      if (!/[a-z]/.test(m[0]) || (m[0].match(/\d/g) ?? []).length < 2) continue;
+      const ini = m.index ?? 0;
+      candidatos.push({ ini, fin: ini + m[0].length, digitos: m[0], soloDigitos: false });
+    }
+  }
+  return candidatos.some((c) => {
+    if (c.soloDigitos && c.digitos.length === 4 && /^(?:19|20)\d\d$/.test(c.digitos) && !hayVocabularioOtp) return false;
+    return claves.some((k) => (k.fin <= c.ini && c.ini - k.fin <= ventana) || (c.fin <= k.ini && k.ini - c.fin <= ventana));
+  });
+}
+
 /**
  * INYECCIÓN DE INSTRUCCIONES. Frases que intentan redefinir al asistente. No
  * bloquean por sí solas el diálogo (mucha gente escribe «ignora lo anterior» sin
