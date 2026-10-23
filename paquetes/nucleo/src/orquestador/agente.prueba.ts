@@ -170,6 +170,7 @@ describe('orquestador de punta a punta (proveedor simulado)', () => {
       ['#simular:elegibilidad', 'decision_elegibilidad', config.mensajes.fueraDeAlcance],
       ['#simular:confidencial', 'dato_confidencial', config.mensajes.fueraDeAlcance],
       ['#simular:marca', 'marca_no_declarada', 'Listo, ya quedó.'],
+      ['#simular:fuga', 'dato_tarjeta_codigo', '(dato eliminado)'],
     ];
     let i = 10;
     for (const [orden, aviso, esperado] of casos) {
@@ -177,6 +178,24 @@ describe('orquestador de punta a punta (proveedor simulado)', () => {
       expect(r.avisos, orden).toContain(aviso);
       expect(r.texto, orden).toContain(esperado);
     }
+  });
+
+  it('la redacción de salida no deja dígitos en la respuesta, la memoria ni la bitácora', async () => {
+    const sinExigencia = validarConfiguracion({ ...CONFIG_PRUEBA, conocimiento: { ...CONFIG_PRUEBA.conocimiento, exigirRespaldo: false } });
+    const memoria = new MemoriaEnProceso();
+    const agente = new Agente({ config: sinExigencia, proveedor: new ProveedorSimulado(), indice: null, memoria, herramientas: new RegistroHerramientas(), bitacora });
+    const r = await agente.responder({ conversacionId: 'conv_00000030', texto: '#simular:fuga', canal: 'web' });
+    expect(r.texto).not.toContain('4111');
+    expect(r.texto).not.toContain('482913');
+    expect(r.texto).toBe('Su tarjeta (dato eliminado), CVV (dato eliminado), y el código de verificación (dato eliminado) quedaron anotados. Su póliza es la 2026-004512.');
+    expect(r.texto).toContain('2026-004512');
+    expect(r.derivacion).toBeNull();
+    const eventos = JSON.stringify(bitacora.eventos);
+    expect(eventos).not.toContain('4111');
+    expect(eventos).not.toContain('482913');
+    expect(eventos).toContain('dato_tarjeta_codigo');
+    const turnos = await memoria.leer('conv_00000030', 10);
+    expect(JSON.stringify(turnos)).not.toContain('4111');
   });
 
   it('la marca [DERIVAR] del modelo produce derivación', async () => {
