@@ -30,6 +30,21 @@ export function coleccionDe(config: ConfiguracionAgente, perfilId: string | null
   return perfilId ? `${config.id}--${perfilId.toLowerCase()}` : config.id;
 }
 
+/**
+ * Quita los comentarios HTML repitiendo el reemplazo hasta que el texto no cambie: una sola
+ * pasada deja pasar `<!<!-- x -->-- texto -->` (al quitar el interior se forma otro comentario).
+ * NO garantiza limpiar un `<!--` sin cerrar: queda en el texto, y por eso `validar-config`
+ * rechaza las fuentes de página donde sobre `<!--` o `-->`.
+ */
+export function quitarComentariosHtml(texto: string): string {
+  let actual = texto;
+  for (;;) {
+    const siguiente = actual.replace(/<!--[\s\S]*?-->/g, '');
+    if (siguiente === actual) return actual;
+    actual = siguiente;
+  }
+}
+
 export interface ResumenCarga {
   colecciones: Record<string, { fuentes: number; fragmentos: number; omitidasInternas: number }>;
 }
@@ -50,7 +65,9 @@ async function cargarFuentes(
       omitidas++;
       continue;
     }
-    const texto = await lector.leer(f.ruta);
+    // Los comentarios HTML (`<!-- id | … -->`) son metadatos del autor del manual, no contenido:
+    // no se indexan ni llegan al prompt. Los documentos sin comentarios quedan idénticos.
+    const texto = quitarComentariosHtml(await lector.leer(f.ruta));
     const fragmentos = trocear({ fuenteId: f.id, titulo: f.titulo, version: f.version, coleccion, texto }, { tamano, solapamiento });
     await indice.indexar(fragmentos);
     total += fragmentos.length;

@@ -4,7 +4,7 @@
  * Rutas:
  *   GET    /salud                                          — sin autenticación; sin datos sensibles
  *   GET    /v1/agente                                      — perfiles y bienvenida del agente del cliente
- *   POST   /v1/conversaciones/:conversacionId/mensajes     — { perfilId?, texto, canal? }
+ *   POST   /v1/conversaciones/:conversacionId/mensajes     — { perfilId?, pagina?, texto, canal? }
  *   DELETE /v1/conversaciones/:conversacionId              — olvidar la conversación
  *
  * AUTENTICACIÓN: `Authorization: Bearer <clave>`. Se compara el SHA-256 de la
@@ -30,6 +30,7 @@ export const VERSION_SERVICIO = '0.1.0';
 
 interface CuerpoMensaje {
   perfilId?: string | null;
+  pagina?: unknown;
   texto?: unknown;
   canal?: unknown;
 }
@@ -168,9 +169,12 @@ export async function crearAplicacion(opciones: OpcionesAplicacion): Promise<Fas
     if (/^#simular:/i.test(cuerpo.texto.trim()) && acceso.armado.proveedor !== 'simulado') return r.code(400).send({ ok: false, motivo: 'TEXTO_INVALIDO' });
     const canal = typeof cuerpo.canal === 'string' && /^[a-z]{2,20}$/.test(cuerpo.canal) ? cuerpo.canal : 'web';
     const perfilId = typeof cuerpo.perfilId === 'string' && cuerpo.perfilId.length <= 60 ? cuerpo.perfilId : null;
+    // `pagina`: ausente o null → sin contexto; cadena → tal cual; cualquier otro tipo → '' (el núcleo
+    // lo trata como desconocido y avisa). Nunca es un error HTTP ni se registra.
+    const pagina = cuerpo.pagina === undefined || cuerpo.pagina === null ? null : typeof cuerpo.pagina === 'string' ? cuerpo.pagina : '';
 
     try {
-      const respuesta = await acceso.armado.agente.responder({ conversacionId, perfilId, texto: cuerpo.texto, canal });
+      const respuesta = await acceso.armado.agente.responder({ conversacionId, perfilId, pagina, texto: cuerpo.texto, canal });
       return { ok: true, ...respuesta };
     } catch (e) {
       if (e instanceof ErrorPeticion) {

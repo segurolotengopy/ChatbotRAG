@@ -33,6 +33,8 @@ export interface EventoBitacora {
   /** Nombres de compuertas que actuaron (`niega_ia`, `entrada:cedula`, …). */
   avisos?: string[];
   fragmentos?: string[];
+  /** Id de pantalla YA VALIDADO contra la configuración (`mensaje_atendido`, `sin_respaldo`). Jamás el valor crudo del cliente. */
+  pagina?: string;
   herramienta?: string;
   codigo?: string;
   /** Detalle técnico corto, SIN texto del usuario. Tope 200. */

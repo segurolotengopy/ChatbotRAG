@@ -135,6 +135,11 @@
           { "id": "orientacion-19-glosario-en-palabras-simples", "titulo": "Glosario en palabras simples", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/19-glosario-en-palabras-simples.md" },
           { "id": "orientacion-20-lo-que-este-asistente-no-responde", "titulo": "Lo que este asistente no responde y a dónde derivar", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/20-lo-que-este-asistente-no-responde.md" },
           { "id": "orientacion-21-datos-que-no-se-comparten-en-este-chat", "titulo": "Datos que no debe escribir en este chat", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/21-datos-que-no-se-comparten-en-este-chat.md" }
+        ],
+        "paginas": [
+          { "id": "plan", "fuenteId": "orientacion-01-elegir-el-plan" },
+          { "id": "firma", "fuenteId": "orientacion-08-revisar-y-firmar" },
+          { "id": "confirmacion", "fuenteId": "orientacion-10-confirmacion-y-documentos" }
         ]
       },
       "herramientas": [

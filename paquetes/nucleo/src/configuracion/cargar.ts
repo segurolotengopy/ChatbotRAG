@@ -17,6 +17,7 @@
  */
 import { esquemaConfiguracionAgente, type ConfiguracionAgente } from './esquema.js';
 import { VOCABULARIO_SENSIBLE } from '../compuertas/vocabulario.js';
+import { resolverConfiguracion } from './perfiles.js';
 
 export class ErrorConfiguracion extends Error {
   constructor(
@@ -75,6 +76,40 @@ function facetasSensibles(config: ConfiguracionAgente): string[] {
   return hallazgos;
 }
 
+/**
+ * PÁGINAS CONSISTENTES. Una pantalla apunta a una fuente que se indexa de verdad: si la fuente
+ * no existe, es interna o el modo no es RAG, el manual nunca llegaría al prompt y el sitio
+ * creería tener contexto de página que no tiene. Se rechaza al cargar, no en ejecución.
+ * Se revisa la base y cada perfil con su configuración efectiva (la fusión reemplaza arreglos):
+ * un perfil que redefine `fuentes` pero hereda `paginas` se rechaza si las fuentes ya no están.
+ * `resolverConfiguracion(config, null)` resuelve al perfil por omisión si existe, no a la base
+ * pura: por eso la etiqueta lo dice. También exige que el tope de caracteres admita al menos un
+ * fragmento (tamaño + 200 de margen de solapamiento), o el manual nunca se inyectaría.
+ */
+export function paginasInvalidas(config: ConfiguracionAgente): string[] {
+  const hallazgos: string[] = [];
+  for (const perfilId of [null, ...Object.keys(config.perfiles)]) {
+    const efectiva = resolverConfiguracion(config, perfilId);
+    const { paginas, fuentes, modo, tamanoFragmento, maxCaracteresPagina } = efectiva.conocimiento;
+    if (paginas.length === 0) continue;
+    const donde = perfilId ?? (efectiva.perfilId ? `perfil por omisión ${efectiva.perfilId}` : 'base');
+    if (modo !== 'rag') hallazgos.push(`conocimiento.paginas: requiere modo rag en ${donde}`);
+    if (maxCaracteresPagina < tamanoFragmento + 200) {
+      hallazgos.push(`conocimiento.maxCaracteresPagina: ${maxCaracteresPagina} es menor que tamanoFragmento + 200 (${tamanoFragmento + 200}) en ${donde}; ningún fragmento del manual cabría`);
+    }
+    const vistos = new Set<string>();
+    for (const p of paginas) {
+      if (vistos.has(p.id)) hallazgos.push(`conocimiento.paginas: id «${p.id}» repetido en ${donde}`);
+      vistos.add(p.id);
+      const fuente = fuentes.find((f) => f.id === p.fuenteId);
+      if (!fuente) hallazgos.push(`conocimiento.paginas.${p.id}: la fuente «${p.fuenteId}» no existe en las fuentes de ${donde}`);
+      else if (fuente.visibilidad !== 'publico') hallazgos.push(`conocimiento.paginas.${p.id}: la fuente «${p.fuenteId}» es interna y no se indexa en ${donde}`);
+    }
+  }
+  // Un perfil que hereda las páginas de la base repetiría los mismos mensajes.
+  return [...new Set(hallazgos)];
+}
+
 /** Valida un objeto ya parseado. Lanza `ErrorConfiguracion` con todos los detalles. */
 export function validarConfiguracion(entrada: unknown): ConfiguracionAgente {
   const resultado = esquemaConfiguracionAgente.safeParse(entrada);
@@ -86,6 +121,7 @@ export function validarConfiguracion(entrada: unknown): ConfiguracionAgente {
   const hallazgos: string[] = [];
   recorrer(config, config.id, hallazgos);
   hallazgos.push(...facetasSensibles(config));
+  hallazgos.push(...paginasInvalidas(config));
   if (hallazgos.length > 0) throw new ErrorConfiguracion('La configuración contiene contenido no permitido', hallazgos);
   return config;
 }

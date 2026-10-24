@@ -33,6 +33,8 @@ import { z } from 'zod';
 /** Identificadores: minúsculas, dígitos y guiones. Se usan en rutas y nombres de colección. */
 export const ID_AGENTE = /^[a-z0-9][a-z0-9-]{2,59}$/;
 export const ID_PERFIL = /^[A-Za-z0-9][A-Za-z0-9_-]{1,59}$/;
+/** Identificador de pantalla del sitio (contexto de página). Es el único valor del cliente que se compara con la configuración. */
+export const ID_PAGINA = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 const textoCorto = (max: number) => z.string().trim().max(max);
 const textoOpcional = (max: number) => z.string().trim().max(max).optional();
@@ -133,6 +135,19 @@ export const esquemaFuente = z
   })
   .strict();
 
+/**
+ * Una pantalla del sitio y la fuente (manual) que la describe. El id viaja en cada mensaje
+ * (`pagina`) y solo SELECCIONA una fuente ya declarada: el valor del cliente jamás entra al
+ * prompt. NO garantiza que la persona esté de verdad en esa pantalla: el sitio lo declara y
+ * el núcleo no puede verificarlo.
+ */
+export const esquemaPagina = z
+  .object({
+    id: z.string().regex(ID_PAGINA),
+    fuenteId: z.string().regex(/^[a-z0-9][a-z0-9-]{1,79}$/),
+  })
+  .strict();
+
 export const esquemaConocimiento = z
   .object({
     modo: z.enum(['rag', 'solo_prompt']).default('rag'),
@@ -150,6 +165,21 @@ export const esquemaConocimiento = z
     tamanoFragmento: z.number().int().min(200).max(4000).default(900),
     solapamiento: z.number().int().min(0).max(1000).default(120),
     fuentes: z.array(esquemaFuente).max(200).default([]),
+    /**
+     * Pantallas del sitio con manual propio. Si el mensaje trae una `pagina` de esta lista, el
+     * manual de esa pantalla entra al prompt delante de los resultados de búsqueda y cuenta como
+     * respaldo. Cada fuente debe existir y ser pública (lo valida `cargar.ts`). Como los demás
+     * arreglos, un perfil que la define reemplaza la de la base.
+     */
+    paginas: z.array(esquemaPagina).max(60).default([]),
+    /**
+     * Tope de caracteres del manual de pantalla que se inyecta al prompt. Acota el costo y
+     * evita que un manual largo desplace el resto del respaldo. NO recorta a mitad de
+     * fragmento: se descartan los fragmentos que no caben completos. El solapamiento repite
+     * texto entre fragmentos vecinos y ese texto repetido cuenta contra el tope. Debe ser al
+     * menos `tamanoFragmento + 200` (lo valida `cargar.ts`), para que entre al menos un fragmento.
+     */
+    maxCaracteresPagina: z.number().int().min(500).max(8000).default(4000),
   })
   .strict();
 
@@ -348,6 +378,7 @@ export type Datos = z.infer<typeof esquemaDatos>;
 export type Alcance = z.infer<typeof esquemaAlcance>;
 export type Conocimiento = z.infer<typeof esquemaConocimiento>;
 export type Fuente = z.infer<typeof esquemaFuente>;
+export type Pagina = z.infer<typeof esquemaPagina>;
 export type Seguridad = z.infer<typeof esquemaSeguridad>;
 export type Herramienta = z.infer<typeof esquemaHerramienta>;
 export type Orientacion = z.infer<typeof esquemaOrientacion>;
