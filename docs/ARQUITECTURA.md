@@ -155,9 +155,13 @@ tarjeta?», «no me llega el código de verificación» o «¿qué es el código
 de la tarjeta?», y los códigos de otra cosa (postal, de póliza, civil…). No cubre un
 dato en un segundo mensaje, escrito con palabras o con letras intercaladas, ni un
 CVV/OTP con otra redacción. `clave`, `cedula`, `salud`, `pep` e `inyeccion` no cambian.
-Consecuencia: lo que pasa llega al proveedor del modelo. La política de retención y de
-uso de datos de Vertex AI NO está verificada en este repositorio: pendiente de
-verificar con la documentación oficial.
+Consecuencia: lo que pasa llega al proveedor del modelo. Retención y uso de datos de
+Vertex AI, según la documentación oficial consultada el 2026-10-23 (detalle, fuentes y
+límites en `ESTADO.md`, subsección «P18»): Google no entrena con los datos sin permiso;
+para los modelos que no son «Frontier» ni «Advanced AI» puede guardar hasta 90 días y
+revisar los prompts que sus clasificadores marquen como sospechosos (los clientes con
+Acuerdo Maestro están exentos); la caché implícita guarda hasta 24 horas. No está
+verificado bajo qué contrato opera la cuenta ni la retención de los embeddings.
 
 ## 7. Aplicación a segurolotengo-demo
 
