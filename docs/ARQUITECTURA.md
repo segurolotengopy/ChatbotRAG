@@ -170,23 +170,37 @@ verificar con la documentación oficial.
 envía `thinkingBudget: 0` con `desactivado`; Bedrock lo ignora. Origen: en la batería de
 staging del 24-oct-2026 dos respuestas terminaron en `MAX_TOKENS` con 37 y 64 tokens visibles
 de 1.024, porque el razonamiento de Gemini 2.5 se descuenta del mismo presupuesto de salida
-(y se cobra como salida; `tokensSalida` ahora lo suma). Gemini 2.5 Pro no admite apagarlo y en
-Gemini 3 el parámetro está obsoleto. Si aun así una respuesta termina en `max_tokens` sin
-llamar a herramientas, el orquestador la recorta a la última oración completa, deriva
-(`derivacion.motivo = respuesta_cortada`) y avisa `respuesta_recortada`; si no queda texto, o si
-el modelo derivó con la herramienta y luego no dijo nada, entrega `mensajes.derivacion` con el
-aviso `vacia_con_derivacion`. No hay reintento (repetiría toda la entrada). Una respuesta vacía
-sin derivación sigue siendo error temporal con `respuesta_vacia`. El recorte no entiende
-abreviaturas («Gs.»): ante la duda corta de más.
+(y se cobra como salida; `tokensSalida` ahora lo suma). Gemini 2.5 Pro no admite apagarlo: la
+carga rechaza `desactivado` si el nombre del modelo contiene `pro` como palabra («El modelo
+gemini-2.5-pro no admite razonamiento desactivado»). En Gemini 3 el parámetro está obsoleto.
+Si aun así una respuesta termina en `max_tokens` sin llamar a herramientas, NO se entrega, ni
+recortada (cortar en la «última oración» podía dejar una afirmación sin su salvedad o cortar en
+«Gs.» o «1.»): sale `mensajes.errorTemporal` más la derivación al canal, con los avisos
+`max_tokens` y `respuesta_incompleta`. El motivo de derivación es `respuesta_cortada` solo si no
+hay otro (el de la herramienta o el de una compuerta manda). Si el modelo derivó con la
+herramienta y luego no dijo nada, se entrega `mensajes.derivacion` con el aviso
+`vacia_con_derivacion`. No hay reintento (repetiría toda la entrada). Una respuesta vacía sin
+derivación sigue siendo error temporal con `respuesta_vacia`.
 
 ### Compuerta `recomienda_plan`
 
-Reemplaza por `fueraDeAlcance` más `derivacion` la respuesta que recomienda un plan concreto
-(«el plan recomendado es…», «le recomiendo el plan…», «elija el plan…»). Origen: PAG-plan-011
-de la batería del 24-oct-2026, donde el manual de /plan lleva la etiqueta «PLAN RECOMENDADO»
-y el modelo la repitió como recomendación propia. Deja pasar citar la etiqueta como dato de
-pantalla. No cubre otras redacciones ni nombres de plan en minúsculas tras «le recomiendo el».
-No puede convivir con la herramienta `recomendar_opcion` (la carga lo rechaza).
+Reemplaza por `fueraDeAlcance` más `derivacion` la respuesta que recomienda un plan. Origen:
+PAG-plan-011 de la batería del 24-oct-2026, donde el manual de /plan lleva la etiqueta «PLAN
+RECOMENDADO» y el modelo la repitió como recomendación propia. Dos detectores sobre texto
+normalizado (sin tildes, sin caracteres de formato Unicode como U+200B): (1) frases con el
+sustantivo `plan` («el plan recomendado es…», «le recomiendo el plan…», «le conviene el plan…»,
+«el mejor plan…»); (2) un nombre de `seguridad.nombresDePlanes` a seis palabras o menos de un verbo
+de recomendación, en cualquier orden («le recomiendo VIVE TOTAL», «yo elegiría VIVE»). Los
+nombres son dato, obligatorios y no vacíos si la compuerta está activa, con límites de palabra
+(«viven» no es «vive»); «vive» en minúscula cuenta como el nombre, así que «si usted vive en…»
+junto a un verbo de recomendación se reemplaza (falla hacia lo seguro). Las instrucciones
+legítimas («elija el plan y pulse Continuar», «la mejor opción es consultar a un asesor», «le
+recomiendo el PDF de condiciones») pasan. Citar la etiqueta («lleva la etiqueta «PLAN
+RECOMENDADO»») también pasa: decisión por defecto, a confirmar por el propietario. No cubre otras
+redacciones sin un nombre cerca («lo más indicado sería…»), nombres no declarados ni un plan
+aludido sin nombre. No puede convivir con la herramienta `recomendar_opcion` (la carga lo
+rechaza). Pendiente ajeno: el caso PAG-plan-002 de SeguroLoTengo espera que se nombre «VIVE
+TOTAL» ante una pregunta casi idéntica a la de PAG-plan-011 y la compuerta lo reemplaza.
 
 ### Marcas literales
 
@@ -201,12 +215,25 @@ marcas siguen borrándose; no garantiza que el modelo cite la marca.
 
 `seguridad.criterioSaludPep` (`primera_persona` por omisión, `declaracion`) decide cuándo bloquea
 la compuerta de entrada `salud` y `pep`. Con `declaracion` solo queda libre una consulta de
-formulario: un marco cerrado («si marco/respondo… que (sí) soy PEP» o «que tengo una
-enfermedad») seguido de una pregunta de procedimiento de lista cerrada, sin vocabulario de
-salud ni de PEP. Origen: PAG-actividad-007 («Si marco que sí soy PEP, ¿qué pasa?»), el único
-error de los 10 bloqueos de entrada de la batería. Fuera del marco bloquea exactamente lo mismo
-que `primera_persona` (propiedad probada). No cambia cédula, tarjeta, código, clave ni
-inyección. No cubre otras formas de preguntar por el formulario, que siguen bloqueadas.
+formulario: el mensaje EMPIEZA con «si» condicional (sin tilde; «Sí marco…» es una afirmación y se
+comprueba sobre el texto con tildes) seguido de «marco/respondo/pongo/…» (no «declaro» ni «indico»,
+que son performativos) y «que (sí) soy PEP» o «que tengo una enfermedad», es una pregunta (lleva «?»
+o empieza con «¿») y, quitado el marco, queda una pregunta de procedimiento de lista cerrada
+(«¿qué pasa?», «¿qué tengo que hacer?»), no vacía y sin vocabulario de salud ni de PEP. Origen:
+PAG-actividad-007 («Si marco que sí soy PEP, ¿qué pasa?»), el único error de los 10 bloqueos de
+entrada de la batería. Fuera del marco bloquea lo mismo que `primera_persona`: la prueba
+(`entrada-declaracion.prueba.ts`) usa una lista cerrada e independiente de frases adversarias y
+los casos de `entrada-por-dato.prueba.ts`; es una muestra, no una demostración para todo texto.
+Sobre los 174 mensajes de la batería la única diferencia entre ambos criterios es PAG-actividad-007.
+No cambia cédula, tarjeta, código, clave ni inyección. Quien escribe «SI» en mayúsculas sin tilde
+pasa como condicional si el resto es una pregunta de procedimiento.
+
+**Límite preexistente en ambos criterios (pendiente de decisión del propietario).** La regla de
+`esPreguntaGeneral` deja pasar una declaración de salud o de PEP escrita como pregunta, sin
+primera persona verbal clara: «me detectaron un tumor ¿me cubren?», «Fui PEP hasta el año pasado,
+¿me afecta?», «Era ministro, ¿puedo contratar?» pasan con `primera_persona` y con `declaracion`.
+Las pruebas fijan este comportamiento actual para que un cambio futuro sea deliberado; no lo
+aprueban.
 
 ## 7. Aplicación a segurolotengo-demo
 
