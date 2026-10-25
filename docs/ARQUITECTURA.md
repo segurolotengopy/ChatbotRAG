@@ -154,7 +154,9 @@ vocabulario de OTP) junto a «código», «otp» o «token». Deja pasar «¿pue
 tarjeta?», «no me llega el código de verificación» o «¿qué es el código de seguridad
 de la tarjeta?», y los códigos de otra cosa (postal, de póliza, civil…). No cubre un
 dato en un segundo mensaje, escrito con palabras o con letras intercaladas, ni un
-CVV/OTP con otra redacción. `clave`, `cedula`, `salud`, `pep` e `inyeccion` no cambian.
+CVV/OTP con otra redacción. Los detectores operan sobre texto NFKC: dígitos y letras de
+ancho completo, ligaduras y espacios no separables cuentan como su forma simple; los
+caracteres invisibles y los homóglifos de otros alfabetos, no. `clave`, `cedula`, `salud`, `pep` e `inyeccion` no cambian.
 Consecuencia: lo que pasa llega al proveedor del modelo. La política de retención y de
 uso de datos de Vertex AI NO está verificada en este repositorio: pendiente de
 verificar con la documentación oficial.
