@@ -2,9 +2,19 @@
  * VOCABULARIO SENSIBLE Y DETECTORES DE ENTRADA
  *
  * Todo lo que se compara acá se compara sobre texto NORMALIZADO (`normalizar`):
- * minúsculas, sin tildes, espacios colapsados. Los patrones se escriben sin
+ * NFKD, minúsculas, sin tildes, espacios colapsados. Los patrones se escriben sin
  * acentos por eso. `\b` no funciona detrás de vocal acentuada en JS, y esa es una
  * de las razones para normalizar antes y no después.
+ *
+ * Se usa NFKD y no NFD porque los dígitos y las letras de ancho completo («４１１１»,
+ * «ＴＡＲＪＥＴＡ»), las ligaduras («ﬁ») y los alfabetos matemáticos evadían los
+ * detectores: NFD no los lleva a su forma simple. NFKC solo no sirve: recompone «é»
+ * y rompería el quitado de tildes. Efecto lateral: «º», «ª», «№» y «½» pasan a letras
+ * o dígitos («o», «a», «no», «1⁄2»); no se encontró un falso positivo realista. Los
+ * detectores exportados que leen `\d` ASCII sobre texto crudo no pliegan por sí
+ * solos: el NFKC lo garantiza `detectarCategorias`. Qué NO garantiza:
+ * caracteres invisibles (\p{Cf}, como el espacio de ancho cero), homóglifos de otros
+ * alfabetos (la «а» cirílica), dígitos escritos en palabras ni letras intercaladas.
  *
  * Estos detectores son deliberadamente AMPLIOS. Su trabajo no es clasificar con
  * precisión sino impedir que un dato sensible llegue a un modelo de lenguaje o a
@@ -14,7 +24,7 @@
 
 export function normalizar(texto: string): string {
   return texto
-    .normalize('NFD')
+    .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/\s+/g, ' ')
@@ -118,12 +128,13 @@ export function pareceNumeroDeTarjetaFlexible(texto: string): boolean {
  * dígitos, en ambos sentidos y aunque estén separados; (2) perífrasis del CVV («los 3
  * números de atrás»); (3) un vencimiento mes/año; (4) «últimos 4»/«termina en»; (5) una
  * SECUENCIA contigua de 8 o más dígitos, descartando montos, teléfonos y fechas.
- * Opera sobre texto con NFKC (cubre dígitos de ancho completo; otros disfraces, no).
+ * Opera sobre texto normalizado (NFKD en normalizar): cubre dígitos de ancho
+ * completo; otros disfraces, no.
  * Qué NO garantiza: dígitos escritos con palabras o con letras intercaladas, ni un
  * número en un segundo mensaje, ni un CVV con otra redacción.
  */
 export function hayDatoDeTarjeta(texto: string): boolean {
-  const n = normalizar(texto.normalize('NFKC'));
+  const n = normalizar(texto);
   // 1. CVV/CVC con dígitos, en ambos sentidos (palabra → dígitos y dígitos → palabra).
   const palabraCvv = '(?:cvv|cvc|codigo de seguridad)';
   const digitosCvv = '\\d(?:[\\s.-]?\\d){2,3}(?!\\d)';
@@ -161,7 +172,7 @@ export function hayDatoDeTarjeta(texto: string): boolean {
  * segundo mensaje, puede pasar.
  */
 export function hayDatoDeCodigo(texto: string): boolean {
-  const limpio = normalizar(texto.normalize('NFKC')).replace(/\bcodigo (?:postal|de poliza|de cliente|de plan|de producto|de area|civil|de barras)\b/g, ' ');
+  const limpio = normalizar(texto).replace(/\bcodigo (?:postal|de poliza|de cliente|de plan|de producto|de area|civil|de barras)\b/g, ' ');
   const hayVocabularioOtp = /verificacion|\botp\b|\bsms\b|whatsapp|que me llego|me llego/.test(limpio);
   const ventana = hayVocabularioOtp ? 70 : 40;
   const claves = [...limpio.matchAll(/\b(?:codigo|otp|token)\b/g)].map((m) => ({ ini: m.index ?? 0, fin: (m.index ?? 0) + m[0].length }));

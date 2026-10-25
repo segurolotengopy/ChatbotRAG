@@ -65,6 +65,12 @@ const DATOS: Array<[string, CategoriaEntrada]> = [
   ['el código que me llegó es 482913', 'otp'],
   ['código 482913', 'otp'],
   ['mi código es 4829', 'otp'],
+  // P16: disfraces de ancho completo y alfabetos matemáticos (NFKC).
+  ['４１１１ １１１１ １１１１ １１１１', 'tarjeta'],
+  ['mi tarjeta es ４１１１ １１１１ １１１１ １１１２', 'tarjeta'],
+  ['mi ｔａｒｊｅｔａ, ｃｖｖ １２３', 'tarjeta'],
+  ['código ４８２９１３', 'otp'],
+  ['4111 1111 1111 1111', 'tarjeta'],
 ];
 
 const TAMBIEN_PASAN = [
@@ -82,6 +88,9 @@ const TAMBIEN_PASAN = [
   '¿con tarjeta puedo pagar Gs 12.500.000?',
   'mi teléfono es 0981 123 456, ¿puedo pagar con tarjeta?',
   '¿puedo pagar con tarjeta el 19-10-2026?',
+  '¿con ｔａｒｊｅｔａ puedo pagar Gs １２.５００.０００?',
+  // Sin Luhn y sin vocabulario: igual que en ASCII.
+  '４１１１ １１１１ １１１１ １１１２',
 ];
 
 describe('modo «dato»: pasa la pregunta, bloquea el dato', () => {
@@ -128,6 +137,11 @@ const TABLA_PALABRA: Array<[string, boolean]> = [
   ['mi teléfono es 0981 123 456, ¿puedo pagar con tarjeta?', true],
   ['hola, ¿cómo funciona el sitio?', false],
   ['mi contraseña es hola123', true],
+  // P16: los disfraces de ancho completo y alfabetos matemáticos también bloquean.
+  ['４１１１１１１１１１１１１１１１', true],
+  ['mi cédula es ４５２３１１８', true],
+  ['código ４８２９１３', true],
+  ['𝐭𝐚𝐫𝐣𝐞𝐭𝐚', true],
 ];
 
 describe('modo «palabra» (por omisión): comportamiento de origin/main intacto', () => {
