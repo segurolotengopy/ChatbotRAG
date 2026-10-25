@@ -166,7 +166,7 @@ export class Agente {
     }
 
     // 3. Compuertas de entrada.
-    const entrada = evaluarEntrada(texto, config.seguridad.bloquearEntrada, config.seguridad.vocabularioEntrada);
+    const entrada = evaluarEntrada(texto, config.seguridad.bloquearEntrada, config.seguridad.vocabularioEntrada, config.seguridad.criterioSaludPep);
     if (entrada.bloqueada) {
       this.deps.bitacora.registrar({ ...base, tipo: 'entrada_bloqueada', avisos: entrada.bloqueantes.map((c) => `entrada:${c}`) });
       return respuesta(config.mensajes.entradaBloqueada, { avisos: entrada.bloqueantes.map((c) => `entrada:${c}`) });

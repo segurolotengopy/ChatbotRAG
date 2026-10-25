@@ -201,6 +201,17 @@ export const esquemaSeguridad = z
      * («cuatro uno uno uno…») sea detectado; `clave`, `cedula`, `salud`, `pep` e `inyeccion` no cambian.
      */
     vocabularioEntrada: z.enum(['palabra', 'dato']).default('palabra'),
+    /**
+     * Cómo trata la compuerta de entrada el vocabulario de `salud` y `pep`. `primera_persona`
+     * (por omisión) deja pasar todo texto con «?» salvo que hable en primera persona o de un
+     * familiar. `sin_sujeto` bloquea siempre ese vocabulario, salvo una pregunta única, corta y
+     * sin marcas de persona ni de tiempo sobre el producto («¿cubre cáncer?»): cierra el
+     * hallazgo HIGH (regla #7) de declaraciones de salud o PEP escritas como pregunta
+     * («me detectaron un tumor, ¿me cubren?»). Nunca bloquea menos que `primera_persona`. Es un
+     * enumerado: jamás se interpola texto libre. NO garantiza detectar datos personales sin ese
+     * vocabulario (sinónimos, otros idiomas, datos repartidos en varios turnos).
+     */
+    criterioSaludPep: z.enum(['primera_persona', 'sin_sujeto']).default('primera_persona'),
     /** Marcas de control `[MARCA]` que el modelo puede emitir. Cualquier otra se borra. */
     marcasPermitidas: z.array(z.string().regex(/^[A-Z_]{3,30}$/)).max(10).default(['DERIVAR']),
   })
