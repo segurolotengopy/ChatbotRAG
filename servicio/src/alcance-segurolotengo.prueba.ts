@@ -349,3 +349,10 @@ describe('compuerta de entrada por dato, de punta a punta con la configuración 
     expect(JSON.stringify(bitacora.eventos)).not.toContain('123');
   });
 });
+
+describe('razonamiento del modelo en SeguroLoTengo', () => {
+  it('desactiva el razonamiento: con 1.024 tokens de salida el razonamiento se comía la respuesta (batería del 24-oct-2026)', () => {
+    expect(config.modelo.razonamiento).toBe('desactivado');
+    expect(config.modelo.maxTokensSalida).toBe(1024);
+  });
+});

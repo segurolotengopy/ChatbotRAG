@@ -249,6 +249,7 @@ export class Agente {
     let derivacion: { motivo: string } | null = null;
     let recomendacion: { id: string; texto: string } | null = null;
     let textoModelo = '';
+    let finCortado = false;
     let iteraciones = 0;
     const tokens = { tokensEntrada: 0, tokensSalida: 0 };
 
@@ -259,13 +260,15 @@ export class Agente {
           sistema,
           mensajes,
           herramientas: definiciones,
-          parametros: { modelo: config.modelo.nombre, temperatura: config.modelo.temperatura, maxTokensSalida: config.modelo.maxTokensSalida },
+          parametros: { modelo: config.modelo.nombre, temperatura: config.modelo.temperatura, maxTokensSalida: config.modelo.maxTokensSalida, razonamiento: config.modelo.razonamiento },
         });
         tokens.tokensEntrada += r.uso.tokensEntrada;
         tokens.tokensSalida += r.uso.tokensSalida;
         textoModelo = r.texto;
 
         if (r.motivoFin === 'max_tokens') avisos.push('max_tokens');
+        // Solo cuenta el corte de la ÚLTIMA iteración: un texto cortado que además llamó a una herramienta se reemplaza en la siguiente.
+        finCortado = r.motivoFin === 'max_tokens' && r.llamadasHerramienta.length === 0;
         if (r.llamadasHerramienta.length === 0) break;
 
         mensajes.push({ rol: 'asistente_herramientas', texto: r.texto, llamadas: r.llamadasHerramienta });
@@ -285,6 +288,23 @@ export class Agente {
     } catch (e) {
       this.deps.bitacora.registrar({ ...base, tipo: 'error_modelo', codigo: 'proveedor', detalle: resumirError(e), iteraciones });
       return respuesta(config.mensajes.errorTemporal, { avisos: [...avisos, 'error_modelo'] }, iteraciones, tokens);
+    }
+
+    // RESPUESTA CORTADA O VACÍA TRAS DERIVAR (batería del 24-oct-2026). Un texto que el modelo no
+    // alcanzó a terminar no se entrega con una frase a medias: se recorta a la última oración completa
+    // y se deriva, porque una explicación incompleta no sirve de respaldo. Si de eso no queda nada, o
+    // si el modelo derivó con la herramienta y luego no dijo nada, se usa el mensaje de derivación
+    // configurado. Sin reintento: repetiría la entrada completa. Lo que NO garantiza: que la oración
+    // recortada diga todo lo necesario; por eso lleva derivación. Una respuesta vacía SIN derivación
+    // sigue siendo `respuesta_vacia` (error temporal), aguas abajo.
+    if (finCortado) {
+      textoModelo = recortarAUltimaOracion(textoModelo);
+      avisos.push('respuesta_recortada');
+      derivacion ??= { motivo: 'respuesta_cortada' };
+    }
+    if (textoModelo.trim() === '' && derivacion) {
+      textoModelo = config.mensajes.derivacion;
+      avisos.push('vacia_con_derivacion');
     }
 
     // SIN RESPALDO Y CON EXIGENCIA: si no hubo fragmentos, el modelo no llamó a ninguna
@@ -400,6 +420,17 @@ function respaldoDe(fragmentos: FragmentoRecuperado[], cantidadPagina: number): 
     }
   });
   return salida;
+}
+
+/**
+ * Prefijo hasta el último fin de oración (`.`, `!`, `?` o `…`, con comillas o paréntesis de cierre
+ * opcionales) seguido de espacio o del final. Sin ninguno devuelve `''`. No entiende abreviaturas
+ * («Gs.», «Sr.»): ante la duda corta de más, que es el lado seguro.
+ */
+export function recortarAUltimaOracion(t: string): string {
+  let fin = -1;
+  for (const m of t.matchAll(/[.!?…]["»”)]*(?=\s|$)/g)) fin = m.index + m[0].length;
+  return fin < 0 ? '' : t.slice(0, fin).trim();
 }
 
 function resumirError(e: unknown): string {

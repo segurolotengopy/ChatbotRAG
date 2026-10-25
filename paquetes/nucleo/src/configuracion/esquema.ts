@@ -281,6 +281,16 @@ export const esquemaModelo = z
     temperatura: z.number().min(0).max(1).default(0.3),
     maxTokensSalida: z.number().int().min(64).max(8192).default(1024),
     maxIteraciones: z.number().int().min(1).max(6).default(3),
+    /**
+     * Razonamiento interno del modelo. `automatico` (por omisión) no envía nada y deja al modelo
+     * decidir; `desactivado` le pide al proveedor no razonar antes de responder. Origen: batería
+     * de SeguroLoTengo del 24-oct-2026, donde dos respuestas terminaron en `MAX_TOKENS` con apenas
+     * 37 y 64 tokens visibles de 1.024: el razonamiento de Gemini 2.5 se descuenta del mismo
+     * presupuesto de salida y se cobra como salida. Es un enumerado: jamás se interpola texto.
+     * NO garantiza que el proveedor lo respete: Gemini 2.5 Pro no admite apagarlo, en Gemini 3 el
+     * parámetro está obsoleto y Bedrock lo ignora.
+     */
+    razonamiento: z.enum(['automatico', 'desactivado']).default('automatico'),
     ventanaMemoria: z.number().int().min(2).max(40).default(10),
     /** Segundos de inactividad tras los cuales la conversación se olvida. */
     ttlConversacionSeg: z.number().int().min(60).max(86400).default(3600),

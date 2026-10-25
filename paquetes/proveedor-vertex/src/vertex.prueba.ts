@@ -82,3 +82,26 @@ describe('EmbebedorVertex', () => {
     await expect(new EmbebedorVertex(roto).embeber(['a'])).rejects.toThrow(/devolvió 0 vectores/);
   });
 });
+
+describe('ProveedorVertex: razonamiento', () => {
+  const base = { sistema: 'S', mensajes: [{ rol: 'usuario' as const, contenido: 'hola' }], herramientas: [] };
+  const respuesta = { candidates: [{ content: { role: 'model', parts: [{ text: 'Hola.' }] }, finishReason: 'STOP' as never }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 40, thoughtsTokenCount: 900 } } as never;
+
+  it('con `desactivado` envía thinkingBudget 0; con `automatico` o sin el parámetro no envía thinkingConfig', async () => {
+    for (const [razonamiento, esperado] of [['desactivado', true], ['automatico', false], [undefined, false]] as const) {
+      const capturado: { ultima?: unknown } = {};
+      await new ProveedorVertex(clienteFalso(respuesta, capturado)).generar({
+        ...base,
+        parametros: { modelo: 'gemini-2.5-flash', temperatura: 0, maxTokensSalida: 100, ...(razonamiento ? { razonamiento } : {}) },
+      });
+      const config = (capturado.ultima as { config: Record<string, unknown> }).config;
+      expect('thinkingConfig' in config).toBe(esperado);
+      if (esperado) expect(config['thinkingConfig']).toEqual({ thinkingBudget: 0 });
+    }
+  });
+
+  it('suma los tokens de razonamiento a los de salida (se cobran como salida)', async () => {
+    const r = await new ProveedorVertex(clienteFalso(respuesta)).generar({ ...base, parametros: { modelo: 'gemini-2.5-flash', temperatura: 0, maxTokensSalida: 100 } });
+    expect(r.uso).toEqual({ tokensEntrada: 10, tokensSalida: 940 });
+  });
+});

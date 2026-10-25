@@ -103,6 +103,7 @@
     "modeloEmbeddings": "text-embedding-005",
     "temperatura": 0.2,
     "maxTokensSalida": 1024,
+    "razonamiento": "desactivado",
     "maxIteraciones": 3,
     "ventanaMemoria": 10,
     "ttlConversacionSeg": 1800

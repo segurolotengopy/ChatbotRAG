@@ -36,7 +36,7 @@ export interface ClienteGemini {
   generateContent(peticion: {
     model: string;
     contents: Content[];
-    config: { systemInstruction: string; temperature: number; maxOutputTokens: number; tools?: Array<{ functionDeclarations: FunctionDeclaration[] }> };
+    config: { systemInstruction: string; temperature: number; maxOutputTokens: number; thinkingConfig?: { thinkingBudget: number }; tools?: Array<{ functionDeclarations: FunctionDeclaration[] }> };
   }): Promise<GenerateContentResponse>;
   embedContent(peticion: { model: string; contents: string[]; config?: { outputDimensionality?: number } }): Promise<{ embeddings?: Array<{ values?: number[] }> }>;
 }
@@ -127,6 +127,9 @@ export class ProveedorVertex implements ProveedorLLM {
           systemInstruction: peticion.sistema,
           temperature: peticion.parametros.temperatura,
           maxOutputTokens: peticion.parametros.maxTokensSalida,
+          // Con `desactivado`, presupuesto 0: el razonamiento no consume el tope de salida. Con `automatico`
+          // no se envía nada y el modelo decide, como siempre. Gemini 2.5 Pro no admite 0 (el servicio lo rechaza).
+          ...(peticion.parametros.razonamiento === 'desactivado' ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
           ...(peticion.herramientas.length
             ? { tools: [{ functionDeclarations: peticion.herramientas.map((h) => ({ name: h.nombre, description: h.descripcion, parameters: aEsquema(h.parametros) })) }] }
             : {}),
@@ -150,7 +153,7 @@ export class ProveedorVertex implements ProveedorLLM {
       texto,
       llamadasHerramienta: llamadas,
       motivoFin: motivo(candidato?.finishReason as string | undefined, llamadas.length > 0),
-      uso: { tokensEntrada: r.usageMetadata?.promptTokenCount ?? 0, tokensSalida: r.usageMetadata?.candidatesTokenCount ?? 0 },
+      uso: { tokensEntrada: r.usageMetadata?.promptTokenCount ?? 0, tokensSalida: (r.usageMetadata?.candidatesTokenCount ?? 0) + (r.usageMetadata?.thoughtsTokenCount ?? 0) },
     };
   }
 }
