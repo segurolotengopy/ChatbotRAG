@@ -13,6 +13,16 @@
  *     modelo, así que ninguna compuerta de salida lo frena.
  *  3. Reponer en los mensajes fijos la promesa de explicar planes y coberturas.
  *
+ * EXCEPCIÓN DECIDIDA (Andres, 2026-10-25): el asistente SÍ puede citar precios y
+ * montos tal como aparecen en la pantalla /plan, y se ingesta `plan.md` completo
+ * (fuente `manual-plan`). Es la ÚNICA excepción a la regla 1; lo demás sigue igual:
+ * sin recomendar plan, sin comparar para decidir y sin evaluar un caso particular.
+ * Hoy la excepción no es necesaria, porque ningún id ni ruta coincide con
+ * FUENTE_DE_PRODUCTO (ni siquiera `manual-plan`); se deja escrita para documentar la
+ * decisión y para que siga valiendo si el regex se amplía.
+ * Los montos en guaraníes solo pueden vivir en los archivos listados en
+ * MANUALES_CON_MONTOS; cualquier otro archivo con un monto hace fallar la prueba.
+ *
  * Esta prueba lee la configuración REAL, la que se despliega, y no un ejemplo.
  * Qué NO garantiza: que el modelo respete el alcance ante un mensaje adverso.
  * Eso lo miden las baterías de casos fuera de alcance, no esta prueba.
@@ -38,6 +48,10 @@ const config = cargarConfiguracionDesdeJson(readFileSync(RUTA, 'utf8'));
 
 /** Lo que se busca en las fuentes: el contenido de producto que quedó fuera de alcance. */
 const FUENTE_DE_PRODUCTO = /cobertura|exclusion|planes?-|premio|poliza|carencia/i;
+/** Fuentes de producto que se admiten por decisión expresa (ver cabecera). */
+const EXCEPCIONES_DE_FUENTE_DE_PRODUCTO = ['manual-plan'];
+/** Archivos del corpus (ruta relativa a corpus/segurolotengo/) que pueden traer montos. */
+const MANUALES_CON_MONTOS = ['manuales/plan.md'];
 /** Un monto en guaraníes: `Gs. 319.000`, `Gs 50.000.000`. */
 const MONTO = /Gs\.?\s*\d/;
 
@@ -48,15 +62,33 @@ describe('alcance del asistente de SeguroLoTengo: funcionamiento, no producto', 
     expect(Object.keys(config.perfiles).sort()).toEqual(['ACCIDENTES_PERSONALES', 'RESPONSABILIDAD_CIVIL', 'VIDA', 'VIDA_ONCOLOGICO']);
   });
 
-  it('ningún perfil carga fuentes de coberturas, exclusiones, planes o premios', () => {
+  it('ningún perfil carga fuentes de coberturas, exclusiones, planes o premios, salvo manual-plan', () => {
     for (const [id, perfil] of perfiles) {
       for (const f of perfil.conocimiento?.fuentes ?? []) {
+        if (EXCEPCIONES_DE_FUENTE_DE_PRODUCTO.includes(f.id)) continue;
         expect(`${id}: ${f.id} ${f.ruta}`, `el perfil ${id} carga la fuente de producto «${f.id}»`).not.toMatch(FUENTE_DE_PRODUCTO);
       }
     }
     for (const f of config.conocimiento.fuentes) {
+      if (EXCEPCIONES_DE_FUENTE_DE_PRODUCTO.includes(f.id)) continue;
       expect(`${f.id} ${f.ruta}`, `la configuración global carga la fuente de producto «${f.id}»`).not.toMatch(FUENTE_DE_PRODUCTO);
     }
+  });
+
+  it('los montos en guaraníes solo aparecen en los archivos del corpus autorizados, nunca en la configuración ni en orientación', () => {
+    // Decisión del 2026-10-25: solo el manual de /plan cita montos. Esto fija la lista exacta:
+    // un monto nuevo en otro manual, en orientación o en la configuración rompe la prueba.
+    const base = new URL('../../configuraciones/corpus/segurolotengo/', import.meta.url);
+    const conMontos: string[] = [];
+    const recorrer = (dir: URL, prefijo: string): void => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        if (e.isDirectory()) recorrer(new URL(`${e.name}/`, dir), `${prefijo}${e.name}/`);
+        else if (e.name.endsWith('.md') && MONTO.test(readFileSync(new URL(e.name, dir), 'utf8'))) conMontos.push(`${prefijo}${e.name}`);
+      }
+    };
+    recorrer(base, '');
+    expect(conMontos.sort()).toEqual([...MANUALES_CON_MONTOS].sort());
+    expect(cadenas(crudo).filter((c) => MONTO.test(c)), 'la configuración contiene un monto').toEqual([]);
   });
 
   it('ningún perfil ofrece la herramienta que recomienda plan', () => {
@@ -95,8 +127,10 @@ describe('alcance del asistente de SeguroLoTengo: funcionamiento, no producto', 
 
   it('declara como bloqueados los temas de producto que se sacaron del alcance', () => {
     const bloqueados = config.alcance.temasBloqueados.join(' | ').toLowerCase();
-    expect(bloqueados).toContain('cubre');
-    expect(bloqueados).toContain('precios');
+    expect(bloqueados).toContain('recomendar');
+    expect(bloqueados).toContain('cubierto');
+    // Los precios ya no se bloquean como tema: se citan como los muestra la pantalla.
+    expect(bloqueados).not.toContain('precios');
   });
 });
 
