@@ -108,18 +108,24 @@ const prometeTraspaso: FuncionCompuerta = (texto, ctx) => {
   return { texto: base.includes(derivacion) ? base : `${base} ${derivacion}`.trim(), aviso: 'promete_traspaso', reemplazo: false };
 };
 
-/** Marcas `[X]` que el modelo inventa se borran; las declaradas se extraen aparte. */
+/**
+ * Marcas `[X]` que el modelo inventa se borran; las declaradas se extraen aparte. Las `literales`
+ * (`seguridad.marcasLiterales`) son texto de los manuales: se conservan intactas y no cuentan ni
+ * como marca ni como borrada.
+ */
 const RE_MARCA = /\[([A-Za-zÁÉÍÓÚÑáéíóúñ_ ]{3,30})\]/g;
 
 export function extraerMarcas(
   texto: string,
   permitidas: readonly string[],
+  literales: readonly string[] = [],
 ): { texto: string; marcas: string[]; borradas: number } {
   const marcas: string[] = [];
   let borradas = 0;
   const limpio = texto
-    .replace(RE_MARCA, (_, m: string) => {
+    .replace(RE_MARCA, (original: string, m: string) => {
       const clave = normalizar(m).toUpperCase().replace(/\s+/g, '_');
+      if (literales.includes(clave)) return original;
       if (permitidas.includes(clave)) marcas.push(clave);
       else borradas++;
       return '';
@@ -130,7 +136,7 @@ export function extraerMarcas(
 }
 
 const marcaNoDeclarada: FuncionCompuerta = (texto, ctx) => {
-  const { texto: limpio, borradas } = extraerMarcas(texto, ctx.config.seguridad.marcasPermitidas);
+  const { texto: limpio, borradas } = extraerMarcas(texto, ctx.config.seguridad.marcasPermitidas, ctx.config.seguridad.marcasLiterales);
   if (borradas === 0) return sinCambio(texto);
   return { texto: limpio, aviso: 'marca_no_declarada', reemplazo: false };
 };

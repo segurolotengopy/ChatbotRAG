@@ -126,6 +126,18 @@ export function recomiendaPlanConHerramienta(config: ConfiguracionAgente): strin
   return [...new Set(hallazgos)];
 }
 
+/** Una marca no puede ser a la vez de control (`marcasPermitidas`) y texto literal (`marcasLiterales`). */
+export function marcasEnAmbasListas(config: ConfiguracionAgente): string[] {
+  const hallazgos: string[] = [];
+  for (const perfilId of [null, ...Object.keys(config.perfiles)]) {
+    const { marcasPermitidas, marcasLiterales } = resolverConfiguracion(config, perfilId).seguridad;
+    for (const m of marcasLiterales) {
+      if (marcasPermitidas.includes(m)) hallazgos.push(`seguridad: marcasLiterales y marcasPermitidas no pueden compartir una marca («${m}», ${perfilId ?? 'base'})`);
+    }
+  }
+  return [...new Set(hallazgos)];
+}
+
 /** Valida un objeto ya parseado. Lanza `ErrorConfiguracion` con todos los detalles. */
 export function validarConfiguracion(entrada: unknown): ConfiguracionAgente {
   const resultado = esquemaConfiguracionAgente.safeParse(entrada);
@@ -139,6 +151,7 @@ export function validarConfiguracion(entrada: unknown): ConfiguracionAgente {
   hallazgos.push(...facetasSensibles(config));
   hallazgos.push(...paginasInvalidas(config));
   hallazgos.push(...recomiendaPlanConHerramienta(config));
+  hallazgos.push(...marcasEnAmbasListas(config));
   if (hallazgos.length > 0) throw new ErrorConfiguracion('La configuración contiene contenido no permitido', hallazgos);
   return config;
 }

@@ -80,7 +80,8 @@
     "terminosConfidenciales": ["margen interno", "comisión de intermediación", "meta comercial", "Gemini", "Vertex", "entrenado por Google", "modelo de Google", "creado por Google", "desarrollado por Google", "Google AI"],
     "maxCaracteresEntrada": 1500,
     "vocabularioEntrada": "dato",
-    "marcasPermitidas": ["DERIVAR"]
+    "marcasPermitidas": ["DERIVAR"],
+    "marcasLiterales": ["PENDIENTE_DE_DEFINICION_LEGAL"]
   },
   "herramientas": [
     { "nombre": "derivar_humano", "descripcion": "Indica a la persona el canal oficial de contacto de Interseguros (WhatsApp, correo u oficinas) cuando lo pide, cuando la consulta excede el alcance o cuando insiste tres veces en algo que no se puede resolver por este medio. No transfiere la conversación: no existe traspaso a una persona.", "parametros": { "motivo": { "tipo": "string", "descripcion": "Motivo breve de la derivación, sin datos personales." } } },

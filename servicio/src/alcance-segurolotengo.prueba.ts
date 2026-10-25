@@ -366,3 +366,15 @@ describe('compuerta recomienda_plan con la configuración real', () => {
     expect(r.texto).toBe(`${efectiva.mensajes.fueraDeAlcance} ${efectiva.mensajes.derivacion}`);
   });
 });
+
+describe('marcas literales con la configuración real', () => {
+  it('el texto de PAG-retracto-007 sale íntegro, con la marca del manual que antes se borraba', () => {
+    expect(config.seguridad.marcasLiterales).toContain('PENDIENTE_DE_DEFINICION_LEGAL');
+    const efectiva = resolverConfiguracion(config, 'VIDA_ONCOLOGICO');
+    const texto =
+      'La página de Derecho de retracto indica que el plazo para retractarse está [PENDIENTE DE DEFINICIÓN LEGAL], por lo que no contamos con ese dato. Si desea, puede consultar con una persona de Interseguros S.A. escribiendo al WhatsApp +595 991 478 468 o al correo segurolotengo@interseguros360.com.';
+    const r = aplicarCompuertasSalida(texto, { config: efectiva });
+    expect(r.texto).toBe(texto);
+    expect(r.avisos).not.toContain('marca_no_declarada');
+  });
+});

@@ -321,7 +321,7 @@ export class Agente {
     }
 
     // 9. Marcas y compuertas de salida.
-    const marcas = extraerMarcas(textoFinal, config.seguridad.marcasPermitidas);
+    const marcas = extraerMarcas(textoFinal, config.seguridad.marcasPermitidas, config.seguridad.marcasLiterales);
     textoFinal = marcas.texto;
     if (marcas.borradas > 0) avisos.push('marca_no_declarada');
     if (marcas.marcas.includes('DERIVAR') && !derivacion) derivacion = { motivo: 'marca del modelo' };

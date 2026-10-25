@@ -205,6 +205,16 @@ export const esquemaSeguridad = z
     vocabularioEntrada: z.enum(['palabra', 'dato']).default('palabra'),
     /** Marcas de control `[MARCA]` que el modelo puede emitir. Cualquier otra se borra. */
     marcasPermitidas: z.array(z.string().regex(/^[A-Z_]{3,30}$/)).max(10).default(['DERIVAR']),
+    /**
+     * Marcas entre corchetes que son TEXTO de los manuales y no marcas de control: se conservan tal
+     * cual en la respuesta, sin contarlas ni borrarlas. Origen: batería del 24-oct-2026, PAG-retracto-007
+     * dijo «el plazo está "".» porque el manual trae `[PENDIENTE DE DEFINICIÓN LEGAL]` y la compuerta
+     * borra todo `[X]` no permitido. Coincidencia exacta con la clave normalizada igual que
+     * `extraerMarcas` (sin tildes, mayúsculas, espacios como `_`); el valor jamás se interpola en el
+     * prompt. NO garantiza que el modelo cite la marca; solo que, si la cita, no se pierde. No puede
+     * repetirse en `marcasPermitidas` (lo rechaza `cargar.ts`).
+     */
+    marcasLiterales: z.array(z.string().regex(/^[A-Z_]{3,30}$/)).max(10).default([]),
   })
   .strict();
 

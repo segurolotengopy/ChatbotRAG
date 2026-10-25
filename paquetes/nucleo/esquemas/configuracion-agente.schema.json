@@ -473,6 +473,15 @@
             "type": "string",
             "pattern": "^[A-Z_]{3,30}$"
           }
+        },
+        "marcasLiterales": {
+          "default": [],
+          "maxItems": 10,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z_]{3,30}$"
+          }
         }
       },
       "additionalProperties": false
@@ -1162,6 +1171,14 @@
                 ]
               },
               "marcasPermitidas": {
+                "maxItems": 10,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Z_]{3,30}$"
+                }
+              },
+              "marcasLiterales": {
                 "maxItems": 10,
                 "type": "array",
                 "items": {
