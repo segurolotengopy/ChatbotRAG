@@ -184,6 +184,10 @@ Impacto medido sobre 543 entradas (174 de la batería por pantalla y 369 de la b
 
 Qué NO garantiza: reduce, no elimina. Bloquea las declaraciones de salud o PEP que usan el vocabulario conocido, aunque vengan como pregunta; no detecta datos personales escritos sin ese vocabulario ni sin marcas de persona (sinónimos como «biopsia» o «diálisis», diagnósticos impersonales, guaraní o portugués sin vocabulario en español, homóglifos de otros alfabetos, datos repartidos en varios turnos). Falso positivo conocido: «¿Funcionario público de alto rango cuenta como PEP?».
 
+Revisión posterior (revisor de código y seguridad): la excepción también rechaza la cláusula subordinada sobre la condición (`que` no interrogativo, `aunque`, `porque`, `mientras`, `cuando` fuera de la apertura y `si` seguido de un verbo en primera persona), los enclíticos («cubrirme», «tratarme»), `acabo` y las anclas de tiempo («hoy», «semana pasada», días de la semana). Los invisibles y combinantes (\p{Mn}, \p{Me}, \p{Cf} y rellenos Hangul o braille) se quitan antes del vocabulario, y la sigla PEP admite hasta tres separadores no alfanuméricos. Solo se neutralizan «Recibimos tu operación» (sin complemento médico), «operación de pago», «operación bancaria» y «número, código o comprobante de operación».
+
+Límites que quedan abiertos y se documentan, no se corrigen aquí: terceros con nombre propio sin cláusula relativa («¿La señora Gómez con diabetes puede contratar?»), sinónimos fuera del vocabulario («diálisis», «biopsia»), «¿Cubre el cáncer de mamá?» (se admite «de mamá» para no bloquear «cáncer de mama»), homóglifos y letras separadas. Compromiso: PR de ampliación del vocabulario de salud en 30 días. Además, un perfil puede volver a `primera_persona` con su propia sección `seguridad` (como con las demás claves de seguridad), así que el cierre del hallazgo depende de la configuración vigente y no del código solo.
+
 ## 7. Aplicación a segurolotengo-demo
 
 El demo (Next.js 15 en AWS Amplify) **no embebe** el núcleo: consume el servicio por
