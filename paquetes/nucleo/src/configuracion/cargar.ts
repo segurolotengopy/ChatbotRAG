@@ -143,6 +143,20 @@ export function marcasEnAmbasListas(config: ConfiguracionAgente): string[] {
   return [...new Set(hallazgos)];
 }
 
+/**
+ * `razonamiento: desactivado` no se puede cumplir en Gemini 2.5 Pro: el servicio rechaza
+ * `thinkingBudget: 0` y todas las respuestas fallarían. Se rechaza al cargar, no en ejecución. Solo
+ * detecta `pro` como palabra del nombre («gemini-2.5-pro»); un modelo de otro proveedor con otro nombre
+ * que tampoco lo admita no se detecta. `modelo` no es parte de los perfiles: se revisa solo la base.
+ */
+export function razonamientoNoAdmitido(config: ConfiguracionAgente): string[] {
+  const { nombre, razonamiento } = config.modelo;
+  if (razonamiento === 'desactivado' && /(^|[^a-z0-9])pro($|[^a-z0-9])/i.test(nombre)) {
+    return [`modelo.razonamiento: El modelo ${nombre} no admite razonamiento desactivado`];
+  }
+  return [];
+}
+
 /** Valida un objeto ya parseado. Lanza `ErrorConfiguracion` con todos los detalles. */
 export function validarConfiguracion(entrada: unknown): ConfiguracionAgente {
   const resultado = esquemaConfiguracionAgente.safeParse(entrada);
@@ -157,6 +171,7 @@ export function validarConfiguracion(entrada: unknown): ConfiguracionAgente {
   hallazgos.push(...paginasInvalidas(config));
   hallazgos.push(...recomiendaPlanConHerramienta(config));
   hallazgos.push(...marcasEnAmbasListas(config));
+  hallazgos.push(...razonamientoNoAdmitido(config));
   if (hallazgos.length > 0) throw new ErrorConfiguracion('La configuración contiene contenido no permitido', hallazgos);
   return config;
 }

@@ -290,17 +290,20 @@ export class Agente {
       return respuesta(config.mensajes.errorTemporal, { avisos: [...avisos, 'error_modelo'] }, iteraciones, tokens);
     }
 
-    // RESPUESTA CORTADA O VACÍA TRAS DERIVAR (batería del 24-oct-2026). Un texto que el modelo no
-    // alcanzó a terminar no se entrega con una frase a medias: se recorta a la última oración completa
-    // y se deriva, porque una explicación incompleta no sirve de respaldo. Si de eso no queda nada, o
-    // si el modelo derivó con la herramienta y luego no dijo nada, se usa el mensaje de derivación
-    // configurado. Sin reintento: repetiría la entrada completa. Lo que NO garantiza: que la oración
-    // recortada diga todo lo necesario; por eso lleva derivación. Una respuesta vacía SIN derivación
-    // sigue siendo `respuesta_vacia` (error temporal), aguas abajo.
+    // RESPUESTA INCOMPLETA O VACÍA TRAS DERIVAR (batería del 24-oct-2026). Un texto que el modelo no
+    // alcanzó a terminar NO se entrega, ni siquiera recortado: cortar en la «última oración» puede dejar
+    // una afirmación sin su salvedad («El plan cubre cáncer de mama.» sin el «Excepto cuando…») o cortar
+    // mal en «Gs.», «Sr.» o «1.». Se entrega el mensaje de error temporal más la derivación al canal, el
+    // mismo camino seguro de una respuesta vacía, y se avisa `respuesta_incompleta`. Si el modelo derivó
+    // con la herramienta y luego no dijo nada, se usa el mensaje de derivación (`vacia_con_derivacion`).
+    // Sin reintento: repetiría toda la entrada. Una respuesta vacía SIN derivación sigue siendo
+    // `respuesta_vacia` (error temporal), aguas abajo. Lo que NO garantiza: que el aviso baste para
+    // diagnosticar el corte; los tokens usados quedan en la bitácora.
+    let incompleta = false;
     if (finCortado) {
-      textoModelo = recortarAUltimaOracion(textoModelo);
-      avisos.push('respuesta_recortada');
-      derivacion ??= { motivo: 'respuesta_cortada' };
+      textoModelo = config.mensajes.errorTemporal;
+      avisos.push('respuesta_incompleta');
+      incompleta = true;
     }
     if (textoModelo.trim() === '' && derivacion) {
       textoModelo = config.mensajes.derivacion;
@@ -329,6 +332,8 @@ export class Agente {
     textoFinal = salida.texto;
     avisos.push(...salida.avisos);
     if (salida.reemplazada && !derivacion) derivacion = { motivo: `compuerta:${salida.avisos[0] ?? 'salida'}` };
+    // El motivo de una compuerta o de la herramienta manda; `respuesta_cortada` solo si no hay otro.
+    if (incompleta && !derivacion) derivacion = { motivo: 'respuesta_cortada' };
     if (salida.avisos.length) this.deps.bitacora.registrar({ ...base, tipo: 'compuerta_salida', avisos: salida.avisos });
 
     // Derivación: agregar contacto si no está ya en el texto.
@@ -420,17 +425,6 @@ function respaldoDe(fragmentos: FragmentoRecuperado[], cantidadPagina: number): 
     }
   });
   return salida;
-}
-
-/**
- * Prefijo hasta el último fin de oración (`.`, `!`, `?` o `…`, con comillas o paréntesis de cierre
- * opcionales) seguido de espacio o del final. Sin ninguno devuelve `''`. No entiende abreviaturas
- * («Gs.», «Sr.»): ante la duda corta de más, que es el lado seguro.
- */
-export function recortarAUltimaOracion(t: string): string {
-  let fin = -1;
-  for (const m of t.matchAll(/[.!?…]["»”)]*(?=\s|$)/g)) fin = m.index + m[0].length;
-  return fin < 0 ? '' : t.slice(0, fin).trim();
 }
 
 function resumirError(e: unknown): string {

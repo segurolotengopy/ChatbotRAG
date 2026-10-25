@@ -324,8 +324,9 @@ export const esquemaModelo = z
      * de SeguroLoTengo del 24-oct-2026, donde dos respuestas terminaron en `MAX_TOKENS` con apenas
      * 37 y 64 tokens visibles de 1.024: el razonamiento de Gemini 2.5 se descuenta del mismo
      * presupuesto de salida y se cobra como salida. Es un enumerado: jamás se interpola texto.
-     * NO garantiza que el proveedor lo respete: Gemini 2.5 Pro no admite apagarlo, en Gemini 3 el
-     * parámetro está obsoleto y Bedrock lo ignora.
+     * NO garantiza que el proveedor lo respete: Gemini 2.5 Pro no admite apagarlo (la carga rechaza
+     * `desactivado` con un nombre de modelo que contenga `pro`), en Gemini 3 el parámetro está obsoleto
+     * y Bedrock lo ignora.
      */
     razonamiento: z.enum(['automatico', 'desactivado']).default('automatico'),
     ventanaMemoria: z.number().int().min(2).max(40).default(10),
