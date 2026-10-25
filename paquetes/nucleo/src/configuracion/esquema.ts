@@ -207,14 +207,17 @@ export const esquemaSeguridad = z
      * Cuándo bloquea la compuerta de entrada `salud` y `pep`. `primera_persona` (por omisión) es el
      * criterio de siempre: el vocabulario bloquea salvo que sea una pregunta general sin primera
      * persona, así que «Si marco que sí soy PEP, ¿qué pasa?» se bloquea. `declaracion` deja pasar
-     * SOLO la pregunta de procedimiento sobre el formulario («si marco que soy PEP, ¿qué pasa?»,
-     * «¿qué tengo que hacer?»): un marco cerrado de «si marco/respondo… que soy PEP / tengo una
-     * enfermedad» y un resto que sea una pregunta de procedimiento sin vocabulario de salud ni de
-     * PEP. Origen: PAG-actividad-007 de la batería del 24-oct-2026 (una de 10 entradas bloqueadas,
-     * la única por error). Es un enumerado: jamás se interpola texto libre. NO garantiza detectar
-     * toda declaración personal escrita de otra forma, ni distinguir quien miente sobre su caso:
-     * fuera del marco cerrado bloquea exactamente lo mismo que `primera_persona`. No cambia cédula,
-     * tarjeta, código, clave ni inyección.
+     * SOLO la consulta de formulario: un mensaje que EMPIEZA con «si marco/respondo/… que (sí) soy PEP»
+     * o «… que tengo una enfermedad» (el «si» condicional, sin tilde, y verbos que no sean
+     * performativos), es una pregunta y, quitado el marco, solo queda una pregunta de procedimiento de
+     * lista cerrada («¿qué pasa?», «¿qué tengo que hacer?»). Origen: PAG-actividad-007 de la batería
+     * del 24-oct-2026 (una de 10 entradas bloqueadas, la única por error). Es un enumerado: jamás se
+     * interpola texto libre. NO garantiza detectar toda declaración personal escrita de otra forma:
+     * fuera del marco bloquea lo mismo que `primera_persona` (probado con una lista cerrada, no
+     * demostrado para todo texto). LÍMITE PREEXISTENTE EN AMBOS CRITERIOS, pendiente de decisión del
+     * propietario: `esPreguntaGeneral` deja pasar una declaración escrita como pregunta («me detectaron
+     * un tumor ¿me cubren?», «Fui PEP hasta el año pasado, ¿me afecta?», «Era ministro, ¿puedo
+     * contratar?»). No cambia cédula, tarjeta, código, clave ni inyección.
      */
     criterioSaludPep: z.enum(['primera_persona', 'declaracion']).default('primera_persona'),
     /** Marcas de control `[MARCA]` que el modelo puede emitir. Cualquier otra se borra. */

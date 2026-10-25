@@ -48,28 +48,41 @@ export function esPreguntaGeneral(textoNormalizado: string): boolean {
 /**
  * CONSULTA DE FORMULARIO (`seguridad.criterioSaludPep = declaracion`). «Si marco que sí soy PEP,
  * ¿qué pasa?» pregunta qué hace el sitio con una respuesta; no entrega el dato de una persona. El
- * marco es CERRADO: «si marco/respondo/… (que) (sí|no) soy PEP» o «… que tengo una enfermedad».
- * Tras quitarlo, lo que quede debe ser vacío o una pregunta de procedimiento de una lista cerrada
- * y no contener vocabulario de salud ni de PEP. Cualquier cosa más («lo soy», «porque mi papá es
- * ministro», «tuve cáncer») la saca del marco y rige el criterio de siempre.
+ * marco es CERRADO y está anclado al INICIO del mensaje: «si marco/respondo/… (que) (sí|no) soy PEP»
+ * o «… que tengo una enfermedad», con «qué pasa» opcional delante. Reglas, todas necesarias:
+ *  - el «si» es condicional: sin tilde. «Sí marco que soy PEP» es una afirmación, y `normalizar`
+ *    borra la tilde, por eso se mira el texto con tildes (NFKC y minúsculas) antes de normalizar;
+ *  - el verbo no es performativo: «declaro» e «indico» están fuera («si declaro que soy PEP» ya es
+ *    una declaración);
+ *  - el mensaje es una pregunta (lleva «?» o empieza con «¿») y, quitado el marco, queda una pregunta
+ *    de procedimiento de lista cerrada, NO VACÍA, sin vocabulario de salud ni de PEP.
+ * Cualquier cosa más («lo soy», «porque mi papá es ministro», «tuve cáncer», un segundo marco) la
+ * saca del marco y rige el criterio de siempre.
  * Qué NO garantiza: otras formas de preguntar por el formulario siguen bloqueadas (falla hacia lo
- * seguro), y no puede saber si quien pregunta «si marco que sí» ya lo es.
- * Recibe el texto ya normalizado.
+ * seguro), no puede saber si quien pregunta ya es PEP, y quien escribe «SI» en mayúsculas sin tilde
+ * pasa como condicional si el resto es una pregunta de procedimiento. Tampoco cambia la regla de
+ * `esPreguntaGeneral` (ver `criterioSaludPep` en el esquema).
  */
+const CABEZA_CONDICIONAL = /^¿?(?:qu[eé] pasa )?si /;
 const MARCO_FORMULARIO =
-  /\bsi (marco|marcara|tildo|selecciono|respondo|respondiera|contesto|pongo|pusiera|declaro|indico) (que )?(si |no )?((soy|fuera|seria) (una? )?(pep|persona expuesta politicamente|persona politicamente expuesta)|(tengo|tuve|padezco) (una |alguna )?(enfermedad|condicion|antecedente)( preexistente| medica| de salud)?)\b/;
+  /^(¿?(?:que pasa )?)si (marco|marcara|tildo|selecciono|respondo|respondiera|contesto|pongo|pusiera) (que )?(si |no )?((soy|fuera|seria) (una? )?(pep|persona expuesta politicamente|persona politicamente expuesta)|(tengo|tuve|padezco) (una |alguna )?(enfermedad|condicion|antecedente)( preexistente| medica| de salud)?)\b/;
 const RESTO_PROCEDIMIENTO =
   /^(que pasa|que sucede|que ocurre|que tengo que hacer|que debo hacer|que hago|que me piden|como sigo|puedo seguir|puedo contratar|me rechazan|me pueden rechazar)( despues| luego| entonces)?$/;
 
-export function esConsultaDeFormulario(n: string): boolean {
+export function esConsultaDeFormulario(texto: string): boolean {
+  const t = texto.normalize('NFKC');
+  const conTildes = t.toLowerCase().replace(/\s+/g, ' ').trim();
+  if (!CABEZA_CONDICIONAL.test(conTildes)) return false;
+  if (!t.includes('?') && !t.trimStart().startsWith('¿')) return false;
+  const n = normalizar(t);
   if (!MARCO_FORMULARIO.test(n)) return false;
   const resto = n
-    .replace(MARCO_FORMULARIO, ' ')
+    .replace(MARCO_FORMULARIO, '$1')
     .replace(/[¿?¡!,.;:]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   if (VOCABULARIO_SENSIBLE.salud.test(resto) || VOCABULARIO_SENSIBLE.pep.test(resto)) return false;
-  return resto === '' || RESTO_PROCEDIMIENTO.test(resto);
+  return RESTO_PROCEDIMIENTO.test(resto);
 }
 
 /**
@@ -101,7 +114,7 @@ export function detectarCategorias(
   // Datos por VOCABULARIO: salud y PEP. Una pregunta general sobre el producto
   // («¿cubre cáncer?») también coincide; `esPreguntaGeneral` la deja pasar.
   // Con `declaracion`, solo la consulta de formulario (marco cerrado) queda libre de salud y PEP.
-  const consultaDeFormulario = criterio === 'declaracion' && esConsultaDeFormulario(n);
+  const consultaDeFormulario = criterio === 'declaracion' && esConsultaDeFormulario(t);
   if (!consultaDeFormulario) {
     if (VOCABULARIO_SENSIBLE.salud.test(n) && !esPreguntaGeneral(n)) detectadas.push('salud');
     if (VOCABULARIO_SENSIBLE.pep.test(n) && !esPreguntaGeneral(n)) detectadas.push('pep');
