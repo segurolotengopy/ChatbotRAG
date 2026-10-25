@@ -46,12 +46,43 @@ export function esPreguntaGeneral(textoNormalizado: string): boolean {
 }
 
 /**
+ * CONSULTA DE FORMULARIO (`seguridad.criterioSaludPep = declaracion`). «Si marco que sí soy PEP,
+ * ¿qué pasa?» pregunta qué hace el sitio con una respuesta; no entrega el dato de una persona. El
+ * marco es CERRADO: «si marco/respondo/… (que) (sí|no) soy PEP» o «… que tengo una enfermedad».
+ * Tras quitarlo, lo que quede debe ser vacío o una pregunta de procedimiento de una lista cerrada
+ * y no contener vocabulario de salud ni de PEP. Cualquier cosa más («lo soy», «porque mi papá es
+ * ministro», «tuve cáncer») la saca del marco y rige el criterio de siempre.
+ * Qué NO garantiza: otras formas de preguntar por el formulario siguen bloqueadas (falla hacia lo
+ * seguro), y no puede saber si quien pregunta «si marco que sí» ya lo es.
+ * Recibe el texto ya normalizado.
+ */
+const MARCO_FORMULARIO =
+  /\bsi (marco|marcara|tildo|selecciono|respondo|respondiera|contesto|pongo|pusiera|declaro|indico) (que )?(si |no )?((soy|fuera|seria) (una? )?(pep|persona expuesta politicamente|persona politicamente expuesta)|(tengo|tuve|padezco) (una |alguna )?(enfermedad|condicion|antecedente)( preexistente| medica| de salud)?)\b/;
+const RESTO_PROCEDIMIENTO =
+  /^(que pasa|que sucede|que ocurre|que tengo que hacer|que debo hacer|que hago|que me piden|como sigo|puedo seguir|puedo contratar|me rechazan|me pueden rechazar)( despues| luego| entonces)?$/;
+
+export function esConsultaDeFormulario(n: string): boolean {
+  if (!MARCO_FORMULARIO.test(n)) return false;
+  const resto = n
+    .replace(MARCO_FORMULARIO, ' ')
+    .replace(/[¿?¡!,.;:]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (VOCABULARIO_SENSIBLE.salud.test(resto) || VOCABULARIO_SENSIBLE.pep.test(resto)) return false;
+  return resto === '' || RESTO_PROCEDIMIENTO.test(resto);
+}
+
+/**
  * `modo` `palabra` (por omisión): `tarjeta` y `otp` se detectan también por vocabulario.
  * `modo` `dato`: solo por el dato (Luhn, CVV con dígitos, código numérico aislado); el
  * vocabulario por sí solo deja pasar la pregunta de procedimiento. Las demás categorías
  * no cambian en ningún modo.
  */
-export function detectarCategorias(texto: string, modo: Seguridad['vocabularioEntrada'] = 'palabra'): CategoriaEntrada[] {
+export function detectarCategorias(
+  texto: string,
+  modo: Seguridad['vocabularioEntrada'] = 'palabra',
+  criterio: Seguridad['criterioSaludPep'] = 'primera_persona',
+): CategoriaEntrada[] {
   // Los detectores por forma leen texto crudo con \d ASCII: NFKC antes de llamarlos.
   const t = texto.normalize('NFKC');
   const n = normalizar(t);
@@ -69,8 +100,12 @@ export function detectarCategorias(texto: string, modo: Seguridad['vocabularioEn
   if (VOCABULARIO_SENSIBLE.clave.test(n)) detectadas.push('clave');
   // Datos por VOCABULARIO: salud y PEP. Una pregunta general sobre el producto
   // («¿cubre cáncer?») también coincide; `esPreguntaGeneral` la deja pasar.
-  if (VOCABULARIO_SENSIBLE.salud.test(n) && !esPreguntaGeneral(n)) detectadas.push('salud');
-  if (VOCABULARIO_SENSIBLE.pep.test(n) && !esPreguntaGeneral(n)) detectadas.push('pep');
+  // Con `declaracion`, solo la consulta de formulario (marco cerrado) queda libre de salud y PEP.
+  const consultaDeFormulario = criterio === 'declaracion' && esConsultaDeFormulario(n);
+  if (!consultaDeFormulario) {
+    if (VOCABULARIO_SENSIBLE.salud.test(n) && !esPreguntaGeneral(n)) detectadas.push('salud');
+    if (VOCABULARIO_SENSIBLE.pep.test(n) && !esPreguntaGeneral(n)) detectadas.push('pep');
+  }
   if (PATRON_INYECCION.test(n)) detectadas.push('inyeccion');
   return [...new Set(detectadas)];
 }
@@ -79,8 +114,9 @@ export function evaluarEntrada(
   texto: string,
   bloquear: readonly CategoriaEntrada[],
   modo: Seguridad['vocabularioEntrada'] = 'palabra',
+  criterio: Seguridad['criterioSaludPep'] = 'primera_persona',
 ): ResultadoEntrada {
-  const detectadas = detectarCategorias(texto, modo);
+  const detectadas = detectarCategorias(texto, modo, criterio);
   const bloqueantes = detectadas.filter((c) => bloquear.includes(c));
   return { bloqueada: bloqueantes.length > 0, detectadas, bloqueantes };
 }

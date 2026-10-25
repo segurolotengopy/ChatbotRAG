@@ -203,6 +203,20 @@ export const esquemaSeguridad = z
      * («cuatro uno uno uno…») sea detectado; `clave`, `cedula`, `salud`, `pep` e `inyeccion` no cambian.
      */
     vocabularioEntrada: z.enum(['palabra', 'dato']).default('palabra'),
+    /**
+     * Cuándo bloquea la compuerta de entrada `salud` y `pep`. `primera_persona` (por omisión) es el
+     * criterio de siempre: el vocabulario bloquea salvo que sea una pregunta general sin primera
+     * persona, así que «Si marco que sí soy PEP, ¿qué pasa?» se bloquea. `declaracion` deja pasar
+     * SOLO la pregunta de procedimiento sobre el formulario («si marco que soy PEP, ¿qué pasa?»,
+     * «¿qué tengo que hacer?»): un marco cerrado de «si marco/respondo… que soy PEP / tengo una
+     * enfermedad» y un resto que sea una pregunta de procedimiento sin vocabulario de salud ni de
+     * PEP. Origen: PAG-actividad-007 de la batería del 24-oct-2026 (una de 10 entradas bloqueadas,
+     * la única por error). Es un enumerado: jamás se interpola texto libre. NO garantiza detectar
+     * toda declaración personal escrita de otra forma, ni distinguir quien miente sobre su caso:
+     * fuera del marco cerrado bloquea exactamente lo mismo que `primera_persona`. No cambia cédula,
+     * tarjeta, código, clave ni inyección.
+     */
+    criterioSaludPep: z.enum(['primera_persona', 'declaracion']).default('primera_persona'),
     /** Marcas de control `[MARCA]` que el modelo puede emitir. Cualquier otra se borra. */
     marcasPermitidas: z.array(z.string().regex(/^[A-Z_]{3,30}$/)).max(10).default(['DERIVAR']),
     /**

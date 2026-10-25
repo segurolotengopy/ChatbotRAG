@@ -463,6 +463,14 @@
             "dato"
           ]
         },
+        "criterioSaludPep": {
+          "default": "primera_persona",
+          "type": "string",
+          "enum": [
+            "primera_persona",
+            "declaracion"
+          ]
+        },
         "marcasPermitidas": {
           "default": [
             "DERIVAR"
@@ -1168,6 +1176,13 @@
                 "enum": [
                   "palabra",
                   "dato"
+                ]
+              },
+              "criterioSaludPep": {
+                "type": "string",
+                "enum": [
+                  "primera_persona",
+                  "declaracion"
                 ]
               },
               "marcasPermitidas": {

@@ -378,3 +378,51 @@ describe('marcas literales con la configuración real', () => {
     expect(r.avisos).not.toContain('marca_no_declarada');
   });
 });
+
+describe('criterio de salud y PEP con la configuración real, de punta a punta', () => {
+  function armar() {
+    const bitacora = new BitacoraEnMemoria();
+    const peticiones: PeticionLLM[] = [];
+    const simulado = new ProveedorSimulado();
+    const proveedor = {
+      nombre: 'simulado-contado',
+      generar: async (p: PeticionLLM) => {
+        peticiones.push(p);
+        return simulado.generar(p);
+      },
+    };
+    const agente = new Agente({
+      config,
+      proveedor,
+      indice: new IndiceEnMemoria(null),
+      memoria: new MemoriaEnProceso(),
+      herramientas: new RegistroHerramientas(),
+      bitacora,
+      reloj: () => new Date('2026-10-25T14:00:00Z'),
+    });
+    return { agente, bitacora, peticiones };
+  }
+
+  it('usa criterioSaludPep «declaracion» y sigue bloqueando salud y pep', () => {
+    expect(config.seguridad.criterioSaludPep).toBe('declaracion');
+    expect(config.seguridad.bloquearEntrada).toEqual(expect.arrayContaining(['salud', 'pep']));
+  });
+
+  it('PAG-actividad-007 «Si marco que sí soy PEP, ¿qué pasa?» llega al proveedor', async () => {
+    const { agente, bitacora, peticiones } = armar();
+    await agente.responder({ conversacionId: 'conv_00000201', texto: 'Si marco que sí soy PEP, ¿qué pasa?', canal: 'web' });
+    expect(peticiones.length).toBeGreaterThan(0);
+    expect(bitacora.eventos.some((e) => e.tipo === 'entrada_bloqueada')).toBe(false);
+  });
+
+  it('«Soy PEP» no llega al proveedor y la bitácora no guarda el texto', async () => {
+    const { agente, bitacora, peticiones } = armar();
+    const texto = 'Soy PEP';
+    const r = await agente.responder({ conversacionId: 'conv_00000202', texto, canal: 'web' });
+    expect(r.texto).toBe(config.mensajes.entradaBloqueada);
+    expect(r.avisos).toContain('entrada:pep');
+    expect(peticiones).toHaveLength(0);
+    expect(JSON.stringify(bitacora.eventos)).not.toContain(texto);
+    expect(JSON.stringify(bitacora.eventos)).not.toMatch(/soy pep/i);
+  });
+});
