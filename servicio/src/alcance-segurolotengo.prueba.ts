@@ -129,6 +129,10 @@ describe('alcance del asistente de SeguroLoTengo: funcionamiento, no producto', 
     const bloqueados = config.alcance.temasBloqueados.join(' | ').toLowerCase();
     expect(bloqueados).toContain('recomendar');
     expect(bloqueados).toContain('cubierto');
+    // El permitido cita lo que muestra la pantalla y ya no promete «sin recomendar ni comparar».
+    const permitidos = config.alcance.temasPermitidos.join(' | ').toLowerCase();
+    expect(permitidos).toContain('según la pantalla');
+    expect(permitidos).not.toContain('recomendar ni comparar');
     // Los precios ya no se bloquean como tema: se citan como los muestra la pantalla.
     expect(bloqueados).not.toContain('precios');
   });

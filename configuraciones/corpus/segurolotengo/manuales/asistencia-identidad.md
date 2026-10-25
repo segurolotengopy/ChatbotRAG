@@ -21,7 +21,7 @@ El bloque «PUEDES VOLVER A INTENTARLO» dice que la cédula no quedó bloqueada
 - «El número de caso» aparece como «—»: no se encontró un caso asociado; comuníquese con Interseguros.
 - Si el reintento vuelve a fallar: escriba a Interseguros con el número de caso.
 - Mensajes relacionados de la verificación: «Ya se usaron todas las pruebas de vida disponibles para este trámite. Solicite asistencia para completar su verificación con una persona de nuestro equipo.»; «La prueba de vida quedó bloqueada temporalmente por varios intentos sin éxito.» (hay que esperar el tiempo indicado).
-- «NO PODEMOS CONTINUAR CON ESTA CÉDULA»: es otro caso (trámite anterior); un asesor puede revisarlo.
+- «NO PODEMOS CONTINUAR CON ESTA CÉDULA»: es otro caso (trámite anterior); el caso requiere revisión; comuníquese por el canal oficial de Interseguros.
 
 ## Lo que este asistente no puede hacer
 En la pantalla de asistencia de identidad este asistente no puede verificar la identidad, levantar bloqueos ni abrir o cambiar el caso. No puede pedir ni recibir cédula, fotos, OTP, datos de salud ni PEP. No cobra ni cambia datos del trámite. No da consejo médico ni legal. Para hablar con una persona, use el enlace de WhatsApp oficial de Interseguros en «Información legal» > «Contacto».

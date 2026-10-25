@@ -62,6 +62,15 @@ describe('manuales de pantalla con el corpus real', () => {
     for (const p of paginas) expect(p.fuenteId).toBe(`manual-${p.id}`);
   });
 
+  it('cada una de las 21 páginas, con una pregunta deíctica, trae su manual como respaldo[0] de origen «pagina»', async () => {
+    const { agente } = await armar();
+    const paginas = config.perfiles['VIDA_ONCOLOGICO']?.conocimiento?.paginas ?? [];
+    for (const p of paginas) {
+      const r = await agente.responder({ conversacionId: idConv(), texto: '¿qué hago acá?', pagina: p.id, canal: 'web' });
+      expect(r.respaldo[0], `página ${p.id}`).toMatchObject({ fuenteId: `manual-${p.id}`, origen: 'pagina' });
+    }
+  });
+
   it('pagina «plan» trae manual-plan con origen «pagina» y el precio tal como lo muestra la pantalla', async () => {
     sistemas.length = 0;
     const { agente } = await armar();

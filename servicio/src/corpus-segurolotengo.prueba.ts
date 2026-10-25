@@ -67,22 +67,41 @@ const NUMERO_DE_EJEMPLO = '981 000 000';
 
 /**
  * Quita de un manual de pantalla lo que se cita literalmente del portal: el comentario
- * HTML inicial, las líneas H1 y el texto entre «…». Lo que queda es la narración, que
+ * HTML inicial (una sola línea), la primera línea de contenido si es un H1 y el texto entre
+ * «…» (sin cruzar saltos de línea ni «» anidadas). Lo que queda es la narración, que
  * sí debe ir en «usted». Es función pura para poder probar que la exención no se cuela.
  */
 function sinCitasDePantalla(texto: string): string {
   return texto
-    .replace(/^\s*<!--[\s\S]*?-->/, '')
-    .replace(/^# .*$/gm, '')
-    .replace(/«[^»]*»/g, '');
+    .replace(/^\s*<!--[^\n]*?-->/, '')
+    .replace(/^(\s*)# .*$/m, '$1')
+    .replace(/«[^«»\n]*»/g, '');
 }
 
-/** Teléfonos de un texto, sin los montos en guaraníes ni el número de ejemplo de la pantalla. */
+/** Primera línea de un texto en la que « y » no quedan balanceados, o 0 si todas lo están. */
+function lineaConComillasDesbalanceadas(texto: string): number {
+  const lineas = texto.split('\n');
+  for (let i = 0; i < lineas.length; i++) {
+    const linea = lineas[i] ?? '';
+    let nivel = 0;
+    for (const c of linea) {
+      if (c === '«') nivel++;
+      else if (c === '»') nivel--;
+      if (nivel < 0 || nivel > 1) return i + 1;
+    }
+    if (nivel !== 0) return i + 1;
+  }
+  return 0;
+}
+
+const FORMA_DE_MONTO = /^\d{1,3}(?:\.\d{3})+$/;
+
+/** Teléfonos de un texto, sin los montos en guaraníes (solo si el número tiene forma de monto) ni el número de ejemplo de la pantalla. */
 function telefonosInformados(texto: string): string[] {
   const salida: string[] = [];
   for (const m of texto.matchAll(TELEFONO)) {
     const antes = texto.slice(0, m.index);
-    if (/Gs\.?\s*$/.test(antes) || m[0] === NUMERO_DE_EJEMPLO) continue;
+    if ((/Gs\.?\s*$/.test(antes) && FORMA_DE_MONTO.test(m[0])) || m[0] === NUMERO_DE_EJEMPLO) continue;
     salida.push(m[0]);
   }
   return salida;
@@ -140,6 +159,9 @@ describe('todas las fuentes públicas que se cargan', () => {
   it('están en usted: sin voseo ni tuteo', () => {
     for (const r of publicas) {
       const texto = leer(r.ruta);
+      if (r.ruta.startsWith('segurolotengo/manuales/')) {
+        expect(lineaConComillasDesbalanceadas(texto), `${r.ruta}: « y » desbalanceados en esa línea`).toBe(0);
+      }
       const evaluado = r.ruta.startsWith('segurolotengo/manuales/') ? sinCitasDePantalla(texto) : texto;
       expect(evaluado, `${r.ruta} usa voseo o tuteo`).not.toMatch(VOSEO_O_TUTEO);
     }
@@ -150,6 +172,12 @@ describe('todas las fuentes públicas que se cargan', () => {
     expect(sinCitasDePantalla(base)).not.toMatch(VOSEO_O_TUTEO);
     expect(sinCitasDePantalla(`${base}Revise tu conexión antes de seguir.\n`)).toMatch(VOSEO_O_TUTEO);
     expect(sinCitasDePantalla(`${base}## Tu paso\n`)).toMatch(VOSEO_O_TUTEO);
+    // La cita no cruza líneas: una « sin cerrar no esconde la narración que sigue.
+    expect(sinCitasDePantalla('«Hola.\nRevise tu conexión y te esperamos.\nLuego «Otro».')).toMatch(VOSEO_O_TUTEO);
+    expect(lineaConComillasDesbalanceadas('«Hola.\nRevise.\n')).toBe(1);
+    expect(lineaConComillasDesbalanceadas('Dice «uno» y «dos».\nSin comillas.\n')).toBe(0);
+    // Solo se exime el primer H1; otro más abajo se evalúa.
+    expect(sinCitasDePantalla('# Título\nTexto.\n# Ahora completa tu información\n')).toMatch(VOSEO_O_TUTEO);
   });
 
   it('el único correo que informan es el de contacto', () => {
@@ -175,5 +203,9 @@ describe('todas las fuentes públicas que se cargan', () => {
     expect(telefonosInformados('llame al 021 236 0000')).toHaveLength(1);
     expect(telefonosInformados('llame al 0981 123 456')).toHaveLength(1);
     expect(telefonosInformados('llame al +595 991 478 468')).toHaveLength(1);
+    // Un número con forma de teléfono no se esconde detrás de «Gs.».
+    for (const s of ['Gs. 0981 123 456', 'Gs.0981 123 456', 'Gs 0981123456', 'Gs. +595 991 478 468', 'Gs. 021 236 0000']) {
+      expect(telefonosInformados(s), s).toHaveLength(1);
+    }
   });
 });

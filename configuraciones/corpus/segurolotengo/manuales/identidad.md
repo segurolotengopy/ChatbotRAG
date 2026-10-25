@@ -28,7 +28,7 @@ Abajo está la sección «CORREO ELECTRÓNICO»: «Correo electrónico» y «Con
 - «DOCUMENTO NO ADMITIDO»: solo cédula paraguaya vigente.
 - «CÉDULA VENCIDA»: debe usar una cédula paraguaya vigente.
 - «NO ES POSIBLE CONTINUAR»: la edad está fuera de 18 a 64 años.
-- «NO PODEMOS CONTINUAR CON ESTA CÉDULA»: tiene un trámite anterior que impide una nueva contratación por este canal; un asesor puede revisar el caso.
+- «NO PODEMOS CONTINUAR CON ESTA CÉDULA»: hay un trámite anterior que impide contratar por este canal; el caso requiere revisión; comuníquese por el canal oficial de Interseguros.
 - «NO PUDIMOS PROCESAR LA IMAGEN»: revise la conexión y pulse «INTENTAR NUEVAMENTE»; no consume intento.
 - «VALIDACIÓN TEMPORALMENTE BLOQUEADA»: se alcanzaron 3 intentos fallidos; los nuevos intentos se habilitan solos al terminar el reloj.
 - «Los correos electrónicos no coinciden. Verifica los dos campos.» o «Ingresa un correo electrónico válido.»: corrija el correo.

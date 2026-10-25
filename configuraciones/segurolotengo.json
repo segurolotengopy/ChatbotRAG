@@ -44,11 +44,11 @@
       "cómo seguir después de cada paso, cuánto suele demorar y qué pasa si se interrumpe",
       "qué pasos vienen más adelante, incluidos los que el asistente no acompaña en pantalla",
       "a dónde acudir y por qué canal cuando hace falta una persona",
-      "precios, coberturas, carencias, edades y montos del Seguro Oncológico según la pantalla, sin recomendar ni comparar"
+      "precios, coberturas, carencias, edades y montos del Seguro Oncológico según la pantalla, sin comparar para decidir"
     ],
     "temasBloqueados": [
-      "si un caso particular está cubierto, e interpretar exclusiones, carencias, sumas o edades más allá de la pantalla actual",
-      "recomendar qué plan conviene contratar o comparar planes para decidir",
+      "si un caso particular está cubierto, e interpretar exclusiones, carencias, sumas o edades más allá del portal",
+      "recomendar un plan, también con la etiqueta «PLAN RECOMENDADO» de la pantalla, o comparar planes para decidir",
       "elegibilidad, aceptación o cobertura de un caso particular",
       "diagnósticos, pronósticos o interpretación médica",
       "promesas de indemnización o decisiones sobre siniestros",
