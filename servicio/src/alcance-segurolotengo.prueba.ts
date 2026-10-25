@@ -356,3 +356,13 @@ describe('razonamiento del modelo en SeguroLoTengo', () => {
     expect(config.modelo.maxTokensSalida).toBe(1024);
   });
 });
+
+describe('compuerta recomienda_plan con la configuración real', () => {
+  it('está activa, al final de la lista, y reemplaza la respuesta real de PAG-plan-011', () => {
+    expect(config.seguridad.compuertasSalida.at(-1)).toBe('recomienda_plan');
+    const efectiva = resolverConfiguracion(config, 'VIDA_ONCOLOGICO');
+    const r = aplicarCompuertasSalida('Según el documento «Elección del plan», el plan recomendado es el VIVE TOTAL.', { config: efectiva });
+    expect(r.avisos).toContain('recomienda_plan');
+    expect(r.texto).toBe(`${efectiva.mensajes.fueraDeAlcance} ${efectiva.mensajes.derivacion}`);
+  });
+});

@@ -156,6 +156,42 @@ const afirmaCobroReal: FuncionCompuerta = (texto) => {
   return { texto: `${texto}\n\n(Cobro SIMULADO: demostración, sin cobro real.)`, aviso: 'afirma_cobro_real', reemplazo: false };
 };
 
+/**
+ * RECOMENDACIÓN DE PLAN. `temasBloqueados` ya prohíbe recomendar, pero era una instrucción de
+ * prompt y ninguna compuerta la hacía cumplir: en la batería de staging del 24-oct-2026,
+ * PAG-plan-011 («¿Cuál es el plan recomendado?») respondió «el plan recomendado es el VIVE TOTAL»
+ * porque el manual de /plan lleva la etiqueta «PLAN RECOMENDADO». Reemplaza la respuesta por el
+ * mensaje de fuera de alcance más la derivación, igual que `decision_elegibilidad`.
+ *
+ * DEJA PASAR citar la etiqueta como dato de pantalla («lleva la etiqueta «PLAN RECOMENDADO»»): es
+ * lo que muestra el sitio, no una recomendación del asistente (decisión por defecto, a confirmar).
+ * Qué NO garantiza: otras redacciones («lo más indicado es…»), ni nombres de plan en minúsculas
+ * detrás de «le recomiendo el»; la parte sobre texto crudo exige mayúsculas para no confundir
+ * «le recomiendo el documento» con un nombre de plan. Tampoco convive con la herramienta
+ * `recomendar_opcion` (lo rechaza `cargar.ts`).
+ */
+const RECOMIENDA_PLAN = new RegExp(
+  [
+    String.raw`\b(el|su) plan (recomendado|ideal|indicado|adecuado|mas conveniente) (para (usted|ti|vos) |en su caso )?(es|seria|sera)\b`,
+    String.raw`\b(es|seria|sera) (el )?plan (recomendado|ideal|indicado|mas conveniente)\b`,
+    String.raw`\b(le|te|les) (recomiendo|recomendamos|recomendaria|sugiero|sugerimos|aconsejo|aconsejamos) (contratar |elegir |tomar )?(el|la) (plan|opcion|alternativa|cobertura)\b`,
+    String.raw`\b(le|te) conviene (mas )?(contratar |elegir |tomar )?(el|la) (plan|opcion|alternativa)\b`,
+    String.raw`\b(el|la) mejor (plan|opcion|alternativa) (para (usted|ti|vos)|es|seria)\b`,
+    String.raw`\b(elija|escoja|contrate|elige|escoge|contrata) (el|la) (plan|opcion)\b`,
+  ].join('|'),
+);
+/** Sobre el texto CRUDO: «Le recomiendo el VIVE TOTAL» (nombre de plan en mayúsculas). */
+const RECOMIENDA_PLAN_CRUDO = /\b[Ll]es? (recomiendo|recomendamos|sugiero|sugerimos|aconsejo) (el|la) (plan )?[A-ZÁÉÍÓÚÑ]{2,}/;
+
+const recomiendaPlan: FuncionCompuerta = (texto, ctx) => {
+  if (!RECOMIENDA_PLAN.test(normalizar(texto)) && !RECOMIENDA_PLAN_CRUDO.test(texto)) return sinCambio(texto);
+  return {
+    texto: `${ctx.config.mensajes.fueraDeAlcance} ${ctx.config.mensajes.derivacion}`.trim(),
+    aviso: 'recomienda_plan',
+    reemplazo: true,
+  };
+};
+
 export const COMPUERTAS: Record<CompuertaSalida, FuncionCompuerta> = {
   niega_ia: niegaIa,
   promesa_indemnizacion: promesaIndemnizacion,
@@ -165,6 +201,7 @@ export const COMPUERTAS: Record<CompuertaSalida, FuncionCompuerta> = {
   afirma_cobro_real: afirmaCobroReal,
   promete_traspaso: prometeTraspaso,
   dato_tarjeta_codigo: datoTarjetaCodigo,
+  recomienda_plan: recomiendaPlan,
 };
 
 /**
@@ -176,6 +213,7 @@ const ORDEN: CompuertaSalida[] = [
   'dato_confidencial',
   'promesa_indemnizacion',
   'decision_elegibilidad',
+  'recomienda_plan',
   'promete_traspaso',
   'niega_ia',
   'afirma_cobro_real',

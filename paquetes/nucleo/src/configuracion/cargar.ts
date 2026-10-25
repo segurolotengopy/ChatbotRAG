@@ -110,6 +110,22 @@ export function paginasInvalidas(config: ConfiguracionAgente): string[] {
   return [...new Set(hallazgos)];
 }
 
+/**
+ * `recomienda_plan` y `recomendar_opcion` se contradicen: la herramienta existe para recomendar y la
+ * compuerta reemplaza toda respuesta que recomiende. Se rechaza al cargar, base y cada perfil con su
+ * configuración efectiva (la fusión reemplaza arreglos), no en ejecución.
+ */
+export function recomiendaPlanConHerramienta(config: ConfiguracionAgente): string[] {
+  const hallazgos: string[] = [];
+  for (const perfilId of [null, ...Object.keys(config.perfiles)]) {
+    const efectiva = resolverConfiguracion(config, perfilId);
+    if (efectiva.seguridad.compuertasSalida.includes('recomienda_plan') && efectiva.herramientas.some((h) => h.nombre === 'recomendar_opcion')) {
+      hallazgos.push(`seguridad.compuertasSalida: La compuerta recomienda_plan no puede convivir con la herramienta recomendar_opcion (${perfilId ?? 'base'})`);
+    }
+  }
+  return [...new Set(hallazgos)];
+}
+
 /** Valida un objeto ya parseado. Lanza `ErrorConfiguracion` con todos los detalles. */
 export function validarConfiguracion(entrada: unknown): ConfiguracionAgente {
   const resultado = esquemaConfiguracionAgente.safeParse(entrada);
@@ -122,6 +138,7 @@ export function validarConfiguracion(entrada: unknown): ConfiguracionAgente {
   recorrer(config, config.id, hallazgos);
   hallazgos.push(...facetasSensibles(config));
   hallazgos.push(...paginasInvalidas(config));
+  hallazgos.push(...recomiendaPlanConHerramienta(config));
   if (hallazgos.length > 0) throw new ErrorConfiguracion('La configuración contiene contenido no permitido', hallazgos);
   return config;
 }

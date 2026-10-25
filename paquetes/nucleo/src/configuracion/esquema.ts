@@ -59,6 +59,8 @@ export const COMPUERTAS_SALIDA = [
   'promete_traspaso',
   /** dato_tarjeta_codigo corre siempre (salida.ts). */
   'dato_tarjeta_codigo',
+  /** Reemplaza la respuesta que recomienda un plan concreto (origen: batería del 24-oct-2026, PAG-plan-011). */
+  'recomienda_plan',
 ] as const;
 
 export const esquemaVoz = z

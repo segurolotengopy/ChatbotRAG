@@ -435,7 +435,8 @@
               "marca_no_declarada",
               "afirma_cobro_real",
               "promete_traspaso",
-              "dato_tarjeta_codigo"
+              "dato_tarjeta_codigo",
+              "recomienda_plan"
             ]
           }
         },
@@ -1135,7 +1136,8 @@
                     "marca_no_declarada",
                     "afirma_cobro_real",
                     "promete_traspaso",
-                    "dato_tarjeta_codigo"
+                    "dato_tarjeta_codigo",
+                    "recomienda_plan"
                   ]
                 }
               },
