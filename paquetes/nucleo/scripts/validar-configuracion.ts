@@ -2,7 +2,7 @@
 // corpus existan en disco. Uso: pnpm validar-config configuraciones/*.json
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { cargarConfiguracionDesdeJson, ErrorConfiguracion, quitarComentariosHtml, resolverConfiguracion } from '../src/indice.js';
+import { cargarConfiguracionDesdeJson, ErrorConfiguracion, quedaMarcaDeComentario, quitarComentariosHtml, resolverConfiguracion } from '../src/indice.js';
 import { validarHerramientas } from '../src/herramientas/registro.js';
 
 const archivos = process.argv.slice(2);
@@ -30,8 +30,8 @@ for (const archivo of archivos) {
         if (apuntan.length === 0) continue;
         const contenido = readFileSync(archivoFuente, 'utf8');
         // Tras quitar los comentarios bien formados no debe quedar ninguna marca suelta.
-        if (/<!--|-->/.test(quitarComentariosHtml(contenido))) {
-          problemas.push(`${perfilId ?? 'base'}: la fuente «${f.id}» tiene un comentario HTML mal formado (<!-- o --> sin su par)`);
+        if (quedaMarcaDeComentario(quitarComentariosHtml(contenido))) {
+          problemas.push(`${perfilId ?? 'base'}: la fuente «${f.id}» tiene un comentario HTML mal formado (<!--, --> o --!> sin su par)`);
         }
         const marca = /^<!--\s*([a-z0-9][a-z0-9-]*)\s*\|/.exec(contenido.split(/\r?\n/, 1)[0] ?? '');
         if (marca && !apuntan.some((p) => p.id === marca[1])) {

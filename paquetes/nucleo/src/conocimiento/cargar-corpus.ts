@@ -30,19 +30,61 @@ export function coleccionDe(config: ConfiguracionAgente, perfilId: string | null
   return perfilId ? `${config.id}--${perfilId.toLowerCase()}` : config.id;
 }
 
+const ABRE_COMENTARIO = '<!--';
+const CIERRES_COMENTARIO = ['-->', '--!>'] as const;
+
 /**
- * Quita los comentarios HTML repitiendo el reemplazo hasta que el texto no cambie: una sola
+ * Busca el próximo cierre de comentario sin repetir trabajo: guarda, por cada tipo de cierre,
+ * la última posición hallada y solo vuelve a buscar cuando ya quedó atrás. Sin esto, cada
+ * comentario recorrería de nuevo todo el texto buscando un cierre que quizá no existe (tiempo
+ * cuadrático con muchos comentarios y ningún `--!>`).
+ */
+function crearBuscadorDeCierre(texto: string): (desde: number) => { posicion: number; largo: number } | null {
+  const siguiente: number[] = CIERRES_COMENTARIO.map(() => -2); // -2: sin buscar, -1: no hay más
+  return (desde) => {
+    let mejor: { posicion: number; largo: number } | null = null;
+    CIERRES_COMENTARIO.forEach((cierre, i) => {
+      if (siguiente[i] === -1) return;
+      if (siguiente[i]! < desde) siguiente[i] = texto.indexOf(cierre, desde);
+      const posicion = siguiente[i]!;
+      if (posicion !== -1 && (mejor === null || posicion < mejor.posicion)) mejor = { posicion, largo: cierre.length };
+    });
+    return mejor;
+  };
+}
+
+/**
+ * Quita los comentarios HTML repitiendo la pasada hasta que el texto no cambie: una sola
  * pasada deja pasar `<!<!-- x -->-- texto -->` (al quitar el interior se forma otro comentario).
+ * Se recorre con `indexOf`, sin expresiones regulares: un `<!--[\s\S]*?-->` tarda un tiempo
+ * polinómico con muchos `<!--` sin cerrar (alerta `js/polynomial-redos` de CodeQL), y una
+ * regexp solo con `-->` ignora el cierre `--!>` que el HTML también acepta (`js/bad-tag-filter`).
  * NO garantiza limpiar un `<!--` sin cerrar: queda en el texto, y por eso `validar-config`
- * rechaza las fuentes de página donde sobre `<!--` o `-->`.
+ * rechaza las fuentes de página donde sobre `<!--`, `-->` o `--!>`.
  */
 export function quitarComentariosHtml(texto: string): string {
   let actual = texto;
   for (;;) {
-    const siguiente = actual.replace(/<!--[\s\S]*?-->/g, '');
-    if (siguiente === actual) return actual;
-    actual = siguiente;
+    let salida = '';
+    let desde = 0;
+    const buscarCierre = crearBuscadorDeCierre(actual);
+    for (;;) {
+      const abre = actual.indexOf(ABRE_COMENTARIO, desde);
+      if (abre === -1) break;
+      const cierre = buscarCierre(abre + ABRE_COMENTARIO.length);
+      if (cierre === null) break;
+      salida += actual.slice(desde, abre);
+      desde = cierre.posicion + cierre.largo;
+    }
+    salida += actual.slice(desde);
+    if (salida === actual) return actual;
+    actual = salida;
   }
+}
+
+/** Indica si queda alguna marca de comentario HTML suelta (apertura o cualquiera de los cierres). */
+export function quedaMarcaDeComentario(texto: string): boolean {
+  return texto.includes(ABRE_COMENTARIO) || CIERRES_COMENTARIO.some((c) => texto.includes(c));
 }
 
 export interface ResumenCarga {

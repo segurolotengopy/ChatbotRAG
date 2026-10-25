@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { BitacoraEnMemoria } from '../bitacora/bitacora-consola.js';
 import { ErrorConfiguracion, validarConfiguracion } from '../configuracion/cargar.js';
 import { resolverConfiguracion } from '../configuracion/perfiles.js';
-import { cargarCorpus, coleccionDe, quitarComentariosHtml } from '../conocimiento/cargar-corpus.js';
+import { cargarCorpus, coleccionDe, quedaMarcaDeComentario, quitarComentariosHtml } from '../conocimiento/cargar-corpus.js';
 import { IndiceEnMemoria } from '../conocimiento/indice-memoria.js';
 import { RegistroHerramientas } from '../herramientas/registro.js';
 import { MemoriaEnProceso } from '../memoria/memoria-en-proceso.js';
@@ -401,5 +401,27 @@ describe('contexto de página: comentarios HTML del manual', () => {
   it('un comentario sin cerrar queda a la vista (validar-config lo rechaza)', () => {
     expect(quitarComentariosHtml('hola <!-- sin cerrar')).toContain('<!--');
     expect(quitarComentariosHtml('hola --> suelto')).toContain('-->');
+  });
+  it('también reconoce el cierre --!> que el HTML acepta (js/bad-tag-filter)', () => {
+    expect(quitarComentariosHtml('a <!-- oculto --!> b')).toBe('a  b');
+    expect(quitarComentariosHtml('a <!-- uno --!> b <!-- dos --> c')).toBe('a  b  c');
+    expect(quitarComentariosHtml('hola --!> suelto')).toContain('--!>');
+    expect(quedaMarcaDeComentario('hola --!> suelto')).toBe(true);
+    expect(quedaMarcaDeComentario('hola <!-- sin cerrar')).toBe(true);
+    expect(quedaMarcaDeComentario('hola --> suelto')).toBe(true);
+    expect(quedaMarcaDeComentario('texto limpio')).toBe(false);
+  });
+  it('no se degrada con muchos <!-- sin cerrar (js/polynomial-redos)', () => {
+    const adversarial = '<!--'.repeat(50_000);
+    const inicio = Date.now();
+    expect(quitarComentariosHtml(adversarial)).toBe(adversarial);
+    expect(quitarComentariosHtml(`${adversarial}-->`)).toBe('');
+    expect(Date.now() - inicio).toBeLessThan(1000);
+  });
+  it('tampoco es cuadrático con muchos comentarios bien cerrados y sin --!>', () => {
+    const muchos = '<!-- a -->'.repeat(20_000);
+    const inicio = Date.now();
+    expect(quitarComentariosHtml(`${muchos}fin`)).toBe('fin');
+    expect(Date.now() - inicio).toBeLessThan(1000);
   });
 });
