@@ -66,14 +66,31 @@ const TELEFONO = /(?<!\d)\+?\d(?:[\s().-]{0,2}\d){8,12}(?!\d)/g;
 const NUMERO_DE_EJEMPLO = '981 000 000';
 
 /**
+ * Quita el comentario HTML que abre el archivo SOLO si empieza y termina en la primera línea.
+ * Se hace con operaciones de texto y no con una expresión regular: CodeQL marca
+ * `js/bad-tag-filter` en una regexp de comentarios que no cubre el cierre `--!>` ni los
+ * saltos de línea, y aquí justamente no se quiere cubrir un comentario de varias líneas
+ * (podría esconder narración en tuteo).
+ */
+function sinComentarioInicial(texto: string): string {
+  const sinEspacios = texto.trimStart();
+  if (!sinEspacios.startsWith('<!--')) return texto;
+  const finDeLinea = sinEspacios.indexOf('\n');
+  const primeraLinea = finDeLinea === -1 ? sinEspacios : sinEspacios.slice(0, finDeLinea);
+  const cierres = ['-->', '--!>'].map((c) => ({ posicion: primeraLinea.indexOf(c, 4), largo: c.length })).filter((c) => c.posicion !== -1);
+  if (cierres.length === 0) return texto;
+  const primero = cierres.reduce((a, b) => (b.posicion < a.posicion ? b : a));
+  return sinEspacios.slice(primero.posicion + primero.largo);
+}
+
+/**
  * Quita de un manual de pantalla lo que se cita literalmente del portal: el comentario
  * HTML inicial (una sola línea), la primera línea de contenido si es un H1 y el texto entre
  * «…» (sin cruzar saltos de línea ni «» anidadas). Lo que queda es la narración, que
  * sí debe ir en «usted». Es función pura para poder probar que la exención no se cuela.
  */
 function sinCitasDePantalla(texto: string): string {
-  return texto
-    .replace(/^\s*<!--[^\n]*?-->/, '')
+  return sinComentarioInicial(texto)
     .replace(/^(\s*)# .*$/m, '$1')
     .replace(/«[^«»\n]*»/g, '');
 }
@@ -178,6 +195,11 @@ describe('todas las fuentes públicas que se cargan', () => {
     expect(lineaConComillasDesbalanceadas('Dice «uno» y «dos».\nSin comillas.\n')).toBe(0);
     // Solo se exime el primer H1; otro más abajo se evalúa.
     expect(sinCitasDePantalla('# Título\nTexto.\n# Ahora completa tu información\n')).toMatch(VOSEO_O_TUTEO);
+    // Comentario inicial: solo el de una línea (con --> o --!>) se exime; uno de varias líneas o sin cerrar no.
+    expect(sinCitasDePantalla('<!-- pagina_id: x | tu paso -->\n# Título\nTexto.\n')).not.toMatch(VOSEO_O_TUTEO);
+    expect(sinCitasDePantalla('<!-- pagina_id: x | tu paso --!>\n# Título\nTexto.\n')).not.toMatch(VOSEO_O_TUTEO);
+    expect(sinCitasDePantalla('<!-- pagina_id: x\nRevise tu conexión -->\n# Título\nTexto.\n')).toMatch(VOSEO_O_TUTEO);
+    expect(sinCitasDePantalla('<!-- pagina_id: x | tu paso\n# Título\nTexto.\n')).toMatch(VOSEO_O_TUTEO);
   });
 
   it('el único correo que informan es el de contacto', () => {
