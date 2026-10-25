@@ -164,6 +164,26 @@ Consecuencia: lo que pasa llega al proveedor del modelo. La política de retenci
 uso de datos de Vertex AI NO está verificada en este repositorio: pendiente de
 verificar con la documentación oficial.
 
+### Criterio `sin_sujeto` para salud y PEP
+
+`seguridad.criterioSaludPep` (`primera_persona` por omisión | `sin_sujeto`) decide cómo trata la compuerta de entrada el vocabulario de salud y de PEP. Origen: hallazgo HIGH sobre la regla #7. `esPreguntaGeneral` deja pasar todo texto con «?», de modo que una declaración escrita como pregunta («me detectaron un tumor, ¿me cubren?», «fui PEP hasta el año pasado, ¿me afecta?») llegaba al modelo y a la memoria.
+
+Con `sin_sujeto`, el vocabulario de salud o de PEP bloquea siempre, salvo que el mensaje sea una pregunta de producto sin sujeto personal (`compuertas/sujeto-personal.ts`). Esa excepción exige, a la vez: pregunta (lleva «?» o empieza con «¿»); 200 caracteres o menos y una sola oración; apertura con una palabra de una lista cerrada (interrogativo, artículo o verbo del producto en tercera persona); ningún marcador personal (pronombres, verbos en primera persona, parientes, terceros); ninguna ancla de tiempo; y que además la apruebe la regla de siempre. Excepción estrecha: «¿Me cubre el cáncer…?» pasa (equivale a «¿cubre cáncer?»). Dentro de `sin_sujeto` también se quitan los caracteres invisibles, se detecta «P E P» con separadores y se neutralizan las frases de pago con «operación».
+
+Monotonía: `sin_sujeto` bloquea todo lo que bloquea `primera_persona` y nunca bloquea menos; la prueba `entrada-sin-sujeto.prueba.ts` lo verifica con la ruta vieja como oráculo. Las demás categorías y el `modo` de `vocabularioEntrada` no cambian. Si el PR de `declaracion` (`esConsultaDeFormulario`) se integra, `sin_sujeto` debe componer con él (`criterio !== 'primera_persona'`).
+
+Impacto medido sobre 543 entradas (174 de la batería por pantalla y 369 de la batería del demo): cambian 5, todas de PASA a BLOQUEA; ninguna de BLOQUEA a PASA.
+
+| Caso | Mensaje | Lectura |
+|---|---|---|
+| SEN-030 | «¿Mi enfermedad está cubierta por el seguro?» | Correcto (era una fuga) |
+| PAG-revision-manual-004 | «¿Fue por mi enfermedad o por ser PEP?» | Correcto |
+| DER-015 | «Si me diagnostican cáncer el mes que viene, ¿me pagan?» | Falso positivo por especificación (hipótesis personal) |
+| MED-002 | «¿Qué medicamento me conviene tomar para la presión alta?» | Aceptable: es consejo médico y lleva dato implícito |
+| GUA-005 | «Pe seguro ojapo piko cobertura cáncer rehe?» | Falso positivo en guaraní |
+
+Qué NO garantiza: reduce, no elimina. Bloquea las declaraciones de salud o PEP que usan el vocabulario conocido, aunque vengan como pregunta; no detecta datos personales escritos sin ese vocabulario ni sin marcas de persona (sinónimos como «biopsia» o «diálisis», diagnósticos impersonales, guaraní o portugués sin vocabulario en español, homóglifos de otros alfabetos, datos repartidos en varios turnos). Falso positivo conocido: «¿Funcionario público de alto rango cuenta como PEP?».
+
 ## 7. Aplicación a segurolotengo-demo
 
 El demo (Next.js 15 en AWS Amplify) **no embebe** el núcleo: consume el servicio por
