@@ -112,15 +112,20 @@ export function paginasInvalidas(config: ConfiguracionAgente): string[] {
 
 /**
  * `recomienda_plan` y `recomendar_opcion` se contradicen: la herramienta existe para recomendar y la
- * compuerta reemplaza toda respuesta que recomiende. Se rechaza al cargar, base y cada perfil con su
+ * compuerta reemplaza toda respuesta que recomiende. Además la compuerta necesita los nombres de los
+ * planes (`nombresDePlanes`) para detectar «le recomiendo VIVE TOTAL»; sin ellos solo vería frases. Se rechaza al cargar, base y cada perfil con su
  * configuración efectiva (la fusión reemplaza arreglos), no en ejecución.
  */
 export function recomiendaPlanConHerramienta(config: ConfiguracionAgente): string[] {
   const hallazgos: string[] = [];
   for (const perfilId of [null, ...Object.keys(config.perfiles)]) {
     const efectiva = resolverConfiguracion(config, perfilId);
-    if (efectiva.seguridad.compuertasSalida.includes('recomienda_plan') && efectiva.herramientas.some((h) => h.nombre === 'recomendar_opcion')) {
+    if (!efectiva.seguridad.compuertasSalida.includes('recomienda_plan')) continue;
+    if (efectiva.herramientas.some((h) => h.nombre === 'recomendar_opcion')) {
       hallazgos.push(`seguridad.compuertasSalida: La compuerta recomienda_plan no puede convivir con la herramienta recomendar_opcion (${perfilId ?? 'base'})`);
+    }
+    if (efectiva.seguridad.nombresDePlanes.length === 0) {
+      hallazgos.push(`seguridad.nombresDePlanes: recomienda_plan necesita seguridad.nombresDePlanes (${perfilId ?? 'base'})`);
     }
   }
   return [...new Set(hallazgos)];

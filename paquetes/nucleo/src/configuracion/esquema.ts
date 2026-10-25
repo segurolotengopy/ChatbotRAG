@@ -232,6 +232,14 @@ export const esquemaSeguridad = z
      * repetirse en `marcasPermitidas` (lo rechaza `cargar.ts`).
      */
     marcasLiterales: z.array(z.string().regex(/^[A-Z_]{3,30}$/)).max(10).default([]),
+    /**
+     * Nombres de los planes del producto («VIVE TOTAL», «VIVE+»). Los usa SOLO la compuerta
+     * `recomienda_plan` para detectar un nombre de plan junto a un verbo de recomendación («le recomiendo
+     * VIVE TOTAL»). Son DATO: se comparan normalizados (sin tildes, minúsculas) y con límites de palabra,
+     * y jamás se interpolan en el prompt. Obligatorio, no vacío, si `recomienda_plan` está activa (lo
+     * exige `cargar.ts`). NO garantiza detectar un plan aludido sin nombre ni un nombre no declarado.
+     */
+    nombresDePlanes: z.array(z.string().regex(/^[A-Za-z0-9+ ]{2,30}$/)).max(10).default([]),
   })
   .strict();
 

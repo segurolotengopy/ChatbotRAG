@@ -169,28 +169,59 @@ const afirmaCobroReal: FuncionCompuerta = (texto) => {
  * porque el manual de /plan lleva la etiqueta «PLAN RECOMENDADO». Reemplaza la respuesta por el
  * mensaje de fuera de alcance más la derivación, igual que `decision_elegibilidad`.
  *
- * DEJA PASAR citar la etiqueta como dato de pantalla («lleva la etiqueta «PLAN RECOMENDADO»»): es
- * lo que muestra el sitio, no una recomendación del asistente (decisión por defecto, a confirmar).
- * Qué NO garantiza: otras redacciones («lo más indicado es…»), ni nombres de plan en minúsculas
- * detrás de «le recomiendo el»; la parte sobre texto crudo exige mayúsculas para no confundir
- * «le recomiendo el documento» con un nombre de plan. Tampoco convive con la herramienta
- * `recomendar_opcion` (lo rechaza `cargar.ts`).
+ * DOS DETECTORES sobre el texto normalizado (sin tildes, minúsculas, sin caracteres de formato
+ * Unicode como U+200B):
+ *  1. FRASES de recomendación de «el plan» («el plan recomendado es…», «le recomiendo el plan…»,
+ *     «le conviene el plan…», «el mejor plan…»). Solo con el sustantivo `plan`: «la mejor opción es
+ *     consultar a un asesor» o «elija la opción que corresponda» son instrucciones legítimas.
+ *  2. NOMBRE DE PLAN cerca de un verbo de recomendación (`seguridad.nombresDePlanes`, hasta 6 palabras
+ *     de distancia, en cualquier orden): «le recomiendo VIVE TOTAL», «yo elegiría VIVE». Los nombres son
+ *     DATO de la configuración, se comparan normalizados y con límites de palabra («viven» no es «vive»);
+ *     «vive» en minúscula SÍ cuenta como el nombre normalizado, así que «si usted vive en…» junto a un
+ *     verbo de recomendación sobrerreemplaza (falla hacia lo seguro).
+ *
+ * DEJA PASAR citar la etiqueta como dato de pantalla («lleva la etiqueta «PLAN RECOMENDADO»»): la cita
+ * explícita («etiqueta» + texto entre comillas) se quita antes de detectar. Es lo que muestra el sitio,
+ * no una recomendación del asistente (decisión por defecto, a confirmar por el propietario).
+ * Qué NO garantiza: otras redacciones («lo más indicado en su caso sería…» sin nombre cerca), nombres
+ * no declarados, un nombre y un verbo a más de 6 palabras, ni un plan aludido sin nombre («el más
+ * caro»). Tampoco convive con la herramienta `recomendar_opcion` (lo rechaza `cargar.ts`).
  */
 const RECOMIENDA_PLAN = new RegExp(
   [
     String.raw`\b(el|su) plan (recomendado|ideal|indicado|adecuado|mas conveniente) (para (usted|ti|vos) |en su caso )?(es|seria|sera)\b`,
     String.raw`\b(es|seria|sera) (el )?plan (recomendado|ideal|indicado|mas conveniente)\b`,
-    String.raw`\b(le|te|les) (recomiendo|recomendamos|recomendaria|sugiero|sugerimos|aconsejo|aconsejamos) (contratar |elegir |tomar )?(el|la) (plan|opcion|alternativa|cobertura)\b`,
-    String.raw`\b(le|te) conviene (mas )?(contratar |elegir |tomar )?(el|la) (plan|opcion|alternativa)\b`,
-    String.raw`\b(el|la) mejor (plan|opcion|alternativa) (para (usted|ti|vos)|es|seria)\b`,
-    String.raw`\b(elija|escoja|contrate|elige|escoge|contrata) (el|la) (plan|opcion)\b`,
+    String.raw`\b(le|te|les) (recomiendo|recomendamos|recomendaria|sugiero|sugerimos|aconsejo|aconsejamos) (contratar |elegir |tomar )?(el|la) plan\b`,
+    String.raw`\b(le|te) conviene (mas )?(contratar |elegir |tomar )?(el|la) plan\b`,
+    String.raw`\b(el|la) mejor plan (para (usted|ti|vos)|es|seria)\b`,
   ].join('|'),
 );
-/** Sobre el texto CRUDO: «Le recomiendo el VIVE TOTAL» (nombre de plan en mayúsculas). */
-const RECOMIENDA_PLAN_CRUDO = /\b[Ll]es? (recomiendo|recomendamos|sugiero|sugerimos|aconsejo) (el|la) (plan )?[A-ZÁÉÍÓÚÑ]{2,}/;
+const CITA_DE_ETIQUETA = /\b(etiqueta|rotulo|leyenda|distintivo|sello)\s+[«"“][^»"”]{1,40}[»"”]/g;
+const VERBO_RECOMENDACION =
+  '(?:recomend[a-z]*|recomiend[a-z]*|sugier[a-z]*|suger[a-z]*|aconsej[a-z]*|convien[a-z]*|ideal(?![a-z])|indicad[a-z]*|quedaria|elegiria|mejor(?![a-z]))';
+const PALABRAS_ENTRE = String.raw`(?:\s+\S+){0,6}?`;
+const regexNombres = new Map<string, RegExp>();
+
+function cercaDeNombre(n: string, nombres: readonly string[]): boolean {
+  const lista = nombres.map((x) => normalizar(x).replace(/\p{Cf}/gu, '')).filter((x) => x.length >= 2);
+  if (lista.length === 0) return false;
+  const clave = lista.join('\u0000');
+  let re = regexNombres.get(clave);
+  if (!re) {
+    const alternativas = [...lista].sort((x, y) => y.length - x.length).map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`));
+    const nombre = `(?<![a-z0-9])(?:${alternativas.join('|')})(?![a-z0-9])`;
+    const antes = String.raw`\s+[^a-z0-9\s]*`;
+    re = new RegExp(
+      `(?<![a-z])${VERBO_RECOMENDACION}\\S*${PALABRAS_ENTRE}${antes}${nombre}|${nombre}\\S*${PALABRAS_ENTRE}${antes}(?<![a-z])${VERBO_RECOMENDACION}`,
+    );
+    regexNombres.set(clave, re);
+  }
+  return re.test(n);
+}
 
 const recomiendaPlan: FuncionCompuerta = (texto, ctx) => {
-  if (!RECOMIENDA_PLAN.test(normalizar(texto)) && !RECOMIENDA_PLAN_CRUDO.test(texto)) return sinCambio(texto);
+  const n = normalizar(texto.replace(/\p{Cf}/gu, '')).replace(CITA_DE_ETIQUETA, ' ');
+  if (!RECOMIENDA_PLAN.test(n) && !cercaDeNombre(n, ctx.config.seguridad.nombresDePlanes)) return sinCambio(texto);
   return {
     texto: `${ctx.config.mensajes.fueraDeAlcance} ${ctx.config.mensajes.derivacion}`.trim(),
     aviso: 'recomienda_plan',

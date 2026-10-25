@@ -365,6 +365,16 @@ describe('compuerta recomienda_plan con la configuración real', () => {
     expect(r.avisos).toContain('recomienda_plan');
     expect(r.texto).toBe(`${efectiva.mensajes.fueraDeAlcance} ${efectiva.mensajes.derivacion}`);
   });
+
+  it('declara los nombres de los planes y detecta «le recomiendo VIVE TOTAL» sin tocar «elija el plan»', () => {
+    expect(config.seguridad.nombresDePlanes).toEqual(['VIVE TOTAL', 'VIVE+', 'VIVE']);
+    const efectiva = resolverConfiguracion(config, 'VIDA_ONCOLOGICO');
+    expect(aplicarCompuertasSalida('Le recomiendo VIVE TOTAL.', { config: efectiva }).avisos).toContain('recomienda_plan');
+    const instruccion = 'Elija el plan y pulse CONTINUAR.';
+    const r = aplicarCompuertasSalida(instruccion, { config: efectiva });
+    expect(r.avisos).not.toContain('recomienda_plan');
+    expect(r.texto).toBe(instruccion);
+  });
 });
 
 describe('marcas literales con la configuración real', () => {

@@ -6,10 +6,12 @@
  * Se prueban las dos direcciones: que reemplace toda recomendación de un plan y que NO toque las
  * respuestas que ya rechazaban (PAG-plan-009 y -010) ni la cita de la etiqueta como dato de pantalla.
  *
- * Qué NO garantiza: otras redacciones pasan; y la parte que detecta nombres de plan exige mayúsculas.
+ * Qué NO garantiza: otras redacciones sin un nombre de plan cerca pasan; un nombre de plan no declarado en
+ * `seguridad.nombresDePlanes` no se detecta; y «vive» en minúscula cuenta como el nombre normalizado.
  */
 import { describe, expect, it } from 'vitest';
 import { ErrorConfiguracion, validarConfiguracion } from '../configuracion/cargar.js';
+import { esquemaSeguridad } from '../configuracion/esquema.js';
 import { resolverConfiguracion } from '../configuracion/perfiles.js';
 import { CONFIG_PRUEBA } from '../pruebas/configuracion-prueba.js';
 import { aplicarCompuertasSalida } from './salida.js';
@@ -20,7 +22,7 @@ function efectiva(activa: boolean) {
       ...CONFIG_PRUEBA,
       herramientas: CONFIG_PRUEBA.herramientas?.filter((h) => h.nombre !== 'recomendar_opcion') ?? [],
       orientacion: { facetas: [], reglas: [] },
-      seguridad: { ...CONFIG_PRUEBA.seguridad, compuertasSalida: activa ? ['recomienda_plan'] : ['niega_ia'] },
+      seguridad: { ...CONFIG_PRUEBA.seguridad, compuertasSalida: activa ? ['recomienda_plan'] : ['niega_ia'], nombresDePlanes: ['VIVE TOTAL', 'VIVE+', 'VIVE'] },
     }),
     null,
   );
@@ -32,8 +34,26 @@ const RECOMENDACIONES = [
   'Le recomiendo el VIVE TOTAL.',
   'Le conviene más el plan VIVE TOTAL.',
   'El mejor plan para usted es VIVE.',
-  'Elija el plan VIVE TOTAL.',
   'VIVE TOTAL es el plan recomendado.',
+  // Nombre de plan junto a un verbo de recomendación (en cualquier orden).
+  'Le recomiendo VIVE TOTAL.',
+  'Te recomiendo VIVE TOTAL',
+  'Recomiendo el plan VIVE TOTAL.',
+  'Le recomendaría el VIVE TOTAL.',
+  'El plan que le recomiendo es VIVE TOTAL.',
+  'El plan recomendado por nosotros es VIVE+.',
+  'El plan recomendable es VIVE',
+  'Nuestro plan recomendado es VIVE TOTAL',
+  'Le aconsejaría el VIVE TOTAL',
+  'El plan recomendado: VIVE TOTAL',
+  'Mi recomendación: VIVE TOTAL',
+  'Yo elegiría VIVE',
+  'Sugiero VIVE+',
+  'El plan que más le conviene es VIVE TOTAL',
+  'Le recomiendo VIVE\u200B TOTAL.',
+  'El plan recom\u200Bendado es VIVE TOTAL.',
+  'LE RECOMIENDO EL VIVE TOTAL.',
+  'La etiqueta «PLAN RECOMENDADO» aparece en VIVE TOTAL; ese es el que yo elegiría.',
 ];
 
 // Textos reales de la batería (PAG-plan-009 y PAG-plan-010): ya rechazaban y no deben tocarse.
@@ -49,6 +69,21 @@ const LEGITIMAS = [
   'Le recomiendo tener a mano su documento.',
   'Le sugiero revisar la sección de la pantalla.',
   'El plan VIVE cuesta lo que indica la pantalla.',
+  // Instrucciones de procedimiento y consejos sin plan concreto (falsos positivos hallados en la revisión).
+  'Elija el plan y pulse CONTINUAR.',
+  'Elija el plan que prefiera y toque Continuar.',
+  'Elija la opción que corresponda en el formulario.',
+  'Escoja la opción «Sí» o «No».',
+  'Contrate el plan desde la pantalla /plan.',
+  'La mejor opción es consultar a un asesor.',
+  'Le sugiero la opción de contacto por WhatsApp.',
+  'Le recomendamos la cobertura que mejor se ajuste leyendo cada una.',
+  'Le recomiendo el PDF de condiciones.',
+  'Le recomiendo el QR de la pantalla.',
+  // Nombre de plan sin verbo de recomendación cerca, o con límites de palabra.
+  'VIVE TOTAL incluye renta hospitalaria.',
+  'Los planes son VIVE, VIVE+ y VIVE TOTAL.',
+  'Los vecinos viven cerca y le recomiendo revisar la pantalla.',
 ];
 
 describe('recomienda_plan', () => {
@@ -80,7 +115,7 @@ describe('recomienda_plan', () => {
 
 describe('recomienda_plan y recomendar_opcion', () => {
   it('la carga falla si conviven en la configuración efectiva', () => {
-    const conflicto = { ...CONFIG_PRUEBA, seguridad: { ...CONFIG_PRUEBA.seguridad, compuertasSalida: ['recomienda_plan' as const] } };
+    const conflicto = { ...CONFIG_PRUEBA, seguridad: { ...CONFIG_PRUEBA.seguridad, compuertasSalida: ['recomienda_plan' as const], nombresDePlanes: ['VIVE'] } };
     expect(() => validarConfiguracion(conflicto)).toThrow(ErrorConfiguracion);
     try {
       validarConfiguracion(conflicto);
@@ -91,5 +126,26 @@ describe('recomienda_plan y recomendar_opcion', () => {
 
   it('se acepta si la herramienta no está declarada', () => {
     expect(() => efectiva(true)).not.toThrow();
+  });
+
+  it('la carga falla si la compuerta está activa sin seguridad.nombresDePlanes', () => {
+    const sinNombres = {
+      ...CONFIG_PRUEBA,
+      herramientas: CONFIG_PRUEBA.herramientas?.filter((h) => h.nombre !== 'recomendar_opcion') ?? [],
+      orientacion: { facetas: [], reglas: [] },
+      seguridad: { ...CONFIG_PRUEBA.seguridad, compuertasSalida: ['recomienda_plan' as const] },
+    };
+    expect(() => validarConfiguracion(sinNombres)).toThrow(ErrorConfiguracion);
+    try {
+      validarConfiguracion(sinNombres);
+    } catch (e) {
+      expect((e as ErrorConfiguracion).detalles.join(' ')).toContain('recomienda_plan necesita seguridad.nombresDePlanes');
+    }
+  });
+
+  it('el esquema rechaza nombres con caracteres raros y más de 10', () => {
+    expect(esquemaSeguridad.safeParse({ nombresDePlanes: ['VIVE; DROP'] }).success).toBe(false);
+    expect(esquemaSeguridad.safeParse({ nombresDePlanes: Array.from({ length: 11 }, (_, i) => `PLAN ${i}`) }).success).toBe(false);
+    expect(esquemaSeguridad.safeParse({ nombresDePlanes: ['VIVE TOTAL', 'VIVE+'] }).success).toBe(true);
   });
 });

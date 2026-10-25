@@ -82,7 +82,8 @@
     "vocabularioEntrada": "dato",
     "criterioSaludPep": "declaracion",
     "marcasPermitidas": ["DERIVAR"],
-    "marcasLiterales": ["PENDIENTE_DE_DEFINICION_LEGAL"]
+    "marcasLiterales": ["PENDIENTE_DE_DEFINICION_LEGAL"],
+    "nombresDePlanes": ["VIVE TOTAL", "VIVE+", "VIVE"]
   },
   "herramientas": [
     { "nombre": "derivar_humano", "descripcion": "Indica a la persona el canal oficial de contacto de Interseguros (WhatsApp, correo u oficinas) cuando lo pide, cuando la consulta excede el alcance o cuando insiste tres veces en algo que no se puede resolver por este medio. No transfiere la conversación: no existe traspaso a una persona.", "parametros": { "motivo": { "tipo": "string", "descripcion": "Motivo breve de la derivación, sin datos personales." } } },
