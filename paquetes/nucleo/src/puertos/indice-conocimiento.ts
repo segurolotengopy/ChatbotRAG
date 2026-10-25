@@ -33,6 +33,11 @@ export interface IndiceConocimiento {
   readonly nombre: string;
   indexar(fragmentos: Fragmento[]): Promise<void>;
   buscar(consulta: string, opciones: OpcionesBusqueda): Promise<FragmentoRecuperado[]>;
+  /**
+   * Los primeros `limite` fragmentos de una fuente, ordenados por `orden`. No es una búsqueda:
+   * no hay consulta ni puntaje. Lo usa el contexto de página para traer el manual de la pantalla.
+   */
+  fragmentosDeFuente(coleccion: string, fuenteId: string, limite: number): Promise<Fragmento[]>;
   /** Cantidad de fragmentos de una colección (para diagnósticos y salud). */
   contar(coleccion: string): Promise<number>;
   vaciar(coleccion: string): Promise<void>;

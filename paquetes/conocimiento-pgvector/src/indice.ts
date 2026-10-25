@@ -72,6 +72,18 @@ export class IndicePgvector implements IndiceConocimiento {
       .slice(0, opciones.topK);
   }
 
+  async fragmentosDeFuente(coleccion: string, fuenteId: string, limite: number): Promise<Fragmento[]> {
+    const filas = await this.db.query<{ id: string; coleccion: string; fuente_id: string; fuente_titulo: string; fuente_version: string; orden: number; texto: string }>(
+      `SELECT id, coleccion, fuente_id, fuente_titulo, fuente_version, orden, texto
+         FROM fragmentos
+        WHERE coleccion = $1 AND fuente_id = $2
+        ORDER BY orden
+        LIMIT $3`,
+      [coleccion, fuenteId, limite],
+    );
+    return filas.rows.map((r) => ({ id: r.id, coleccion: r.coleccion, fuenteId: r.fuente_id, fuenteTitulo: r.fuente_titulo, fuenteVersion: r.fuente_version, orden: r.orden, texto: r.texto }));
+  }
+
   async contar(coleccion: string): Promise<number> {
     const r = await this.db.query<{ n: string }>('SELECT count(*)::text AS n FROM fragmentos WHERE coleccion = $1', [coleccion]);
     return Number(r.rows[0]?.n ?? 0);

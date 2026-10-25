@@ -52,6 +52,33 @@ export const FRASE_USO_RESPALDO: Record<'citar' | 'parafrasear', string | null> 
 };
 
 /**
+ * PANTALLA ACTUAL (contexto de página). Cuando el sitio declara en qué pantalla está la
+ * persona, el manual de esa pantalla entra al RESPALDO como los primeros `n` documentos y esta
+ * frase le dice al modelo cómo usarlos: responder «esta pantalla» desde ellos y no inventar
+ * campos. Motivo: sin contexto, «¿qué pongo acá?» se contestaba con el top-K de la búsqueda,
+ * que no sabe dónde está la persona.
+ *
+ * El único valor interpolado es `n`, calculado por el código; el id de página que mandó el
+ * cliente NUNCA llega acá. Lo que NO garantiza: es una instrucción al modelo, y el sitio solo
+ * declara la pantalla (puede ser incorrecta o estar desactualizada). El modelo no ve la
+ * pantalla: la frase le prohíbe afirmar qué completó la persona. `conBusqueda` es false cuando el
+ * manual es TODO el respaldo (la búsqueda no encontró nada): la última oración deja de remitir
+ * a «el resto del respaldo», que no existe.
+ */
+export function frasePantallaActual(n: number, conBusqueda = true): string {
+  const documentos = n === 1 ? 'el documento [1]' : `los documentos [1] a [${n}]`;
+  return (
+    `PANTALLA ACTUAL: la persona está en el sitio viendo la pantalla que describen ${documentos} del RESPALDO DOCUMENTAL. ` +
+    'Si pregunta por "esta pantalla", "acá" o "este paso", responda desde esos documentos. ' +
+    'Mencione solo campos, botones y mensajes que esos documentos nombran; si lo preguntado no figura, diga que no cuenta con ese dato. ' +
+    'Usted no ve la pantalla de la persona: no afirme qué completó ni qué tiene a la vista. ' +
+    (conBusqueda
+      ? 'Si la pregunta es de otro tema, use el resto del respaldo como siempre.'
+      : 'Si la pregunta es de otro tema, no hay otro respaldo: responda con el mensaje de «sin respaldo» y ofrezca el contacto humano.')
+  );
+}
+
+/**
  * Qué puede prometer el asistente sobre el contacto con una persona. `canal` nace de
  * la batería del 12-oct-2026: en 40 de 368 casos el asistente ofreció «derivarle con
  * un asesor humano» —17 de ellos sin dar el canal— en un canal donde no existe tal

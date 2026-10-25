@@ -44,6 +44,20 @@ describe('IndicePgvector', () => {
     expect(consultas[0]!.sql).toMatch(/<=>/);
   });
 
+  it('trae los fragmentos de una fuente ordenados por orden, con SQL parametrizado', async () => {
+    const { db, consultas } = dbFalsa([
+      { id: 'a', coleccion: 'c', fuente_id: 'f', fuente_titulo: 'T', fuente_version: '1', orden: 0, texto: 'x' },
+      { id: 'b', coleccion: 'c', fuente_id: 'f', fuente_titulo: 'T', fuente_version: '1', orden: 1, texto: 'y' },
+    ]);
+    const r = await new IndicePgvector(db).fragmentosDeFuente('c', 'f', 20);
+    expect(r).toEqual([
+      { id: 'a', coleccion: 'c', fuenteId: 'f', fuenteTitulo: 'T', fuenteVersion: '1', orden: 0, texto: 'x' },
+      { id: 'b', coleccion: 'c', fuenteId: 'f', fuenteTitulo: 'T', fuenteVersion: '1', orden: 1, texto: 'y' },
+    ]);
+    expect(consultas[0]!.sql).toMatch(/WHERE coleccion = \$1 AND fuente_id = \$2\s+ORDER BY orden\s+LIMIT \$3/);
+    expect(consultas[0]!.valores).toEqual(['c', 'f', 20]);
+  });
+
   it('cuenta y vacía por colección', async () => {
     const { db, consultas } = dbFalsa([{}, {}]);
     const i = new IndicePgvector(db);

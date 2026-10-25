@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ID_PAGINA } from './esquema.js';
 import { CONFIG_PRUEBA } from '../pruebas/configuracion-prueba.js';
 import { ErrorConfiguracion, validarConfiguracion } from './cargar.js';
 import { datosQueNoTenemos, horarioLegible } from './derivados.js';
@@ -100,5 +101,27 @@ describe('derivados', () => {
   it('datos que no tenemos = calculados + declarados', () => {
     const e = resolverConfiguracion(c, null);
     expect(datosQueNoTenemos(e)).toEqual(['la dirección física', 'comisiones de los corredores']);
+  });
+});
+
+describe('páginas del conocimiento (esquema)', () => {
+  it('por omisión no hay páginas y el tope es 4000', () => {
+    const c = validarConfiguracion(CONFIG_PRUEBA);
+    expect(c.conocimiento.paginas).toEqual([]);
+    expect(c.conocimiento.maxCaracteresPagina).toBe(4000);
+  });
+  it('un perfil que no las menciona hereda las de la base; si las define, las reemplaza', () => {
+    const c = validarConfiguracion({
+      ...CONFIG_PRUEBA,
+      conocimiento: { ...CONFIG_PRUEBA.conocimiento, paginas: [{ id: 'plan', fuenteId: 'coberturas' }] },
+      perfiles: { PA: { nombre: 'A', alcance: { temasPermitidos: ['x'] } }, PB: { nombre: 'B', conocimiento: { paginas: [] } } },
+    });
+    expect(resolverConfiguracion(c, 'PA').conocimiento.paginas).toHaveLength(1);
+    expect(resolverConfiguracion(c, 'PB').conocimiento.paginas).toEqual([]);
+  });
+  it('ID_PAGINA acepta minúsculas, dígitos y guiones, y rechaza lo demás', () => {
+    expect(ID_PAGINA.test('plan')).toBe(true);
+    expect(ID_PAGINA.test('paso-2')).toBe(true);
+    for (const malo of ['', 'Plan', 'a_b', '-a', 'a b', 'a'.repeat(65)]) expect(ID_PAGINA.test(malo)).toBe(false);
   });
 });

@@ -4,6 +4,7 @@ import type { FragmentoRecuperado } from '../puertos/indice-conocimiento.js';
 import { CONFIG_PRUEBA } from '../pruebas/configuracion-prueba.js';
 import { resolverConfiguracion } from '../configuracion/perfiles.js';
 import { armarPrompt } from './armar.js';
+import { frasePantallaActual } from './frases.js';
 
 const fragmento: FragmentoRecuperado = {
   id: 'f1',
@@ -93,5 +94,32 @@ describe('modo de contacto humano', () => {
 
   it('rechaza valores fuera del enumerado', () => {
     expect(() => promptConModo('transferir' as never)).toThrow();
+  });
+});
+
+describe('pantalla actual (contexto de página)', () => {
+  const segundo: FragmentoRecuperado = { ...fragmento, id: 'f2', texto: 'Pulse Continuar.' };
+  function conPagina(n: number | undefined, uso?: 'parafrasear'): string {
+    const config = validarConfiguracion({ ...CONFIG_PRUEBA, conocimiento: { ...CONFIG_PRUEBA.conocimiento, ...(uso ? { usoDelRespaldo: uso } : {}) } });
+    return armarPrompt({ config, ahora: new Date('2026-10-12T14:00:00Z'), fragmentos: [fragmento, segundo], orientacion: { facetas: {} }, canal: 'web', ...(n === undefined ? {} : { fragmentosPagina: n }) });
+  }
+
+  it('sin fragmentosPagina (o con 0) el prompt no cambia', () => {
+    expect(conPagina(undefined)).not.toContain('PANTALLA ACTUAL');
+    expect(conPagina(0)).toBe(conPagina(undefined));
+  });
+
+  it('con 1 dice «el documento [1]» y con 2 «los documentos [1] a [2]»', () => {
+    expect(conPagina(1)).toContain('describen el documento [1] del RESPALDO DOCUMENTAL');
+    expect(conPagina(2)).toContain('describen los documentos [1] a [2] del RESPALDO DOCUMENTAL');
+    expect(frasePantallaActual(3)).toContain('[1] a [3]');
+  });
+
+  it('la frase va antes de la de uso y fuera de los delimitadores, y el formato del respaldo no cambia', () => {
+    const p = conPagina(1, 'parafrasear');
+    expect(p.indexOf('PANTALLA ACTUAL')).toBeLessThan(p.indexOf('USO DEL RESPALDO'));
+    expect(p.indexOf('USO DEL RESPALDO')).toBeLessThan(p.indexOf('INICIO DE RESPALDO DOCUMENTAL'));
+    expect(p).toContain('[1] Documento: «Paso 2 · Verifique su número» (versión v1)\nIngrese su número de WhatsApp.');
+    expect(p).toContain('[2] Documento: «Paso 2 · Verifique su número» (versión v1)\nPulse Continuar.');
   });
 });

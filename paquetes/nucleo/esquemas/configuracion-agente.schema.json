@@ -359,6 +359,35 @@
             ],
             "additionalProperties": false
           }
+        },
+        "paginas": {
+          "default": [],
+          "maxItems": 60,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+              },
+              "fuenteId": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{1,79}$"
+              }
+            },
+            "required": [
+              "id",
+              "fuenteId"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "maxCaracteresPagina": {
+          "default": 4000,
+          "type": "integer",
+          "minimum": 500,
+          "maximum": 8000
         }
       },
       "additionalProperties": false
@@ -1037,6 +1066,33 @@
                   ],
                   "additionalProperties": false
                 }
+              },
+              "paginas": {
+                "maxItems": 60,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+                    },
+                    "fuenteId": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9][a-z0-9-]{1,79}$"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "fuenteId"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "maxCaracteresPagina": {
+                "type": "integer",
+                "minimum": 500,
+                "maximum": 8000
               }
             },
             "additionalProperties": false

@@ -18,6 +18,18 @@ describe('ClienteChatbotRAG', () => {
     expect(JSON.parse(String(cap.init.body))).toEqual({ texto: 'hola', perfilId: 'X' });
   });
 
+  it('el cuerpo incluye `pagina` cuando se indica y el respaldo admite `origen`', async () => {
+    let cuerpo: unknown = null;
+    const fetchFalso = (async (_url: string | URL | Request, init?: RequestInit) => {
+      cuerpo = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify({ ok: true, texto: 'hola', respaldo: [{ fuenteId: 'a', titulo: 'A', version: 'v1', puntaje: 1, origen: 'pagina' }], avisos: [] }), { status: 200 });
+    }) as typeof fetch;
+    const c = new ClienteChatbotRAG({ urlBase: 'https://api.ejemplo.com', fetch: fetchFalso });
+    const r = await c.enviar('web_abc12345', { texto: 'hola', pagina: 'plan' });
+    expect(cuerpo).toEqual({ texto: 'hola', pagina: 'plan' });
+    expect(r.respaldo[0]?.origen).toBe('pagina');
+  });
+
   it('convierte errores HTTP en ErrorServicio con el motivo', async () => {
     const fetchFalso = (async () => new Response(JSON.stringify({ ok: false, motivo: 'NO_AUTORIZADO' }), { status: 401 })) as typeof fetch;
     const c = new ClienteChatbotRAG({ urlBase: 'https://api.ejemplo.com', fetch: fetchFalso });
