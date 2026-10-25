@@ -76,7 +76,7 @@ Secciones:
   "mensajes":    { bienvenida, errorTemporal, fueraDeAlcance, sinRespaldo, derivacion,
                    entradaBloqueada, suspendido, cierre },
   "modelo":      { proveedor:"vertex|bedrock|simulado", nombre, temperatura, maxTokensSalida,
-                   maxIteraciones, ventanaMemoria },
+                   maxIteraciones, ventanaMemoria, razonamiento:"automatico|desactivado" },
   "perfiles":    { "<perfilId>": { …cualquier sección salvo version/id/modelo… } }  // p. ej. por tipo de seguro
 }
 ```
@@ -163,6 +163,50 @@ caracteres invisibles y los homóglifos de otros alfabetos, no. `clave`, `cedula
 Consecuencia: lo que pasa llega al proveedor del modelo. La política de retención y de
 uso de datos de Vertex AI NO está verificada en este repositorio: pendiente de
 verificar con la documentación oficial.
+
+### Razonamiento y respuestas cortadas
+
+`modelo.razonamiento` (`automatico` por omisión, `desactivado`) se pasa al proveedor. Vertex
+envía `thinkingBudget: 0` con `desactivado`; Bedrock lo ignora. Origen: en la batería de
+staging del 24-oct-2026 dos respuestas terminaron en `MAX_TOKENS` con 37 y 64 tokens visibles
+de 1.024, porque el razonamiento de Gemini 2.5 se descuenta del mismo presupuesto de salida
+(y se cobra como salida; `tokensSalida` ahora lo suma). Gemini 2.5 Pro no admite apagarlo y en
+Gemini 3 el parámetro está obsoleto. Si aun así una respuesta termina en `max_tokens` sin
+llamar a herramientas, el orquestador la recorta a la última oración completa, deriva
+(`derivacion.motivo = respuesta_cortada`) y avisa `respuesta_recortada`; si no queda texto, o si
+el modelo derivó con la herramienta y luego no dijo nada, entrega `mensajes.derivacion` con el
+aviso `vacia_con_derivacion`. No hay reintento (repetiría toda la entrada). Una respuesta vacía
+sin derivación sigue siendo error temporal con `respuesta_vacia`. El recorte no entiende
+abreviaturas («Gs.»): ante la duda corta de más.
+
+### Compuerta `recomienda_plan`
+
+Reemplaza por `fueraDeAlcance` más `derivacion` la respuesta que recomienda un plan concreto
+(«el plan recomendado es…», «le recomiendo el plan…», «elija el plan…»). Origen: PAG-plan-011
+de la batería del 24-oct-2026, donde el manual de /plan lleva la etiqueta «PLAN RECOMENDADO»
+y el modelo la repitió como recomendación propia. Deja pasar citar la etiqueta como dato de
+pantalla. No cubre otras redacciones ni nombres de plan en minúsculas tras «le recomiendo el».
+No puede convivir con la herramienta `recomendar_opcion` (la carga lo rechaza).
+
+### Marcas literales
+
+`seguridad.marcasLiterales` lista marcas entre corchetes que son TEXTO de los manuales (por
+ejemplo `PENDIENTE_DE_DEFINICION_LEGAL`) y no marcas de control: se conservan intactas, sin
+aviso. Origen: PAG-retracto-007 respondió «el plazo está ""» porque la compuerta borraba
+`[PENDIENTE DE DEFINICIÓN LEGAL]`. La coincidencia es exacta con la clave normalizada (sin
+tildes, mayúsculas, espacios como `_`) y no puede repetirse en `marcasPermitidas`. Las demás
+marcas siguen borrándose; no garantiza que el modelo cite la marca.
+
+### Criterio de salud y PEP
+
+`seguridad.criterioSaludPep` (`primera_persona` por omisión, `declaracion`) decide cuándo bloquea
+la compuerta de entrada `salud` y `pep`. Con `declaracion` solo queda libre una consulta de
+formulario: un marco cerrado («si marco/respondo… que (sí) soy PEP» o «que tengo una
+enfermedad») seguido de una pregunta de procedimiento de lista cerrada, sin vocabulario de
+salud ni de PEP. Origen: PAG-actividad-007 («Si marco que sí soy PEP, ¿qué pasa?»), el único
+error de los 10 bloqueos de entrada de la batería. Fuera del marco bloquea exactamente lo mismo
+que `primera_persona` (propiedad probada). No cambia cédula, tarjeta, código, clave ni
+inyección. No cubre otras formas de preguntar por el formulario, que siguen bloqueadas.
 
 ## 7. Aplicación a segurolotengo-demo
 
