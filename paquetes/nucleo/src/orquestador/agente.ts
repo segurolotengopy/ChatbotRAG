@@ -166,7 +166,7 @@ export class Agente {
     }
 
     // 3. Compuertas de entrada.
-    const entrada = evaluarEntrada(texto, config.seguridad.bloquearEntrada, config.seguridad.vocabularioEntrada);
+    const entrada = evaluarEntrada(texto, config.seguridad.bloquearEntrada, config.seguridad.vocabularioEntrada, config.seguridad.criterioSaludPep);
     if (entrada.bloqueada) {
       this.deps.bitacora.registrar({ ...base, tipo: 'entrada_bloqueada', avisos: entrada.bloqueantes.map((c) => `entrada:${c}`) });
       return respuesta(config.mensajes.entradaBloqueada, { avisos: entrada.bloqueantes.map((c) => `entrada:${c}`) });
@@ -249,6 +249,7 @@ export class Agente {
     let derivacion: { motivo: string } | null = null;
     let recomendacion: { id: string; texto: string } | null = null;
     let textoModelo = '';
+    let finCortado = false;
     let iteraciones = 0;
     const tokens = { tokensEntrada: 0, tokensSalida: 0 };
 
@@ -259,13 +260,15 @@ export class Agente {
           sistema,
           mensajes,
           herramientas: definiciones,
-          parametros: { modelo: config.modelo.nombre, temperatura: config.modelo.temperatura, maxTokensSalida: config.modelo.maxTokensSalida },
+          parametros: { modelo: config.modelo.nombre, temperatura: config.modelo.temperatura, maxTokensSalida: config.modelo.maxTokensSalida, razonamiento: config.modelo.razonamiento },
         });
         tokens.tokensEntrada += r.uso.tokensEntrada;
         tokens.tokensSalida += r.uso.tokensSalida;
         textoModelo = r.texto;
 
         if (r.motivoFin === 'max_tokens') avisos.push('max_tokens');
+        // Solo cuenta el corte de la ÚLTIMA iteración: un texto cortado que además llamó a una herramienta se reemplaza en la siguiente.
+        finCortado = r.motivoFin === 'max_tokens' && r.llamadasHerramienta.length === 0;
         if (r.llamadasHerramienta.length === 0) break;
 
         mensajes.push({ rol: 'asistente_herramientas', texto: r.texto, llamadas: r.llamadasHerramienta });
@@ -287,6 +290,26 @@ export class Agente {
       return respuesta(config.mensajes.errorTemporal, { avisos: [...avisos, 'error_modelo'] }, iteraciones, tokens);
     }
 
+    // RESPUESTA INCOMPLETA O VACÍA TRAS DERIVAR (batería del 24-oct-2026). Un texto que el modelo no
+    // alcanzó a terminar NO se entrega, ni siquiera recortado: cortar en la «última oración» puede dejar
+    // una afirmación sin su salvedad («El plan cubre cáncer de mama.» sin el «Excepto cuando…») o cortar
+    // mal en «Gs.», «Sr.» o «1.». Se entrega el mensaje de error temporal más la derivación al canal, el
+    // mismo camino seguro de una respuesta vacía, y se avisa `respuesta_incompleta`. Si el modelo derivó
+    // con la herramienta y luego no dijo nada, se usa el mensaje de derivación (`vacia_con_derivacion`).
+    // Sin reintento: repetiría toda la entrada. Una respuesta vacía SIN derivación sigue siendo
+    // `respuesta_vacia` (error temporal), aguas abajo. Lo que NO garantiza: que el aviso baste para
+    // diagnosticar el corte; los tokens usados quedan en la bitácora.
+    let incompleta = false;
+    if (finCortado) {
+      textoModelo = config.mensajes.errorTemporal;
+      avisos.push('respuesta_incompleta');
+      incompleta = true;
+    }
+    if (textoModelo.trim() === '' && derivacion) {
+      textoModelo = config.mensajes.derivacion;
+      avisos.push('vacia_con_derivacion');
+    }
+
     // SIN RESPALDO Y CON EXIGENCIA: si no hubo fragmentos, el modelo no llamó a ninguna
     // herramienta y su texto no es una pregunta (una pregunta de orientación o de
     // aclaración no afirma nada), lo que haya dicho se reemplaza por el mensaje fijo.
@@ -301,7 +324,7 @@ export class Agente {
     }
 
     // 9. Marcas y compuertas de salida.
-    const marcas = extraerMarcas(textoFinal, config.seguridad.marcasPermitidas);
+    const marcas = extraerMarcas(textoFinal, config.seguridad.marcasPermitidas, config.seguridad.marcasLiterales);
     textoFinal = marcas.texto;
     if (marcas.borradas > 0) avisos.push('marca_no_declarada');
     if (marcas.marcas.includes('DERIVAR') && !derivacion) derivacion = { motivo: 'marca del modelo' };
@@ -309,6 +332,8 @@ export class Agente {
     textoFinal = salida.texto;
     avisos.push(...salida.avisos);
     if (salida.reemplazada && !derivacion) derivacion = { motivo: `compuerta:${salida.avisos[0] ?? 'salida'}` };
+    // El motivo de una compuerta o de la herramienta manda; `respuesta_cortada` solo si no hay otro.
+    if (incompleta && !derivacion) derivacion = { motivo: 'respuesta_cortada' };
     if (salida.avisos.length) this.deps.bitacora.registrar({ ...base, tipo: 'compuerta_salida', avisos: salida.avisos });
 
     // Derivación: agregar contacto si no está ya en el texto.

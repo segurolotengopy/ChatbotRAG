@@ -50,6 +50,8 @@ export interface ParametrosLLM {
   modelo: string;
   temperatura: number;
   maxTokensSalida: number;
+  /** `desactivado` pide no razonar antes de responder; el adaptador lo respeta si su modelo lo permite. */
+  razonamiento?: 'automatico' | 'desactivado';
 }
 
 export interface PeticionLLM {

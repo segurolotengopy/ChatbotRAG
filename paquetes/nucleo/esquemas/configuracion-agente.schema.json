@@ -435,7 +435,8 @@
               "marca_no_declarada",
               "afirma_cobro_real",
               "promete_traspaso",
-              "dato_tarjeta_codigo"
+              "dato_tarjeta_codigo",
+              "recomienda_plan"
             ]
           }
         },
@@ -462,6 +463,14 @@
             "dato"
           ]
         },
+        "criterioSaludPep": {
+          "default": "primera_persona",
+          "type": "string",
+          "enum": [
+            "primera_persona",
+            "declaracion"
+          ]
+        },
         "marcasPermitidas": {
           "default": [
             "DERIVAR"
@@ -471,6 +480,24 @@
           "items": {
             "type": "string",
             "pattern": "^[A-Z_]{3,30}$"
+          }
+        },
+        "marcasLiterales": {
+          "default": [],
+          "maxItems": 10,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z_]{3,30}$"
+          }
+        },
+        "nombresDePlanes": {
+          "default": [],
+          "maxItems": 10,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9+ ]{2,30}$"
           }
         }
       },
@@ -720,6 +747,14 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 6
+        },
+        "razonamiento": {
+          "default": "automatico",
+          "type": "string",
+          "enum": [
+            "automatico",
+            "desactivado"
+          ]
         },
         "ventanaMemoria": {
           "default": 10,
@@ -1127,7 +1162,8 @@
                     "marca_no_declarada",
                     "afirma_cobro_real",
                     "promete_traspaso",
-                    "dato_tarjeta_codigo"
+                    "dato_tarjeta_codigo",
+                    "recomienda_plan"
                   ]
                 }
               },
@@ -1151,12 +1187,35 @@
                   "dato"
                 ]
               },
+              "criterioSaludPep": {
+                "type": "string",
+                "enum": [
+                  "primera_persona",
+                  "declaracion"
+                ]
+              },
               "marcasPermitidas": {
                 "maxItems": 10,
                 "type": "array",
                 "items": {
                   "type": "string",
                   "pattern": "^[A-Z_]{3,30}$"
+                }
+              },
+              "marcasLiterales": {
+                "maxItems": 10,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Z_]{3,30}$"
+                }
+              },
+              "nombresDePlanes": {
+                "maxItems": 10,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9+ ]{2,30}$"
                 }
               }
             },

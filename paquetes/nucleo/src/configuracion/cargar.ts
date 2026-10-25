@@ -110,6 +110,53 @@ export function paginasInvalidas(config: ConfiguracionAgente): string[] {
   return [...new Set(hallazgos)];
 }
 
+/**
+ * `recomienda_plan` y `recomendar_opcion` se contradicen: la herramienta existe para recomendar y la
+ * compuerta reemplaza toda respuesta que recomiende. Además la compuerta necesita los nombres de los
+ * planes (`nombresDePlanes`) para detectar «le recomiendo VIVE TOTAL»; sin ellos solo vería frases. Se rechaza al cargar, base y cada perfil con su
+ * configuración efectiva (la fusión reemplaza arreglos), no en ejecución.
+ */
+export function recomiendaPlanConHerramienta(config: ConfiguracionAgente): string[] {
+  const hallazgos: string[] = [];
+  for (const perfilId of [null, ...Object.keys(config.perfiles)]) {
+    const efectiva = resolverConfiguracion(config, perfilId);
+    if (!efectiva.seguridad.compuertasSalida.includes('recomienda_plan')) continue;
+    if (efectiva.herramientas.some((h) => h.nombre === 'recomendar_opcion')) {
+      hallazgos.push(`seguridad.compuertasSalida: La compuerta recomienda_plan no puede convivir con la herramienta recomendar_opcion (${perfilId ?? 'base'})`);
+    }
+    if (efectiva.seguridad.nombresDePlanes.length === 0) {
+      hallazgos.push(`seguridad.nombresDePlanes: recomienda_plan necesita seguridad.nombresDePlanes (${perfilId ?? 'base'})`);
+    }
+  }
+  return [...new Set(hallazgos)];
+}
+
+/** Una marca no puede ser a la vez de control (`marcasPermitidas`) y texto literal (`marcasLiterales`). */
+export function marcasEnAmbasListas(config: ConfiguracionAgente): string[] {
+  const hallazgos: string[] = [];
+  for (const perfilId of [null, ...Object.keys(config.perfiles)]) {
+    const { marcasPermitidas, marcasLiterales } = resolverConfiguracion(config, perfilId).seguridad;
+    for (const m of marcasLiterales) {
+      if (marcasPermitidas.includes(m)) hallazgos.push(`seguridad: marcasLiterales y marcasPermitidas no pueden compartir una marca («${m}», ${perfilId ?? 'base'})`);
+    }
+  }
+  return [...new Set(hallazgos)];
+}
+
+/**
+ * `razonamiento: desactivado` no se puede cumplir en Gemini 2.5 Pro: el servicio rechaza
+ * `thinkingBudget: 0` y todas las respuestas fallarían. Se rechaza al cargar, no en ejecución. Solo
+ * detecta `pro` como palabra del nombre («gemini-2.5-pro»); un modelo de otro proveedor con otro nombre
+ * que tampoco lo admita no se detecta. `modelo` no es parte de los perfiles: se revisa solo la base.
+ */
+export function razonamientoNoAdmitido(config: ConfiguracionAgente): string[] {
+  const { nombre, razonamiento } = config.modelo;
+  if (razonamiento === 'desactivado' && /(^|[^a-z0-9])pro($|[^a-z0-9])/i.test(nombre)) {
+    return [`modelo.razonamiento: El modelo ${nombre} no admite razonamiento desactivado`];
+  }
+  return [];
+}
+
 /** Valida un objeto ya parseado. Lanza `ErrorConfiguracion` con todos los detalles. */
 export function validarConfiguracion(entrada: unknown): ConfiguracionAgente {
   const resultado = esquemaConfiguracionAgente.safeParse(entrada);
@@ -122,6 +169,9 @@ export function validarConfiguracion(entrada: unknown): ConfiguracionAgente {
   recorrer(config, config.id, hallazgos);
   hallazgos.push(...facetasSensibles(config));
   hallazgos.push(...paginasInvalidas(config));
+  hallazgos.push(...recomiendaPlanConHerramienta(config));
+  hallazgos.push(...marcasEnAmbasListas(config));
+  hallazgos.push(...razonamientoNoAdmitido(config));
   if (hallazgos.length > 0) throw new ErrorConfiguracion('La configuración contiene contenido no permitido', hallazgos);
   return config;
 }

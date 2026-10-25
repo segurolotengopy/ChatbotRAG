@@ -76,11 +76,14 @@
   },
   "seguridad": {
     "bloquearEntrada": ["cedula", "tarjeta", "salud", "pep", "otp", "clave", "inyeccion"],
-    "compuertasSalida": ["niega_ia", "promesa_indemnizacion", "decision_elegibilidad", "dato_confidencial", "marca_no_declarada", "promete_traspaso"],
+    "compuertasSalida": ["niega_ia", "promesa_indemnizacion", "decision_elegibilidad", "dato_confidencial", "marca_no_declarada", "promete_traspaso", "recomienda_plan"],
     "terminosConfidenciales": ["margen interno", "comisión de intermediación", "meta comercial", "Gemini", "Vertex", "entrenado por Google", "modelo de Google", "creado por Google", "desarrollado por Google", "Google AI"],
     "maxCaracteresEntrada": 1500,
     "vocabularioEntrada": "dato",
-    "marcasPermitidas": ["DERIVAR"]
+    "criterioSaludPep": "declaracion",
+    "marcasPermitidas": ["DERIVAR"],
+    "marcasLiterales": ["PENDIENTE_DE_DEFINICION_LEGAL"],
+    "nombresDePlanes": ["VIVE TOTAL", "VIVE+", "VIVE"]
   },
   "herramientas": [
     { "nombre": "derivar_humano", "descripcion": "Indica a la persona el canal oficial de contacto de Interseguros (WhatsApp, correo u oficinas) cuando lo pide, cuando la consulta excede el alcance o cuando insiste tres veces en algo que no se puede resolver por este medio. No transfiere la conversación: no existe traspaso a una persona.", "parametros": { "motivo": { "tipo": "string", "descripcion": "Motivo breve de la derivación, sin datos personales." } } },
@@ -103,6 +106,7 @@
     "modeloEmbeddings": "text-embedding-005",
     "temperatura": 0.2,
     "maxTokensSalida": 1024,
+    "razonamiento": "desactivado",
     "maxIteraciones": 3,
     "ventanaMemoria": 10,
     "ttlConversacionSeg": 1800

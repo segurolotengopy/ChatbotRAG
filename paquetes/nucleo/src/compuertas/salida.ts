@@ -108,18 +108,24 @@ const prometeTraspaso: FuncionCompuerta = (texto, ctx) => {
   return { texto: base.includes(derivacion) ? base : `${base} ${derivacion}`.trim(), aviso: 'promete_traspaso', reemplazo: false };
 };
 
-/** Marcas `[X]` que el modelo inventa se borran; las declaradas se extraen aparte. */
+/**
+ * Marcas `[X]` que el modelo inventa se borran; las declaradas se extraen aparte. Las `literales`
+ * (`seguridad.marcasLiterales`) son texto de los manuales: se conservan intactas y no cuentan ni
+ * como marca ni como borrada.
+ */
 const RE_MARCA = /\[([A-Za-zÁÉÍÓÚÑáéíóúñ_ ]{3,30})\]/g;
 
 export function extraerMarcas(
   texto: string,
   permitidas: readonly string[],
+  literales: readonly string[] = [],
 ): { texto: string; marcas: string[]; borradas: number } {
   const marcas: string[] = [];
   let borradas = 0;
   const limpio = texto
-    .replace(RE_MARCA, (_, m: string) => {
+    .replace(RE_MARCA, (original: string, m: string) => {
       const clave = normalizar(m).toUpperCase().replace(/\s+/g, '_');
+      if (literales.includes(clave)) return original;
       if (permitidas.includes(clave)) marcas.push(clave);
       else borradas++;
       return '';
@@ -130,7 +136,7 @@ export function extraerMarcas(
 }
 
 const marcaNoDeclarada: FuncionCompuerta = (texto, ctx) => {
-  const { texto: limpio, borradas } = extraerMarcas(texto, ctx.config.seguridad.marcasPermitidas);
+  const { texto: limpio, borradas } = extraerMarcas(texto, ctx.config.seguridad.marcasPermitidas, ctx.config.seguridad.marcasLiterales);
   if (borradas === 0) return sinCambio(texto);
   return { texto: limpio, aviso: 'marca_no_declarada', reemplazo: false };
 };
@@ -156,6 +162,73 @@ const afirmaCobroReal: FuncionCompuerta = (texto) => {
   return { texto: `${texto}\n\n(Cobro SIMULADO: demostración, sin cobro real.)`, aviso: 'afirma_cobro_real', reemplazo: false };
 };
 
+/**
+ * RECOMENDACIÓN DE PLAN. `temasBloqueados` ya prohíbe recomendar, pero era una instrucción de
+ * prompt y ninguna compuerta la hacía cumplir: en la batería de staging del 24-oct-2026,
+ * PAG-plan-011 («¿Cuál es el plan recomendado?») respondió «el plan recomendado es el VIVE TOTAL»
+ * porque el manual de /plan lleva la etiqueta «PLAN RECOMENDADO». Reemplaza la respuesta por el
+ * mensaje de fuera de alcance más la derivación, igual que `decision_elegibilidad`.
+ *
+ * DOS DETECTORES sobre el texto normalizado (sin tildes, minúsculas, sin caracteres de formato
+ * Unicode como U+200B):
+ *  1. FRASES de recomendación de «el plan» («el plan recomendado es…», «le recomiendo el plan…»,
+ *     «le conviene el plan…», «el mejor plan…»). Solo con el sustantivo `plan`: «la mejor opción es
+ *     consultar a un asesor» o «elija la opción que corresponda» son instrucciones legítimas.
+ *  2. NOMBRE DE PLAN cerca de un verbo de recomendación (`seguridad.nombresDePlanes`, hasta 6 palabras
+ *     de distancia, en cualquier orden): «le recomiendo VIVE TOTAL», «yo elegiría VIVE». Los nombres son
+ *     DATO de la configuración, se comparan normalizados y con límites de palabra («viven» no es «vive»);
+ *     «vive» en minúscula SÍ cuenta como el nombre normalizado, así que «si usted vive en…» junto a un
+ *     verbo de recomendación sobrerreemplaza (falla hacia lo seguro).
+ *
+ * DEJA PASAR citar la etiqueta como dato de pantalla («lleva la etiqueta «PLAN RECOMENDADO»»): la cita
+ * explícita («etiqueta» + texto entre comillas) se quita antes de detectar. Es lo que muestra el sitio,
+ * no una recomendación del asistente (decisión por defecto, a confirmar por el propietario).
+ * Qué NO garantiza: otras redacciones («lo más indicado en su caso sería…» sin nombre cerca), nombres
+ * no declarados, un nombre y un verbo a más de 6 palabras, ni un plan aludido sin nombre («el más
+ * caro»). Tampoco convive con la herramienta `recomendar_opcion` (lo rechaza `cargar.ts`).
+ */
+const RECOMIENDA_PLAN = new RegExp(
+  [
+    String.raw`\b(el|su) plan (recomendado|ideal|indicado|adecuado|mas conveniente) (para (usted|ti|vos) |en su caso )?(es|seria|sera)\b`,
+    String.raw`\b(es|seria|sera) (el )?plan (recomendado|ideal|indicado|mas conveniente)\b`,
+    String.raw`\b(le|te|les) (recomiendo|recomendamos|recomendaria|sugiero|sugerimos|aconsejo|aconsejamos) (contratar |elegir |tomar )?(el|la) plan\b`,
+    String.raw`\b(le|te) conviene (mas )?(contratar |elegir |tomar )?(el|la) plan\b`,
+    String.raw`\b(el|la) mejor plan (para (usted|ti|vos)|es|seria)\b`,
+  ].join('|'),
+);
+const CITA_DE_ETIQUETA = /\b(etiqueta|rotulo|leyenda|distintivo|sello)\s+[«"“][^»"”]{1,40}[»"”]/g;
+const VERBO_RECOMENDACION =
+  '(?:recomend[a-z]*|recomiend[a-z]*|sugier[a-z]*|suger[a-z]*|aconsej[a-z]*|convien[a-z]*|ideal(?![a-z])|indicad[a-z]*|quedaria|elegiria|mejor(?![a-z]))';
+const PALABRAS_ENTRE = String.raw`(?:\s+\S+){0,6}?`;
+const regexNombres = new Map<string, RegExp>();
+
+function cercaDeNombre(n: string, nombres: readonly string[]): boolean {
+  const lista = nombres.map((x) => normalizar(x).replace(/\p{Cf}/gu, '')).filter((x) => x.length >= 2);
+  if (lista.length === 0) return false;
+  const clave = lista.join('\u0000');
+  let re = regexNombres.get(clave);
+  if (!re) {
+    const alternativas = [...lista].sort((x, y) => y.length - x.length).map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`));
+    const nombre = `(?<![a-z0-9])(?:${alternativas.join('|')})(?![a-z0-9])`;
+    const antes = String.raw`\s+[^a-z0-9\s]*`;
+    re = new RegExp(
+      `(?<![a-z])${VERBO_RECOMENDACION}\\S*${PALABRAS_ENTRE}${antes}${nombre}|${nombre}\\S*${PALABRAS_ENTRE}${antes}(?<![a-z])${VERBO_RECOMENDACION}`,
+    );
+    regexNombres.set(clave, re);
+  }
+  return re.test(n);
+}
+
+const recomiendaPlan: FuncionCompuerta = (texto, ctx) => {
+  const n = normalizar(texto.replace(/\p{Cf}/gu, '')).replace(CITA_DE_ETIQUETA, ' ');
+  if (!RECOMIENDA_PLAN.test(n) && !cercaDeNombre(n, ctx.config.seguridad.nombresDePlanes)) return sinCambio(texto);
+  return {
+    texto: `${ctx.config.mensajes.fueraDeAlcance} ${ctx.config.mensajes.derivacion}`.trim(),
+    aviso: 'recomienda_plan',
+    reemplazo: true,
+  };
+};
+
 export const COMPUERTAS: Record<CompuertaSalida, FuncionCompuerta> = {
   niega_ia: niegaIa,
   promesa_indemnizacion: promesaIndemnizacion,
@@ -165,6 +238,7 @@ export const COMPUERTAS: Record<CompuertaSalida, FuncionCompuerta> = {
   afirma_cobro_real: afirmaCobroReal,
   promete_traspaso: prometeTraspaso,
   dato_tarjeta_codigo: datoTarjetaCodigo,
+  recomienda_plan: recomiendaPlan,
 };
 
 /**
@@ -176,6 +250,7 @@ const ORDEN: CompuertaSalida[] = [
   'dato_confidencial',
   'promesa_indemnizacion',
   'decision_elegibilidad',
+  'recomienda_plan',
   'promete_traspaso',
   'niega_ia',
   'afirma_cobro_real',
