@@ -349,3 +349,90 @@ describe('compuerta de entrada por dato, de punta a punta con la configuración 
     expect(JSON.stringify(bitacora.eventos)).not.toContain('123');
   });
 });
+
+describe('razonamiento del modelo en SeguroLoTengo', () => {
+  it('desactiva el razonamiento: con 1.024 tokens de salida el razonamiento se comía la respuesta (batería del 24-oct-2026)', () => {
+    expect(config.modelo.razonamiento).toBe('desactivado');
+    expect(config.modelo.maxTokensSalida).toBe(1024);
+  });
+});
+
+describe('compuerta recomienda_plan con la configuración real', () => {
+  it('está activa, al final de la lista, y reemplaza la respuesta real de PAG-plan-011', () => {
+    expect(config.seguridad.compuertasSalida.at(-1)).toBe('recomienda_plan');
+    const efectiva = resolverConfiguracion(config, 'VIDA_ONCOLOGICO');
+    const r = aplicarCompuertasSalida('Según el documento «Elección del plan», el plan recomendado es el VIVE TOTAL.', { config: efectiva });
+    expect(r.avisos).toContain('recomienda_plan');
+    expect(r.texto).toBe(`${efectiva.mensajes.fueraDeAlcance} ${efectiva.mensajes.derivacion}`);
+  });
+
+  it('declara los nombres de los planes y detecta «le recomiendo VIVE TOTAL» sin tocar «elija el plan»', () => {
+    expect(config.seguridad.nombresDePlanes).toEqual(['VIVE TOTAL', 'VIVE+', 'VIVE']);
+    const efectiva = resolverConfiguracion(config, 'VIDA_ONCOLOGICO');
+    expect(aplicarCompuertasSalida('Le recomiendo VIVE TOTAL.', { config: efectiva }).avisos).toContain('recomienda_plan');
+    const instruccion = 'Elija el plan y pulse CONTINUAR.';
+    const r = aplicarCompuertasSalida(instruccion, { config: efectiva });
+    expect(r.avisos).not.toContain('recomienda_plan');
+    expect(r.texto).toBe(instruccion);
+  });
+});
+
+describe('marcas literales con la configuración real', () => {
+  it('el texto de PAG-retracto-007 sale íntegro, con la marca del manual que antes se borraba', () => {
+    expect(config.seguridad.marcasLiterales).toContain('PENDIENTE_DE_DEFINICION_LEGAL');
+    const efectiva = resolverConfiguracion(config, 'VIDA_ONCOLOGICO');
+    const texto =
+      'La página de Derecho de retracto indica que el plazo para retractarse está [PENDIENTE DE DEFINICIÓN LEGAL], por lo que no contamos con ese dato. Si desea, puede consultar con una persona de Interseguros S.A. escribiendo al WhatsApp +595 991 478 468 o al correo segurolotengo@interseguros360.com.';
+    const r = aplicarCompuertasSalida(texto, { config: efectiva });
+    expect(r.texto).toBe(texto);
+    expect(r.avisos).not.toContain('marca_no_declarada');
+  });
+});
+
+describe('criterio de salud y PEP con la configuración real, de punta a punta', () => {
+  function armar() {
+    const bitacora = new BitacoraEnMemoria();
+    const peticiones: PeticionLLM[] = [];
+    const simulado = new ProveedorSimulado();
+    const proveedor = {
+      nombre: 'simulado-contado',
+      generar: async (p: PeticionLLM) => {
+        peticiones.push(p);
+        return simulado.generar(p);
+      },
+    };
+    const agente = new Agente({
+      config,
+      proveedor,
+      indice: new IndiceEnMemoria(null),
+      memoria: new MemoriaEnProceso(),
+      herramientas: new RegistroHerramientas(),
+      bitacora,
+      reloj: () => new Date('2026-10-25T14:00:00Z'),
+    });
+    return { agente, bitacora, peticiones };
+  }
+
+  it('usa criterioSaludPep «sin_sujeto» y sigue bloqueando salud y pep', () => {
+    expect(config.seguridad.criterioSaludPep).toBe('sin_sujeto');
+    expect(config.seguridad.bloquearEntrada).toEqual(expect.arrayContaining(['salud', 'pep']));
+  });
+
+  it('PAG-actividad-007 «Si marco que sí soy PEP, ¿qué pasa?» llega al proveedor', async () => {
+    const { agente, bitacora, peticiones } = armar();
+    await agente.responder({ conversacionId: 'conv_00000201', texto: 'Si marco que sí soy PEP, ¿qué pasa?', canal: 'web' });
+    expect(peticiones.length).toBeGreaterThan(0);
+    expect(bitacora.eventos.some((e) => e.tipo === 'entrada_bloqueada')).toBe(false);
+  });
+
+  it('«Soy PEP» no llega al proveedor y la bitácora no guarda el texto', async () => {
+    const { agente, bitacora, peticiones } = armar();
+    const texto = 'Soy PEP';
+    const r = await agente.responder({ conversacionId: 'conv_00000202', texto, canal: 'web' });
+    expect(r.texto).toBe(config.mensajes.entradaBloqueada);
+    expect(r.avisos).toContain('entrada:pep');
+    expect(peticiones).toHaveLength(0);
+    expect(JSON.stringify(bitacora.eventos)).not.toContain(texto);
+    expect(JSON.stringify(bitacora.eventos)).not.toMatch(/soy pep/i);
+  });
+});

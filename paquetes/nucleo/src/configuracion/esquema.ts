@@ -59,6 +59,8 @@ export const COMPUERTAS_SALIDA = [
   'promete_traspaso',
   /** dato_tarjeta_codigo corre siempre (salida.ts). */
   'dato_tarjeta_codigo',
+  /** Reemplaza la respuesta que recomienda un plan concreto (origen: batería del 24-oct-2026, PAG-plan-011). */
+  'recomienda_plan',
 ] as const;
 
 export const esquemaVoz = z
@@ -202,18 +204,39 @@ export const esquemaSeguridad = z
      */
     vocabularioEntrada: z.enum(['palabra', 'dato']).default('palabra'),
     /**
-     * Cómo trata la compuerta de entrada el vocabulario de `salud` y `pep`. `primera_persona`
-     * (por omisión) deja pasar todo texto con «?» salvo que hable en primera persona o de un
-     * familiar. `sin_sujeto` bloquea siempre ese vocabulario, salvo una pregunta única, corta y
-     * sin marcas de persona ni de tiempo sobre el producto («¿cubre cáncer?»): cierra el
-     * hallazgo HIGH (regla #7) de declaraciones de salud o PEP escritas como pregunta
-     * («me detectaron un tumor, ¿me cubren?»). Nunca bloquea menos que `primera_persona`. Es un
-     * enumerado: jamás se interpola texto libre. NO garantiza detectar datos personales sin ese
-     * vocabulario (sinónimos, otros idiomas, datos repartidos en varios turnos).
+     * Cuándo bloquea la compuerta de entrada `salud` y `pep`. `primera_persona` (por omisión) es el
+     * criterio de siempre: el vocabulario bloquea salvo que sea una pregunta general sin primera
+     * persona, así que «Si marco que sí soy PEP, ¿qué pasa?» se bloquea. `declaracion` deja pasar
+     * SOLO la consulta de formulario: un mensaje que EMPIEZA con «si marco/respondo/… que (sí) soy PEP»
+     * o «… que tengo una enfermedad» (el «si» condicional, sin tilde, y verbos que no sean
+     * performativos), es una pregunta y, quitado el marco, solo queda una pregunta de procedimiento de
+     * lista cerrada («¿qué pasa?», «¿qué tengo que hacer?»). Origen: PAG-actividad-007 de la batería
+     * del 24-oct-2026 (una de 10 entradas bloqueadas, la única por error). Es un enumerado: jamás se
+     * interpola texto libre. NO garantiza detectar toda declaración personal escrita de otra forma:
+     * fuera del marco bloquea lo mismo que `primera_persona` (probado con una lista cerrada, no
+     * demostrado para todo texto). `sin_sujeto` cierra el límite preexistente de `esPreguntaGeneral` (una declaración escrita como pregunta: «me detectaron un tumor ¿me cubren?», «Fui PEP hasta el año pasado, ¿me afecta?», «Era ministro, ¿puedo contratar?»): bloquea siempre el vocabulario de salud y PEP salvo una pregunta única, corta y sin marcas de persona ni de tiempo sobre el producto («¿cubre cáncer?»), y conserva el marco de formulario de `declaracion`; nunca bloquea menos que `primera_persona`. NO garantiza detectar datos personales sin ese vocabulario (sinónimos, otros idiomas, datos repartidos en varios turnos). No cambia cédula, tarjeta, código, clave ni inyección.
      */
-    criterioSaludPep: z.enum(['primera_persona', 'sin_sujeto']).default('primera_persona'),
+    criterioSaludPep: z.enum(['primera_persona', 'declaracion', 'sin_sujeto']).default('primera_persona'),
     /** Marcas de control `[MARCA]` que el modelo puede emitir. Cualquier otra se borra. */
     marcasPermitidas: z.array(z.string().regex(/^[A-Z_]{3,30}$/)).max(10).default(['DERIVAR']),
+    /**
+     * Marcas entre corchetes que son TEXTO de los manuales y no marcas de control: se conservan tal
+     * cual en la respuesta, sin contarlas ni borrarlas. Origen: batería del 24-oct-2026, PAG-retracto-007
+     * dijo «el plazo está "".» porque el manual trae `[PENDIENTE DE DEFINICIÓN LEGAL]` y la compuerta
+     * borra todo `[X]` no permitido. Coincidencia exacta con la clave normalizada igual que
+     * `extraerMarcas` (sin tildes, mayúsculas, espacios como `_`); el valor jamás se interpola en el
+     * prompt. NO garantiza que el modelo cite la marca; solo que, si la cita, no se pierde. No puede
+     * repetirse en `marcasPermitidas` (lo rechaza `cargar.ts`).
+     */
+    marcasLiterales: z.array(z.string().regex(/^[A-Z_]{3,30}$/)).max(10).default([]),
+    /**
+     * Nombres de los planes del producto («VIVE TOTAL», «VIVE+»). Los usa SOLO la compuerta
+     * `recomienda_plan` para detectar un nombre de plan junto a un verbo de recomendación («le recomiendo
+     * VIVE TOTAL»). Son DATO: se comparan normalizados (sin tildes, minúsculas) y con límites de palabra,
+     * y jamás se interpolan en el prompt. Obligatorio, no vacío, si `recomienda_plan` está activa (lo
+     * exige `cargar.ts`). NO garantiza detectar un plan aludido sin nombre ni un nombre no declarado.
+     */
+    nombresDePlanes: z.array(z.string().regex(/^[A-Za-z0-9+ ]{2,30}$/)).max(10).default([]),
   })
   .strict();
 
@@ -292,6 +315,17 @@ export const esquemaModelo = z
     temperatura: z.number().min(0).max(1).default(0.3),
     maxTokensSalida: z.number().int().min(64).max(8192).default(1024),
     maxIteraciones: z.number().int().min(1).max(6).default(3),
+    /**
+     * Razonamiento interno del modelo. `automatico` (por omisión) no envía nada y deja al modelo
+     * decidir; `desactivado` le pide al proveedor no razonar antes de responder. Origen: batería
+     * de SeguroLoTengo del 24-oct-2026, donde dos respuestas terminaron en `MAX_TOKENS` con apenas
+     * 37 y 64 tokens visibles de 1.024: el razonamiento de Gemini 2.5 se descuenta del mismo
+     * presupuesto de salida y se cobra como salida. Es un enumerado: jamás se interpola texto.
+     * NO garantiza que el proveedor lo respete: Gemini 2.5 Pro no admite apagarlo (la carga rechaza
+     * `desactivado` con un nombre de modelo que contenga `pro`), en Gemini 3 el parámetro está obsoleto
+     * y Bedrock lo ignora.
+     */
+    razonamiento: z.enum(['automatico', 'desactivado']).default('automatico'),
     ventanaMemoria: z.number().int().min(2).max(40).default(10),
     /** Segundos de inactividad tras los cuales la conversación se olvida. */
     ttlConversacionSeg: z.number().int().min(60).max(86400).default(3600),

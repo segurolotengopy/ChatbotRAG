@@ -21,7 +21,7 @@ import { Agente } from '../orquestador/agente.js';
 import { RegistroHerramientas } from '../herramientas/registro.js';
 import { ProveedorSimulado } from '../proveedores/simulado.js';
 import { CONFIG_PRUEBA } from '../pruebas/configuracion-prueba.js';
-import { detectarCategorias, evaluarEntrada } from './entrada.js';
+import { detectarCategorias, esConsultaDeFormulario, evaluarEntrada } from './entrada.js';
 import { esPreguntaDeProductoSinSujeto, textoParaVocabularioReforzado } from './sujeto-personal.js';
 
 const BLOQUEAR: CategoriaEntrada[] = ['cedula', 'tarjeta', 'salud', 'pep', 'otp', 'clave', 'inyeccion'];
@@ -151,7 +151,7 @@ describe('criterio sin_sujeto: deja pasar la pregunta de producto', () => {
   }
 });
 
-describe('criterio sin_sujeto: nunca bloquea menos que primera_persona', () => {
+describe('criterio sin_sujeto: nunca bloquea menos que primera_persona ni que declaracion', () => {
   const prefijos = ['', 'Hola,', 'Si marco que', 'Sí marco que', 'Quisiera saber si', 'Una consulta:'];
   const sujetos = ['soy PEP', 'tengo cáncer', 'cubre cáncer', 'es PEP una persona', 'mi papá es diputado', 'se cubre la diabetes', 'la quimio'];
   const sufijos = ['', ', ¿qué pasa?', ' ¿me rechazan?', '?', '. Lo soy.', ' ¿puedo contratar?', '\n¿qué pasa?'];
@@ -162,9 +162,13 @@ describe('criterio sin_sujeto: nunca bloquea menos que primera_persona', () => {
     expect(todas.length).toBeGreaterThan(300);
     for (const t of todas) {
       for (const modo of MODOS) {
-        const vieja = salpep(t, modo, 'primera_persona');
         const nueva = salpep(t, modo, 'sin_sujeto');
-        for (const c of vieja) expect(nueva, JSON.stringify(t)).toContain(c);
+        // `declaracion` (#52) es la referencia siempre; `primera_persona` solo fuera del marco de formulario,
+        // que `sin_sujeto` admite igual que `declaracion` (PAG-actividad-007).
+        for (const c of salpep(t, modo, 'declaracion')) expect(nueva, JSON.stringify(t)).toContain(c);
+        if (!esConsultaDeFormulario(t)) {
+          for (const c of salpep(t, modo, 'primera_persona')) expect(nueva, JSON.stringify(t)).toContain(c);
+        }
       }
     }
   });
