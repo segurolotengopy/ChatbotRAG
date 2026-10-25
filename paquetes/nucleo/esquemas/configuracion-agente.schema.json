@@ -405,7 +405,8 @@
               "dato_confidencial",
               "marca_no_declarada",
               "afirma_cobro_real",
-              "promete_traspaso"
+              "promete_traspaso",
+              "dato_tarjeta_codigo"
             ]
           }
         },
@@ -1069,7 +1070,8 @@
                     "dato_confidencial",
                     "marca_no_declarada",
                     "afirma_cobro_real",
-                    "promete_traspaso"
+                    "promete_traspaso",
+                    "dato_tarjeta_codigo"
                   ]
                 }
               },

@@ -134,7 +134,10 @@ ni Amazon.
 - **Salida**: (a) niega ser IA → se reescribe; (b) promesa de indemnización/decisión
   de elegibilidad/aprobación → se reemplaza por `mensajes.fueraDeAlcance` + derivación;
   (c) `terminosConfidenciales` presentes → se reemplaza; (d) marcas `[X]` no declaradas
-  → se eliminan.
+  → se eliminan; (e) PAN (13–19 dígitos con Luhn), CVV y OTP con su palabra de contexto
+  se redactan como «(dato eliminado)» sin reemplazar la respuesta; corre siempre. No cubre
+  dígitos en palabras, homóglifos, un PAN partido en varios mensajes, vencimientos ni datos
+  de resultados de herramientas.
 - **Respaldo**: con `exigirRespaldo: true`, si no hay fragmentos por encima del umbral
   y la pregunta no es de cortesía ni de orientación, la respuesta es `mensajes.sinRespaldo`.
 - **Bitácora**: hash de la conversación, perfil, latencia, tokens, compuertas

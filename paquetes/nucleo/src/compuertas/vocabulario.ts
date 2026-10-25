@@ -93,7 +93,7 @@ export function pareceOtp(texto: string): boolean {
 export const PERIFRASIS_CVV = /\b(numeros? de atras|del reverso|de atras)\b/;
 
 /** Luhn sobre una cadena de dígitos ya limpia (copia local: `pareceNumeroDeTarjeta` no se toca). */
-function pasaLuhn(digitos: string): boolean {
+export function pasaLuhn(digitos: string): boolean {
   let suma = 0;
   let doble = false;
   for (let i = digitos.length - 1; i >= 0; i--) {

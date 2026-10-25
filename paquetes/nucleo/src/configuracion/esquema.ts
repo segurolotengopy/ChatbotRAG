@@ -55,6 +55,8 @@ export const COMPUERTAS_SALIDA = [
   'marca_no_declarada',
   'afirma_cobro_real',
   'promete_traspaso',
+  /** dato_tarjeta_codigo corre siempre (salida.ts). */
+  'dato_tarjeta_codigo',
 ] as const;
 
 export const esquemaVoz = z
