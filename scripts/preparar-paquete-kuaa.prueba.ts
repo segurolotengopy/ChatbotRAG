@@ -2,12 +2,12 @@
  * Pruebas de la preparación del paquete de Kuaa. Solo fixtures sintéticos; el conversor de .docx se inyecta.
  */
 import { createHash } from 'node:crypto';
-import { cpSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { cpSync, mkdtempSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { prepararPaquete, type EntradaLista } from './preparar-paquete-kuaa.mjs';
+import { LISTA_PAQUETE_REAL, prepararPaquete, quitarImagenesIncrustadas, type EntradaLista } from './preparar-paquete-kuaa.mjs';
 
 const ORIGEN = fileURLToPath(new URL('./__fixtures__/paquete-sintetico', import.meta.url));
 const LISTA: EntradaLista[] = [
@@ -24,7 +24,7 @@ describe('prepararPaquete', () => {
   it('estampa los tres tipos de raíz, convierte el docx y excluye lo que no está en la lista', async () => {
     const salida = carpetaNueva();
     const r = await prepararPaquete({ origen: ORIGEN, salida, version: '1.2.3', lista: LISTA, convertirDocx: conversor });
-    expect(r).toEqual({ archivos: 4, registros: 2 + 1 + 1 + 1 });
+    expect(r).toEqual({ archivos: 4, registros: 2 + 1 + 1 + 1, revisionHumana: [] });
     expect(readdirSync(salida).sort()).toEqual(['FICHA.json', 'LISTA.json', 'MANUAL.md', 'REGISTROS.json', 'manifiesto.json']);
     const marcas = { habilitado_produccion: false, validacion: 'no_validado', version_paquete: '1.2.3' };
     const lista = JSON.parse(leer(salida, 'LISTA.json')) as Array<Record<string, unknown>>;
@@ -77,5 +77,73 @@ describe('prepararPaquete', () => {
 
   it('una conversión vacía del docx falla', async () => {
     await expect(prepararPaquete({ origen: ORIGEN, salida: carpetaNueva(), version: '1.0.0', lista: LISTA, convertirDocx: async () => '   ' })).rejects.toThrow(/vacía/);
+  });
+
+  it('se niega a escribir en la raíz real del repositorio, en ~/Documentos (cualquier capitalización) y vía un enlace simbólico', async () => {
+    const base = { origen: ORIGEN, version: '1.0.0', lista: LISTA, convertirDocx: conversor };
+    const raizRepo = fileURLToPath(new URL('../../../..', import.meta.url)); // raíz real del repositorio cuando corre en un worktree
+    await expect(prepararPaquete({ ...base, salida: join(raizRepo, 'salida-prohibida') })).rejects.toThrow(/repositorio/);
+    await expect(prepararPaquete({ ...base, salida: join(homedir(), 'DOCUMENTOS', 'salida-prohibida') })).rejects.toThrow(/Documentos/);
+    await expect(prepararPaquete({ ...base, salida: join(homedir(), 'documentos', 'x') })).rejects.toThrow(/Documentos/);
+    const tmp = mkdtempSync(join(tmpdir(), 'preparar-kuaa-'));
+    symlinkSync(fileURLToPath(new URL('..', import.meta.url)), join(tmp, 'enlace'));
+    await expect(prepararPaquete({ ...base, salida: join(tmp, 'enlace', 'dentro') })).rejects.toThrow(/repositorio/);
+    symlinkSync(carpetaNueva().replace(/salida$/, ''), join(tmp, 'enlace-salida'));
+    await expect(prepararPaquete({ ...base, salida: join(tmp, 'enlace-salida') })).rejects.toThrow(/enlace simbólico/);
+  });
+
+  it('una salida cuyo nombre empieza con «..» pero está dentro del origen se rechaza como dentro del origen', async () => {
+    const copia = mkdtempSync(join(tmpdir(), 'origen-kuaa-'));
+    cpSync(ORIGEN, copia, { recursive: true });
+    await expect(prepararPaquete({ origen: copia, salida: join(copia, '..salida'), version: '1.0.0', lista: LISTA, convertirDocx: conversor })).rejects.toThrow(/dentro del origen/);
+    await expect(prepararPaquete({ origen: copia, salida: join(copia, '..salida2', 'x'), version: '1.0.0', lista: LISTA, convertirDocx: conversor })).rejects.toThrow(/dentro del origen/);
+  });
+
+  it('un archivo de origen que es un enlace simbólico se rechaza', async () => {
+    const copia = mkdtempSync(join(tmpdir(), 'origen-kuaa-'));
+    cpSync(ORIGEN, copia, { recursive: true });
+    const objetivo = join(copia, 'A/FICHA.copia');
+    cpSync(join(copia, 'A/FICHA.json'), objetivo);
+    cpSync(objetivo, join(copia, 'A/FICHA.json'), { force: true });
+    // Reemplazo del archivo por un enlace con el mismo contenido (la huella coincidiría).
+    const { rmSync } = await import('node:fs');
+    rmSync(join(copia, 'A/FICHA.json'));
+    symlinkSync(objetivo, join(copia, 'A/FICHA.json'));
+    await expect(prepararPaquete({ origen: copia, salida: carpetaNueva(), version: '1.0.0', lista: LISTA, convertirDocx: conversor })).rejects.toThrow(/enlace simbólico/);
+  });
+
+  it('elimina las imágenes incrustadas del Markdown convertido', async () => {
+    const salida = carpetaNueva();
+    const conImagen = async () => '# T\n\n![logo](data:image/png;base64,AAAA) texto ![x](data:image/png;base64,BBBB)\n\n![ok](https://ejemplo.invalid/a.png)';
+    await prepararPaquete({ origen: ORIGEN, salida, version: '1.0.0', lista: LISTA, convertirDocx: conImagen });
+    const md = leer(salida, 'MANUAL.md');
+    expect(md).not.toContain('data:');
+    expect(md).toContain('texto');
+    expect(quitarImagenesIncrustadas('![a](data:x;base64,Z)')).toBe('');
+    expect(quitarImagenesIncrustadas('sin imágenes')).toBe('sin imágenes');
+  });
+
+  it('un .docx por encima del tope de tamaño se rechaza', async () => {
+    const copia = mkdtempSync(join(tmpdir(), 'origen-kuaa-'));
+    cpSync(ORIGEN, copia, { recursive: true });
+    const grande = 'x'.repeat(5 * 1024 * 1024 + 1);
+    writeFileSync(join(copia, 'B/MANUAL.docx'), grande);
+    const manifiesto = JSON.parse(readFileSync(join(copia, 'MANIFIESTO.json'), 'utf8')) as { archivos: Array<{ archivo: string; sha256: string; bytes: number }> };
+    const e = manifiesto.archivos.find((a) => a.archivo === 'B/MANUAL.docx')!;
+    e.sha256 = createHash('sha256').update(grande).digest('hex');
+    e.bytes = grande.length;
+    writeFileSync(join(copia, 'MANIFIESTO.json'), JSON.stringify(manifiesto));
+    await expect(prepararPaquete({ origen: copia, salida: carpetaNueva(), version: '1.0.0', lista: LISTA, convertirDocx: conversor })).rejects.toThrow(/supera/);
+  });
+
+  it('la lista real no incluye el manual de capacitación para IA y marca las conversaciones para revisión humana', () => {
+    expect(LISTA_PAQUETE_REAL.some((e) => e.ruta.includes('MANUAL_CAPACITACION_IA'))).toBe(false);
+    expect(LISTA_PAQUETE_REAL.filter((e) => e.revisionHumana).map((e) => e.ruta)).toEqual(['01_MANUAL_INFORMATIVO_Y_BASE/CONVERSACIONES.json']);
+  });
+
+  it('el resumen informa los archivos que piden revisión humana', async () => {
+    const lista: EntradaLista[] = [{ ruta: 'A/LISTA.json', titular: 'interseguros', revisionHumana: true }];
+    const r = await prepararPaquete({ origen: ORIGEN, salida: carpetaNueva(), version: '1.0.0', lista });
+    expect(r.revisionHumana).toEqual(['A/LISTA.json']);
   });
 });
