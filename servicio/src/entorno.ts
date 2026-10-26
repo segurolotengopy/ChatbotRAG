@@ -42,6 +42,15 @@ export const esquemaEntorno = z.object({
   CHATBOTRAG_LIMITE_IP_MINUTO: z.coerce.number().int().min(1).default(60),
   /** Secreto HMAC para firmar las llamadas a herramientas `http`. Opcional. */
   CHATBOTRAG_HMAC_HERRAMIENTAS: z.string().min(16).optional(),
+  /**
+   * Perfil del conocimiento de Kuaa. Solo el texto exacto `pruebas` lo activa; cualquier otro valor (ausente,
+   * vacío, «PRUEBAS», «staging») cae a `produccion`: ante la duda no se carga nada no validado.
+   */
+  CHATBOTRAG_PERFIL_CONOCIMIENTO: z.string().optional(),
+  /** Bucket privado con el paquete de conocimiento no validado. Solo con perfil `pruebas`. */
+  CHATBOTRAG_BUCKET_PAQUETE: z.string().regex(/^[a-z0-9][a-z0-9._-]{2,62}$/).optional(),
+  /** Versión X.Y.Z del paquete dentro del bucket. Solo con perfil `pruebas`. */
+  CHATBOTRAG_VERSION_PAQUETE: z.string().regex(/^[0-9]+\.[0-9]+\.[0-9]+$/).optional(),
   GCP_PROYECTO: z.string().optional(),
   GCP_REGION: z.string().default('us-central1'),
   AWS_REGION: z.string().default('us-east-1'),
@@ -50,6 +59,8 @@ export const esquemaEntorno = z.object({
 
 export interface Entorno extends z.infer<typeof esquemaEntorno> {
   clientes: Cliente[];
+  /** Perfil efectivo del conocimiento: `produccion` salvo que la variable valga exactamente `pruebas`. */
+  perfilConocimiento: 'produccion' | 'pruebas';
 }
 
 export class ErrorEntorno extends Error {
@@ -76,5 +87,11 @@ export function leerEntorno(fuente: NodeJS.ProcessEnv = process.env): Entorno {
     ids.add(c.id);
   }
   if (r.data.CHATBOTRAG_INDICE === 'pgvector' && !r.data.PGVECTOR_URL) throw new ErrorEntorno(['CHATBOTRAG_INDICE=pgvector exige PGVECTOR_URL']);
-  return { ...r.data, clientes: clientes.data };
+  const perfilConocimiento = r.data.CHATBOTRAG_PERFIL_CONOCIMIENTO === 'pruebas' ? 'pruebas' : 'produccion';
+  const bucket = r.data.CHATBOTRAG_BUCKET_PAQUETE;
+  const version = r.data.CHATBOTRAG_VERSION_PAQUETE;
+  // Combinaciones incoherentes: fallan el arranque en vez de adivinar la intención.
+  if (perfilConocimiento === 'pruebas' && (!bucket || !version)) throw new ErrorEntorno(['CHATBOTRAG_PERFIL_CONOCIMIENTO=pruebas exige CHATBOTRAG_BUCKET_PAQUETE y CHATBOTRAG_VERSION_PAQUETE']);
+  if (perfilConocimiento === 'produccion' && (bucket || version)) throw new ErrorEntorno(['CHATBOTRAG_BUCKET_PAQUETE y CHATBOTRAG_VERSION_PAQUETE solo se admiten con CHATBOTRAG_PERFIL_CONOCIMIENTO=pruebas']);
+  return { ...r.data, clientes: clientes.data, perfilConocimiento };
 }
