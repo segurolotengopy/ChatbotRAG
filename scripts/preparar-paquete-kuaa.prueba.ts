@@ -2,11 +2,11 @@
  * Pruebas de la preparación del paquete de Kuaa. Solo fixtures sintéticos; el conversor de .docx se inyecta.
  */
 import { createHash } from 'node:crypto';
-import { cpSync, mkdtempSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { LISTA_PAQUETE_REAL, prepararPaquete, quitarImagenesIncrustadas, type EntradaLista } from './preparar-paquete-kuaa.mjs';
 
 const ORIGEN = fileURLToPath(new URL('./__fixtures__/paquete-sintetico', import.meta.url));
@@ -16,7 +16,17 @@ const LISTA: EntradaLista[] = [
   { ruta: 'A/FICHA.json', titular: 'interseguros' },
   { ruta: 'B/MANUAL.docx', titular: 'alianza' },
 ];
-const carpetaNueva = () => join(mkdtempSync(join(tmpdir(), 'preparar-kuaa-')), 'salida');
+const temporales: string[] = [];
+/** Carpeta temporal propia que se borra al terminar. */
+const temporal = (prefijo: string): string => {
+  const d = mkdtempSync(join(tmpdir(), prefijo));
+  temporales.push(d);
+  return d;
+};
+afterAll(() => {
+  for (const d of temporales) rmSync(d, { recursive: true, force: true });
+});
+const carpetaNueva = () => join(temporal('preparar-kuaa-'), 'salida');
 const conversor = async () => '# Manual sintético\n\nTexto convertido.';
 const leer = (c: string, n: string) => readFileSync(join(c, n), 'utf8');
 
@@ -55,7 +65,7 @@ describe('prepararPaquete', () => {
     const base = { origen: ORIGEN, version: '1.0.0', lista: LISTA, convertirDocx: conversor };
     await expect(prepararPaquete({ ...base, salida: join(fileURLToPath(new URL('..', import.meta.url)), 'salida-prohibida') })).rejects.toThrow(/repositorio/);
     await expect(prepararPaquete({ ...base, salida: join(ORIGEN, 'salida') })).rejects.toThrow();
-    const ocupada = mkdtempSync(join(tmpdir(), 'preparar-kuaa-'));
+    const ocupada = temporal('preparar-kuaa-');
     writeFileSync(join(ocupada, 'x'), 'x');
     await expect(prepararPaquete({ ...base, salida: ocupada })).rejects.toThrow(/vacía/);
   });
@@ -67,7 +77,7 @@ describe('prepararPaquete', () => {
   });
 
   it('un archivo alterado respecto de su huella invalida la preparación y no escribe nada', async () => {
-    const copia = mkdtempSync(join(tmpdir(), 'origen-kuaa-'));
+    const copia = temporal('origen-kuaa-');
     cpSync(ORIGEN, copia, { recursive: true });
     writeFileSync(join(copia, 'A/LISTA.json'), '[{"id":"alterado"}]');
     const salida = carpetaNueva();
@@ -85,7 +95,7 @@ describe('prepararPaquete', () => {
     await expect(prepararPaquete({ ...base, salida: join(raizRepo, 'salida-prohibida') })).rejects.toThrow(/repositorio/);
     await expect(prepararPaquete({ ...base, salida: join(homedir(), 'DOCUMENTOS', 'salida-prohibida') })).rejects.toThrow(/Documentos/);
     await expect(prepararPaquete({ ...base, salida: join(homedir(), 'documentos', 'x') })).rejects.toThrow(/Documentos/);
-    const tmp = mkdtempSync(join(tmpdir(), 'preparar-kuaa-'));
+    const tmp = temporal('preparar-kuaa-');
     symlinkSync(fileURLToPath(new URL('..', import.meta.url)), join(tmp, 'enlace'));
     await expect(prepararPaquete({ ...base, salida: join(tmp, 'enlace', 'dentro') })).rejects.toThrow(/repositorio/);
     symlinkSync(carpetaNueva().replace(/salida$/, ''), join(tmp, 'enlace-salida'));
@@ -93,20 +103,19 @@ describe('prepararPaquete', () => {
   });
 
   it('una salida cuyo nombre empieza con «..» pero está dentro del origen se rechaza como dentro del origen', async () => {
-    const copia = mkdtempSync(join(tmpdir(), 'origen-kuaa-'));
+    const copia = temporal('origen-kuaa-');
     cpSync(ORIGEN, copia, { recursive: true });
     await expect(prepararPaquete({ origen: copia, salida: join(copia, '..salida'), version: '1.0.0', lista: LISTA, convertirDocx: conversor })).rejects.toThrow(/dentro del origen/);
     await expect(prepararPaquete({ origen: copia, salida: join(copia, '..salida2', 'x'), version: '1.0.0', lista: LISTA, convertirDocx: conversor })).rejects.toThrow(/dentro del origen/);
   });
 
   it('un archivo de origen que es un enlace simbólico se rechaza', async () => {
-    const copia = mkdtempSync(join(tmpdir(), 'origen-kuaa-'));
+    const copia = temporal('origen-kuaa-');
     cpSync(ORIGEN, copia, { recursive: true });
     const objetivo = join(copia, 'A/FICHA.copia');
     cpSync(join(copia, 'A/FICHA.json'), objetivo);
     cpSync(objetivo, join(copia, 'A/FICHA.json'), { force: true });
     // Reemplazo del archivo por un enlace con el mismo contenido (la huella coincidiría).
-    const { rmSync } = await import('node:fs');
     rmSync(join(copia, 'A/FICHA.json'));
     symlinkSync(objetivo, join(copia, 'A/FICHA.json'));
     await expect(prepararPaquete({ origen: copia, salida: carpetaNueva(), version: '1.0.0', lista: LISTA, convertirDocx: conversor })).rejects.toThrow(/enlace simbólico/);
@@ -124,7 +133,7 @@ describe('prepararPaquete', () => {
   });
 
   it('un .docx por encima del tope de tamaño se rechaza', async () => {
-    const copia = mkdtempSync(join(tmpdir(), 'origen-kuaa-'));
+    const copia = temporal('origen-kuaa-');
     cpSync(ORIGEN, copia, { recursive: true });
     const grande = 'x'.repeat(5 * 1024 * 1024 + 1);
     writeFileSync(join(copia, 'B/MANUAL.docx'), grande);

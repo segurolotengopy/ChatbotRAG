@@ -3,7 +3,7 @@
  * paquete es una función en memoria; no hay bucket ni red.
  */
 import { createHash } from 'node:crypto';
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -80,12 +80,15 @@ function lectorSintetico(): LectorPaquete & { llamadas: number } {
 }
 
 const apps: FastifyInstance[] = [];
+const directorios: string[] = [];
 afterEach(async () => {
+  await Promise.all(directorios.splice(0).map((d) => rm(d, { recursive: true, force: true })));
   await Promise.all(apps.splice(0).map((a) => a.close()));
 });
 
 async function levantar(extraEntorno: Record<string, string>, lectorPaquete?: () => LectorPaquete, extra: { corpusPublico?: boolean; pool?: unknown } = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'chatbotrag-paquete-'));
+  directorios.push(dir);
   await mkdir(join(dir, 'corpus'), { recursive: true });
   const config = JSON.parse(readFileSync(RUTA_KUAA, 'utf8')) as { conocimiento: Record<string, unknown> };
   if (extra.corpusPublico) {
