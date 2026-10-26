@@ -26,6 +26,7 @@ import type { ConfiguracionEfectiva } from '../configuracion/esquema.js';
 import { estaOperativo } from '../configuracion/derivados.js';
 import { resolverConfiguracion } from '../configuracion/perfiles.js';
 import { coleccionDe } from '../conocimiento/cargar-corpus.js';
+import type { PerfilValidacion } from '../conocimiento/registros-habilitados.js';
 import { esCortesia } from '../compuertas/cortesia.js';
 import { evaluarEntrada } from '../compuertas/entrada.js';
 import { aplicarCompuertasSalida, extraerMarcas } from '../compuertas/salida.js';
@@ -43,6 +44,8 @@ export interface ResultadoKuaa {
   salida: SalidaOportunidad;
   /** Diagnóstico para la bitácora; no viaja al cliente. */
   avisos: string[];
+  /** Versión del paquete no validado cuando algún fragmento recuperado lo era (solo perfil `pruebas`). */
+  respaldoNoValidado?: { version: string };
 }
 
 type BaseBitacora = Pick<EventoBitacora, 'agenteId' | 'perfilId' | 'conversacionHash' | 'canal'>;
@@ -55,7 +58,15 @@ export function claveMemoriaKuaa(clienteId: string, oportunidadId: string): stri
 export class AgenteKuaa {
   private readonly reloj: () => Date;
 
-  constructor(private readonly deps: DependenciasAgente) {
+  /**
+   * `perfilConocimiento` es el perfil del entorno; por omisión `produccion`. Con él, un fragmento marcado
+   * `no_validado` que llegara a la recuperación se DESCARTA antes de armar el prompt (defensa en profundidad:
+   * el cargador ya no debería haberlo indexado).
+   */
+  constructor(
+    private readonly deps: DependenciasAgente,
+    private readonly opciones: { perfilConocimiento?: PerfilValidacion } = {},
+  ) {
     this.reloj = deps.reloj ?? (() => new Date());
   }
 
@@ -100,6 +111,20 @@ export class AgenteKuaa {
       }
     }
 
+    let versionNoValidada: string | null = null;
+    if (this.opciones.perfilConocimiento !== 'pruebas') {
+      const habilitados = fragmentos.filter((f) => f.validacion === undefined && f.versionPaquete === undefined);
+      if (habilitados.length !== fragmentos.length) avisos.push('fragmento_no_validado_descartado');
+      fragmentos = habilitados;
+    } else {
+      const marcado = fragmentos.find((f) => f.validacion === 'no_validado');
+      if (marcado) {
+        versionNoValidada = marcado.versionPaquete ?? 'desconocida';
+        avisos.push(`respaldo_no_validado:${versionNoValidada}`);
+        this.deps.bitacora.registrar({ ...base, tipo: 'respuesta_no_validada', detalle: `paquete=${versionNoValidada}` });
+      }
+    }
+
     const sistema = armarPromptKuaa(config, entrada, fragmentos, this.reloj());
     const tokens = { tokensEntrada: 0, tokensSalida: 0 };
     let textoModelo = '';
@@ -120,7 +145,7 @@ export class AgenteKuaa {
       return fallback(avisos, 'error_modelo');
     }
 
-    const cierre = (r: ResultadoKuaa): ResultadoKuaa => this.cerrar(base, r, tokens, fragmentos);
+    const cierre = (r: ResultadoKuaa): ResultadoKuaa => this.cerrar(base, versionNoValidada ? { ...r, respaldoNoValidado: { version: versionNoValidada } } : r, tokens, fragmentos);
     if (cortado) return cierre(fallback(avisos, 'respuesta_incompleta'));
     const interpretada = interpretarSalidaModelo(textoModelo);
     if (!interpretada) return cierre(fallback(avisos, 'salida_invalida'));
