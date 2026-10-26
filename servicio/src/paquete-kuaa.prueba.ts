@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { BitacoraEnMemoria, EmbebedorSimulado, type LectorPaquete, type PeticionLLM, type ProveedorLLM, type RespuestaLLM } from '@chatbotrag/nucleo';
+import { BitacoraEnMemoria, EmbebedorSimulado, IndiceEnMemoria, type LectorPaquete, type PeticionLLM, type ProveedorLLM, type RespuestaLLM } from '@chatbotrag/nucleo';
 import { ErrorPaqueteGcs } from '@chatbotrag/conocimiento-gcs';
 import { crearAplicacion } from './aplicacion.js';
 import { armarAgentes } from './armar-agentes.js';
@@ -69,7 +69,7 @@ function lectorSintetico(): LectorPaquete & { llamadas: number } {
     llamadas: 0,
     async leerManifiesto() {
       l.llamadas += 1;
-      return { version: '1.0.0', archivos: [{ ruta: 'p.json', titular: 'interseguros' }] };
+      return { version: '1.0.0', archivos: [{ ruta: 'p.json', titular: 'interseguros', sha256: 'a'.repeat(64), bytes: 10 }] };
     },
     async leer() {
       l.llamadas += 1;
@@ -84,10 +84,15 @@ afterEach(async () => {
   await Promise.all(apps.splice(0).map((a) => a.close()));
 });
 
-async function levantar(extraEntorno: Record<string, string>, lectorPaquete?: () => LectorPaquete) {
+async function levantar(extraEntorno: Record<string, string>, lectorPaquete?: () => LectorPaquete, extra: { corpusPublico?: boolean; pool?: unknown } = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'chatbotrag-paquete-'));
   await mkdir(join(dir, 'corpus'), { recursive: true });
-  await writeFile(join(dir, 'kuaa.json'), readFileSync(RUTA_KUAA, 'utf8'));
+  const config = JSON.parse(readFileSync(RUTA_KUAA, 'utf8')) as { conocimiento: Record<string, unknown> };
+  if (extra.corpusPublico) {
+    config.conocimiento['fuentes'] = [{ id: 'doc', titulo: 'Documento público sintético', version: 'v1', ruta: 'doc.md' }];
+    await writeFile(join(dir, 'corpus', 'doc.md'), '# Proceso\n\nEl proceso público tiene cuatro pasos sintéticos.');
+  }
+  await writeFile(join(dir, 'kuaa.json'), JSON.stringify(config));
   const entorno = leerEntorno({
     CHATBOTRAG_DIR_CONFIGURACIONES: dir,
     CHATBOTRAG_CLIENTES: JSON.stringify([{ id: 'kuaa-web', agenteId: 'kuaa-segurolotengo', claveSha256: hash(CLAVE) }]),
@@ -96,7 +101,7 @@ async function levantar(extraEntorno: Record<string, string>, lectorPaquete?: ()
   });
   const bitacora = new BitacoraEnMemoria();
   const fabrica = () => ({ proveedor, embebedor: new EmbebedorSimulado() });
-  const agentes = await armarAgentes(entorno, { bitacora, fabricas: { vertex: fabrica, bedrock: fabrica }, ...(lectorPaquete ? { lectorPaquete } : {}) });
+  const agentes = await armarAgentes(entorno, { bitacora, fabricas: { vertex: fabrica, bedrock: fabrica }, ...(lectorPaquete ? { lectorPaquete } : {}), ...(extra.pool ? { pool: extra.pool as never } : {}) });
   const app = await crearAplicacion({ entorno, agentes, registrar: false });
   apps.push(app);
   const enviar = () => app.inject({ method: 'POST', url: '/v1/kuaa/mensaje', headers: { authorization: `Bearer ${CLAVE}` }, payload: cuerpo });
@@ -111,7 +116,8 @@ describe('paquete no validado de Kuaa en el servicio', () => {
     const lector = lectorSintetico();
     const { armado, bitacora, enviar } = await levantar(PRUEBAS, () => lector);
     expect(armado.versionPaquete).toBe('1.0.0');
-    expect(await armado.indice.contar('kuaa-segurolotengo')).toBe(1);
+    expect(await armado.indice.contar('kuaa-segurolotengo--paquete')).toBe(1);
+    expect(await armado.indice.contar('kuaa-segurolotengo')).toBe(0);
     const r = await enviar();
     expect(r.statusCode).toBe(200);
     expect(r.json()).toMatchObject({ validacion: 'no_validado', version_paquete: '1.0.0' });
@@ -187,5 +193,57 @@ describe('paquete no validado de Kuaa en el servicio', () => {
     expect(construidos).toEqual([{ bucket: 'bucket-sintetico', version: '1.0.0' }]);
     expect(armado.versionPaquete).toBeNull();
     expect(bitacora.eventos.find((e) => e.tipo === 'paquete_no_cargado')).toMatchObject({ codigo: 'NO_AUTORIZADO' });
+  });
+
+  it('un fallo a mitad de la carga con corpus público presente deja el corpus público intacto y vacía solo el paquete', async () => {
+    const lector = lectorSintetico();
+    const roto: LectorPaquete = {
+      leerManifiesto: () => lector.leerManifiesto(),
+      async leer() {
+        throw new ErrorPaqueteGcs('INTEGRIDAD');
+      },
+    };
+    const { armado, bitacora } = await levantar(PRUEBAS, () => roto, { corpusPublico: true });
+    expect(await armado.indice.contar('kuaa-segurolotengo')).toBeGreaterThan(0);
+    expect(await armado.indice.contar('kuaa-segurolotengo--paquete')).toBe(0);
+    expect(bitacora.eventos.find((e) => e.tipo === 'paquete_no_cargado')).toMatchObject({ codigo: 'INTEGRIDAD' });
+  });
+
+  it('si vaciar la colección del paquete también falla, el arranque sigue y solo vacía esa colección', async () => {
+    const vaciadas: string[] = [];
+    const original = IndiceEnMemoria.prototype.vaciar;
+    const espia = vi.spyOn(IndiceEnMemoria.prototype, 'vaciar').mockImplementation(async function (this: IndiceEnMemoria, coleccion: string) {
+      vaciadas.push(coleccion);
+      if (coleccion.endsWith('--paquete')) throw new Error('vaciar falla');
+      return original.call(this, coleccion);
+    });
+    try {
+      const roto: LectorPaquete = { leerManifiesto: async () => { throw new ErrorPaqueteGcs('ERROR'); }, leer: async () => '' };
+      const { armado, bitacora } = await levantar(PRUEBAS, () => roto, { corpusPublico: true });
+      expect(armado.versionPaquete).toBeNull();
+      expect(bitacora.eventos.find((e) => e.tipo === 'paquete_no_cargado')).toBeDefined();
+      expect(vaciadas).toContain('kuaa-segurolotengo--paquete');
+      expect(await armado.indice.contar('kuaa-segurolotengo')).toBeGreaterThan(0);
+    } finally {
+      espia.mockRestore();
+    }
+  });
+
+  it('con pgvector y perfil pruebas no se lee el bucket ni se toca el índice: PGVECTOR_NO_ADMITE', async () => {
+    const consultas: string[] = [];
+    const pool = { async query(sql: string) { consultas.push(sql); return { rows: [] }; } };
+    const lector = lectorSintetico();
+    const { armado, bitacora } = await levantar({ ...PRUEBAS, CHATBOTRAG_INDICE: 'pgvector', PGVECTOR_URL: 'postgres://u:p@localhost:5432/d' }, () => lector, { pool });
+    expect(lector.llamadas).toBe(0);
+    expect(armado.versionPaquete).toBeNull();
+    expect(bitacora.eventos.find((e) => e.tipo === 'paquete_no_cargado')).toMatchObject({ codigo: 'PGVECTOR_NO_ADMITE' });
+    expect(consultas.some((c) => c.includes('paquete'))).toBe(false);
+  });
+
+  it('un registro true dentro del paquete no llega al índice ni a la respuesta', async () => {
+    const lector = lectorSintetico();
+    const conTrue: LectorPaquete = { leerManifiesto: () => lector.leerManifiesto(), leer: async () => JSON.stringify([{ ...registro, habilitado_produccion: true }]) };
+    const { armado } = await levantar(PRUEBAS, () => conTrue);
+    expect(await armado.indice.contar('kuaa-segurolotengo--paquete')).toBe(0);
   });
 });

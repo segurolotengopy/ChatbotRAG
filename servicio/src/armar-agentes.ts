@@ -8,7 +8,8 @@
  *   2. elige el proveedor LLM y el embebedor según `modelo.proveedor`
  *      (o el forzado por entorno, para desarrollo sin nube);
  *   3. elige el índice (memoria o pgvector) y carga el corpus público;
- *   4. con el perfil `pruebas` del entorno y `conocimiento.paquete.habilitado`, carga el paquete no validado
+ *   4. con el perfil `pruebas` del entorno, un agente `kuaa` con `conocimiento.paquete.habilitado` y un índice
+ *      que no sea pgvector, carga el paquete no validado
  *      desde su bucket privado (si falla, el agente arranca con 0 fragmentos de paquete: «sin respaldo»);
  *   5. construye el `Agente`.
  *
@@ -24,6 +25,7 @@ import {
   cargarConfiguracionDesdeJson,
   cargarCorpus,
   cargarPaqueteKuaa,
+  coleccionPaquete,
   coleccionDe,
   type LectorPaquete,
   type ConfiguracionAgente,
@@ -127,25 +129,31 @@ export async function armarAgentes(
     const indice: IndiceConocimiento = pool ? new IndicePgvector(pool, nube.embebedor) : new IndiceEnMemoria(nube.embebedor);
     await cargarCorpus(config, lector, indice, bitacora);
 
-    // Paquete no validado: SOLO con perfil `pruebas`. Con `produccion` ni se construye el lector.
+    // Paquete no validado: SOLO Kuaa, SOLO con perfil `pruebas`, y nunca sobre pgvector (la vía de producción).
+    // Con `produccion` ni se construye el lector.
     let versionPaquete: string | null = null;
     let fragmentosPaquete = 0;
-    if (entorno.perfilConocimiento === 'pruebas' && config.conocimiento.paquete.habilitado) {
+    if (entorno.perfilConocimiento === 'pruebas' && config.tipoAgente === 'kuaa' && config.conocimiento.paquete.habilitado) {
       const coleccion = coleccionDe(config, null);
       const baseEvento = { agenteId: config.id, perfilId: null, conversacionHash: '-', canal: '-' };
-      try {
-        const lectorPaquete = (opciones.lectorPaquete ?? crearLectorPaqueteGcs)(entorno);
-        const r = await cargarPaqueteKuaa(lectorPaquete, 'pruebas', indice, coleccion, { agenteId: config.id, versionEsperada: entorno.CHATBOTRAG_VERSION_PAQUETE ?? '', tamano: config.conocimiento.tamanoFragmento, solapamiento: config.conocimiento.solapamiento }, bitacora);
-        versionPaquete = r.version;
-        fragmentosPaquete = r.fragmentos;
-      } catch (e) {
-        // Se arranca igual, sin fragmentos del paquete: Kuaa responde «sin respaldo». Solo el código, jamás el detalle.
+      if (pool) {
+        bitacora.registrar({ ...baseEvento, tipo: 'paquete_no_cargado', codigo: 'PGVECTOR_NO_ADMITE' });
+      } else {
         try {
-          await indice.vaciar(coleccion);
-        } catch {
-          // El índice en memoria no falla; si otro índice falla, el evento de abajo ya deja constancia.
+          const lectorPaquete = (opciones.lectorPaquete ?? crearLectorPaqueteGcs)(entorno);
+          const r = await cargarPaqueteKuaa(lectorPaquete, 'pruebas', indice, coleccion, { agenteId: config.id, versionEsperada: entorno.CHATBOTRAG_VERSION_PAQUETE ?? '', tamano: config.conocimiento.tamanoFragmento, solapamiento: config.conocimiento.solapamiento }, bitacora);
+          versionPaquete = r.version;
+          fragmentosPaquete = r.fragmentos;
+        } catch (e) {
+          // Se arranca igual, sin fragmentos del paquete: Kuaa responde «sin respaldo». Solo el código, jamás el detalle.
+          // Se vacía ÚNICAMENTE la colección del paquete: el corpus público (colección base) no se toca.
+          try {
+            await indice.vaciar(coleccionPaquete(coleccion));
+          } catch {
+            // Sin más recurso: el evento de abajo deja constancia.
+          }
+          bitacora.registrar({ ...baseEvento, tipo: 'paquete_no_cargado', codigo: e instanceof ErrorPaqueteGcs ? e.codigo : 'ERROR' });
         }
-        bitacora.registrar({ ...baseEvento, tipo: 'paquete_no_cargado', codigo: e instanceof ErrorPaqueteGcs ? e.codigo : 'ERROR' });
       }
     }
 
@@ -159,7 +167,7 @@ export async function armarAgentes(
       bitacora,
     };
     const agente = new Agente(dependencias);
-    const agenteKuaa = config.tipoAgente === 'kuaa' ? new AgenteKuaa(dependencias, { perfilConocimiento: entorno.perfilConocimiento }) : undefined;
+    const agenteKuaa = config.tipoAgente === 'kuaa' ? new AgenteKuaa(dependencias, { perfilConocimiento: entorno.perfilConocimiento, versionPaquete }) : undefined;
     agentes.set(config.id, { config, agente, ...(agenteKuaa ? { agenteKuaa } : {}), memoria, indice, proveedor: nube.proveedor.nombre, perfilConocimiento: entorno.perfilConocimiento, versionPaquete });
     bitacora.registrar({ tipo: 'configuracion_cargada', agenteId: config.id, perfilId: null, conversacionHash: '-', canal: '-', detalle: `archivo=${archivo} proveedor=${nube.proveedor.nombre} indice=${indice.nombre} perfiles=${Object.keys(config.perfiles).length} perfil_conocimiento=${entorno.perfilConocimiento} paquete=${versionPaquete ?? 'ninguno'} fragmentos_paquete=${fragmentosPaquete}` });
   }

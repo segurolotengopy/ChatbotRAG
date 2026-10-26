@@ -27,6 +27,7 @@ import {
   FRASE_PERMISO_SEGUIMIENTO,
   FRASE_PLAN,
   FRASE_PRODUCTO,
+  FRASE_PAQUETE_NO_VALIDADO,
   JERARQUIA_KUAA,
   REGLAS_KUAA,
   type ClavePermiso,
@@ -34,9 +35,11 @@ import {
 
 const MARCA_SIGUIENTE = '\n\nFECHA Y HORA ACTUAL';
 
-export function armarPromptKuaa(config: ConfiguracionEfectiva, ctx: EntradaKuaa, fragmentos: FragmentoRecuperado[], ahora: Date): string {
+export function armarPromptKuaa(config: ConfiguracionEfectiva, ctx: EntradaKuaa, fragmentos: FragmentoRecuperado[], ahora: Date, opciones: { versionPaquete?: string | null } = {}): string {
   const base = armarPrompt({ config, ahora, fragmentos, orientacion: { facetas: {} }, canal: 'web' });
-  const reglas = `JERARQUÍA DE FUENTES\n${JERARQUIA_KUAA.map((r, i) => `${i + 1}. ${r}`).join('\n')}\n\nREGLAS DE KUAA\n${REGLAS_KUAA.map((r, i) => `${i + 1}. ${r}`).join('\n')}`;
+  // Solo con perfil `pruebas` y paquete cargado: frase enumerada, sin interpolar la versión.
+  const avisoPaquete = opciones.versionPaquete ? `\n\nPAQUETE NO VALIDADO\n- ${FRASE_PAQUETE_NO_VALIDADO}` : '';
+  const reglas = `JERARQUÍA DE FUENTES\n${JERARQUIA_KUAA.map((r, i) => `${i + 1}. ${r}`).join('\n')}\n\nREGLAS DE KUAA\n${REGLAS_KUAA.map((r, i) => `${i + 1}. ${r}`).join('\n')}${avisoPaquete}`;
   // `armarPrompt` siempre emite la sección de fecha y hora justo después de REGLAS.
   const i = base.indexOf(MARCA_SIGUIENTE);
   const conReglas = i < 0 ? `${base}\n\n${reglas}` : `${base.slice(0, i)}\n\n${reglas}${base.slice(i)}`;

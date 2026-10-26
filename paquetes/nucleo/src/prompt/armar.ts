@@ -46,7 +46,12 @@ function lista(items: readonly string[], vineta = '- '): string {
 
 /** Neutraliza delimitadores que alguien pudiera colar en un texto libre. */
 function rotular(texto: string): string {
-  return texto.replace(/═{3,}/g, '—').replace(/\r/g, '').trim();
+  return texto
+    .replace(/═{2,}|━{3,}/g, '—')
+    .replace(/={3,}/g, '—')
+    .replace(/FIN DE RESPALDO DOCUMENTAL/gi, 'FIN DE RESPALDO')
+    .replace(/\r/g, '')
+    .trim();
 }
 
 export function armarPrompt(entrada: EntradaPrompt): string {
@@ -129,7 +134,7 @@ export function armarPrompt(entrada: EntradaPrompt): string {
   // 9. Respaldo documental
   if (fragmentos.length) {
     const cuerpo = fragmentos
-      .map((f, i) => `[${i + 1}] Documento: «${rotular(f.fuenteTitulo)}» (versión ${rotular(f.fuenteVersion)})\n${rotular(f.texto)}`)
+      .map((f, i) => `[${i + 1}] Documento: «${rotular(f.fuenteTitulo)}» (versión ${rotular(f.fuenteVersion)})${f.validacion ? ` [NO VALIDADO, paquete ${rotular(f.versionPaquete ?? 'desconocido')}]` : ''}\n${rotular(f.texto)}`)
       .join('\n\n');
     const uso = FRASE_USO_RESPALDO[config.conocimiento.usoDelRespaldo];
     // Con contexto de página la frase va antes de la de uso; el formato del respaldo no cambia.
