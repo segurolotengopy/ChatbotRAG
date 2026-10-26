@@ -24,6 +24,15 @@ describe('IndicePgvector', () => {
     expect(consultas[0]!.valores![7]).toBeNull();
   });
 
+  it('rechaza los fragmentos con marca de validación y no toca la base', async () => {
+    const { db, consultas } = dbFalsa();
+    const i = new IndicePgvector(db);
+    const base = { id: 'a', coleccion: 'c', fuenteId: 'f', fuenteTitulo: 'T', fuenteVersion: '1', orden: 0, texto: 'hola' };
+    await expect(i.indexar([base, { ...base, id: 'b', validacion: 'no_validado', versionPaquete: '1.0.0' }])).rejects.toThrow(/no admite fragmentos/);
+    await expect(i.indexar([{ ...base, versionPaquete: '1.0.0' }])).rejects.toThrow(/no admite fragmentos/);
+    expect(consultas).toHaveLength(0);
+  });
+
   it('busca por texto completo y normaliza el puntaje', async () => {
     const { db, consultas } = dbFalsa([
       { id: 'a', coleccion: 'c', fuente_id: 'f', fuente_titulo: 'T', fuente_version: '1', orden: 0, texto: 'x', lexico: 0.6, vectorial: null },

@@ -33,6 +33,10 @@ export class IndicePgvector implements IndiceConocimiento {
 
   async indexar(fragmentos: Fragmento[]): Promise<void> {
     if (fragmentos.length === 0) return;
+    // Pgvector es la vía de producción: un fragmento no validado jamás se persiste ahí.
+    if (fragmentos.some((f) => f.validacion !== undefined || f.versionPaquete !== undefined)) {
+      throw new Error('IndicePgvector no admite fragmentos con marca de validación (conocimiento no validado)');
+    }
     const vectores = this.embebedor ? await this.embebedor.embeber(fragmentos.map((f) => f.texto)) : null;
     for (let i = 0; i < fragmentos.length; i++) {
       const f = fragmentos[i]!;
