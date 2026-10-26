@@ -99,38 +99,39 @@ export const PermisoSeguimiento = z
   .strict();
 export type PermisoSeguimiento = z.infer<typeof PermisoSeguimiento>;
 
-/**
- * Identificador, no texto libre: letras minúsculas al inicio y segmentos cortos (1 a 3
- * caracteres) separados por guion bajo; sin espacios, saltos de línea ni secuencias largas de
- * dígitos (rechaza cédulas, tarjetas y celulares). Tope de 40.
- *
- * Qué NO garantiza: una regex no impide un nombre como «cancer_de_mama_juan_perez» escrito en
- * segmentos cortos. La defensa real es ENUMERAR los valores. PENDIENTE de SLT: el contrato
- * v0.2 no enumera necesidad, producto, plan ni objecion_codigo; al fijarlos, sustituir por enum.
- */
-export const Identificador = z
-  .string()
-  .max(40)
-  .regex(/^[a-z]+(_[a-z0-9]{1,3})*$/);
+/** Listas cerradas del contrato v0.3 de SLT. Cualquier otro valor se rechaza. */
+export const Necesidad = z.enum(['respaldo_economico', 'atencion_medica', 'otra_proteccion', 'desconocido']);
+export const Producto = z.enum(['VIDA_ONCOLOGICO', 'VIDA', 'ACCIDENTES_PERSONALES', 'RESPONSABILIDAD_CIVIL', 'desconocido']);
+export const Plan = z.enum(['CONFIO', 'CONFIO_PLUS', 'CONFIO_TOTAL', 'ninguno']);
 
-/** Resumen para recuperar contexto tras un reinicio; solo datos, jamás interpolado en el prompt. */
+/** Ids de objeción O01..O32, escritos de forma literal (no se generan con una regex). */
+export const CODIGOS_OBJECION = [
+  'O01', 'O02', 'O03', 'O04', 'O05', 'O06', 'O07', 'O08',
+  'O09', 'O10', 'O11', 'O12', 'O13', 'O14', 'O15', 'O16',
+  'O17', 'O18', 'O19', 'O20', 'O21', 'O22', 'O23', 'O24',
+  'O25', 'O26', 'O27', 'O28', 'O29', 'O30', 'O31', 'O32',
+] as const;
+export const CodigoObjecion = z.enum(CODIGOS_OBJECION);
+export type CodigoObjecion = z.infer<typeof CodigoObjecion>;
+
+/** Resumen para recuperar contexto tras un reinicio; solo enumerados, jamás interpolado en el prompt. */
 export const ResumenOportunidad = z
   .object({
-    necesidad: Identificador.nullable(),
-    producto: Identificador.nullable(),
-    plan: Identificador.nullable(),
-    objecion_codigo: Identificador.nullable(),
-    objecion_estado: EstadoObjecion.nullable(),
+    necesidad: Necesidad,
+    producto: Producto,
+    plan: Plan,
+    objecion_codigo: z.union([CodigoObjecion, z.literal('ninguna')]),
+    objecion_estado: z.union([EstadoObjecion, z.literal('ninguna')]),
   })
   .strict();
 export type ResumenOportunidad = z.infer<typeof ResumenOportunidad>;
 
 export const RESUMEN_DESCONOCIDO: ResumenOportunidad = {
-  necesidad: null,
-  producto: null,
-  plan: null,
-  objecion_codigo: null,
-  objecion_estado: null,
+  necesidad: 'desconocido',
+  producto: 'desconocido',
+  plan: 'ninguno',
+  objecion_codigo: 'ninguna',
+  objecion_estado: 'ninguna',
 };
 
 /** Contexto de entrada. `pagina` es el id de pantalla que ya recibe el servicio. Sin datos personales. */
@@ -178,7 +179,7 @@ export const SalidaOportunidad = z
   .object({
     texto: z.string().min(1).max(4000),
     etapa_propuesta: EtapaVenta,
-    objecion: z.object({ codigo: Identificador, estado: EstadoObjecion }).strict().nullable(),
+    objecion: z.object({ codigo: CodigoObjecion, estado: EstadoObjecion }).strict().nullable(),
     botones: z.array(BotonSalida),
     propuestas: z.array(PropuestaSalida),
   })

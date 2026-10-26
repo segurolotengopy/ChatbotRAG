@@ -251,12 +251,11 @@ los estados operativos (solicitud, pago, aceptación, póliza, documentos, atenc
 estado de objeción, el permiso de seguimiento y el `ContextoOportunidad` mínimo, sin datos
 personales. `estadosTrasPropuestaDeEtapa` devuelve una copia sin cambios: una etapa propuesta por el modelo
 nunca es evidencia, y en ChatbotRAG no existe ninguna transición operativa (los estados los fija
-SLT en cada petición). Contrato F2 v0.2 de SLT: el permiso de seguimiento es
-`{vigente, canal}` (sin `evidencia_id`), el contexto lleva `pagina` y un `resumen` de identificadores
-(segmentos cortos sin cadenas largas de dígitos; una regex no impide un nombre como
-«cancer_de_mama_juan_perez», la defensa real es enumerar: pendiente de SLT para necesidad,
-producto, plan y objecion_codigo; `oportunidad_id`, `tarifa_version` y `pagina` tienen formas
-estrictas, `pagina` con `ID_PAGINA`), `estados` y
+SLT en cada petición). Contrato F2 v0.3 de SLT: el permiso de seguimiento es
+`{vigente, canal}` (sin `evidencia_id`), el contexto lleva `pagina` (con `ID_PAGINA`) y un `resumen` de
+enumerados cerrados (necesidad, producto, plan, `objecion_codigo` O01..O32 o `ninguna`,
+`objecion_estado` o `ninguna`; cualquier otro valor se rechaza); `oportunidad_id` y `tarifa_version`
+tienen formas estrictas. `estados` y
 `resumen` son datos y nunca se interpolan en el prompt. Se declaran el enum de tipos de evento (sin
 endpoint) y el esquema de salida; `filtrarBotonesSalida` descarta `continuar_pago` si la solicitud
 no está completada.

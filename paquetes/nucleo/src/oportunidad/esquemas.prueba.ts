@@ -12,7 +12,10 @@ import {
   NOMBRE_ETAPA,
   PermisoSeguimiento,
   estadosTrasPropuestaDeEtapa,
-  Identificador,
+  CODIGOS_OBJECION,
+  Necesidad,
+  Plan,
+  Producto,
 } from './esquemas.js';
 
 const contextoValido = {
@@ -95,21 +98,47 @@ describe('formas de oportunidad_id, tarifa_version y pagina', () => {
   it('etapa_actual no admite null', () => expect(ok({ etapa_actual: null })).toBe(false));
 });
 
-describe('Identificador frente a datos personales', () => {
-  it.each(['4567890', '4111111111111111', '0981123456', 'juan_perez_0981123456', 'precio\n', 'con espacio', 'Precio', '', 'a'.repeat(41), 'plan_12345'])(
-    'rechaza «%s»', (v) => expect(Identificador.safeParse(v).success).toBe(false));
-  it.each(['precio', 'plan_2', 'vida_f', 'a_b_c'])('acepta «%s»', (v) => expect(Identificador.safeParse(v).success).toBe(true));
-  it('limitación conocida: una regex no impide nombres en segmentos cortos (por eso hay que enumerar)', () => {
-    expect(Identificador.safeParse('ca_de_ju_pe').success).toBe(true);
+const MALOS = ['4567890', '4111111111111111', '0981123456', 'Juan Perez', 'juan_perez', '', 'o01', 'O1', 'O33', 'O00', 'O01\n', ' O01', 'vida', 'confio', 'Desconocido', 'NINGUNA'];
+
+describe('enumerados del resumen (contrato v0.3)', () => {
+  const casos: [string, { safeParse: (v: unknown) => { success: boolean } }, string[]][] = [
+    ['necesidad', Necesidad, ['respaldo_economico', 'atencion_medica', 'otra_proteccion', 'desconocido']],
+    ['producto', Producto, ['VIDA_ONCOLOGICO', 'VIDA', 'ACCIDENTES_PERSONALES', 'RESPONSABILIDAD_CIVIL', 'desconocido']],
+    ['plan', Plan, ['CONFIO', 'CONFIO_PLUS', 'CONFIO_TOTAL', 'ninguno']],
+  ];
+  it.each(casos)('%s acepta exactamente sus valores y rechaza el resto', (_n, esquema, validos) => {
+    for (const v of validos) expect(esquema.safeParse(v).success).toBe(true);
+    for (const v of [...MALOS, 'Respaldo_Economico', 'vida_oncologico', 'confio_plus', 'ninguna']) {
+      if (!validos.includes(v)) expect(esquema.safeParse(v).success).toBe(false);
+    }
+    for (const v of [null, undefined, 1, {}, []]) expect(esquema.safeParse(v).success).toBe(false);
+  });
+  it('los 32 códigos de objeción son exactamente O01..O32', () => {
+    const esperado = Array.from({ length: 32 }, (_, i) => `O${String(i + 1).padStart(2, '0')}`);
+    expect([...CODIGOS_OBJECION]).toEqual(esperado);
+  });
+  it('el resumen acepta objecion_codigo O01..O32 o ninguna, y objecion_estado o ninguna', () => {
+    const ok = (r: object) => ContextoOportunidad.safeParse({ ...contextoValido, resumen: { ...RESUMEN_DESCONOCIDO, ...r } }).success;
+    for (const c of [...CODIGOS_OBJECION, 'ninguna']) expect(ok({ objecion_codigo: c })).toBe(true);
+    for (const e of [...EstadoObjecion.options, 'ninguna']) expect(ok({ objecion_estado: e })).toBe(true);
+    for (const v of [...MALOS, 'ninguno']) expect(ok({ objecion_codigo: v })).toBe(false);
+    for (const v of [...MALOS, 'Detectada', 'ninguno']) expect(ok({ objecion_estado: v })).toBe(false);
+    for (const v of [null, undefined]) expect(ok({ objecion_codigo: v })).toBe(false);
+  });
+  it('la salida admite O01..O32 en objecion.codigo pero no «ninguna»', () => {
+    const base = { texto: 'x', etapa_propuesta: 'E02', botones: [], propuestas: [] };
+    for (const c of CODIGOS_OBJECION) expect(SalidaOportunidad.safeParse({ ...base, objecion: { codigo: c, estado: 'detectada' } }).success).toBe(true);
+    for (const v of ['ninguna', ...MALOS]) expect(SalidaOportunidad.safeParse({ ...base, objecion: { codigo: v, estado: 'detectada' } }).success).toBe(false);
+    expect(SalidaOportunidad.safeParse({ ...base, objecion: { codigo: 'O01', estado: 'ninguna' } }).success).toBe(false);
   });
 });
 
 describe('contexto: pagina y resumen', () => {
-  it('acepta pagina y resumen con identificadores', () => {
+  it('acepta pagina y resumen con enumerados', () => {
     const r = ContextoOportunidad.safeParse({
       ...contextoValido,
       pagina: 'cotizador',
-      resumen: { necesidad: 'vida_f', producto: 'vida', plan: 'plan_2', objecion_codigo: 'precio', objecion_estado: 'detectada' },
+      resumen: { necesidad: 'atencion_medica', producto: 'VIDA_ONCOLOGICO', plan: 'CONFIO_PLUS', objecion_codigo: 'O07', objecion_estado: 'detectada' },
     });
     expect(r.success).toBe(true);
   });
@@ -144,7 +173,7 @@ describe('SalidaOportunidad y filtrarBotonesSalida', () => {
   const salida = SalidaOportunidad.parse({
     texto: 'Hola',
     etapa_propuesta: 'E04',
-    objecion: { codigo: 'precio', estado: 'respondida' },
+    objecion: { codigo: 'O05', estado: 'respondida' },
     botones: ['ver_planes', 'continuar_pago', 'iniciar_solicitud'],
     propuestas: ['seguimiento_solicitado'],
   });
