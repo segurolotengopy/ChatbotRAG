@@ -58,7 +58,7 @@ for (const ruta of rutas) {
       `${ruta}: perfil=${perfil} forma=${forma} total=${conteo.total} habilitados=${conteo.habilitados} no_validado=${conteo.porEstado.no_validado} rechazados=${conteo.rechazados} ` +
         `(no_habilitado=${m.no_habilitado} valor_no_booleano=${m.valor_no_booleano} ` +
         `campo_ausente=${m.campo_ausente} registro_invalido=${m.registro_invalido} ` +
-        `sin_marca_no_validado=${m.sin_marca_no_validado} version_invalida=${m.version_invalida})`,
+        `sin_marca_no_validado=${m.sin_marca_no_validado} version_invalida=${m.version_invalida} registro_contradictorio=${m.registro_contradictorio})`,
     );
   } catch {
     fallo = true;

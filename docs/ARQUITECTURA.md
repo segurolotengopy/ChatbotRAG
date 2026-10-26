@@ -242,7 +242,7 @@ los registros con `habilitado_produccion === true` (booleano exacto); `estado_va
 `aprobacion` no habilitan. Falla cerrado («true», 1, «si», null o ausencia no habilitan) y
 devuelve de los rechazados solo índice y motivo. No valida la veracidad del contenido ni la
 revisión humana. `scripts/validar-paquete-kuaa.mts` imprime únicamente conteos
-(`--exigir-habilitados` sale con 1 si no hay ninguno); `--perfil=pruebas` acepta además los `false` con `validacion: "no_validado"` y `version_paquete` X.Y.Z, que salen con `estado: 'no_validado'` y se cuentan aparte, nunca como habilitados (el perfil `produccion`, por omisión, no los admite ni en el tipo); acepta raíz arreglo, `{registros: [...]}` u
+(`--exigir-habilitados` sale con 1 si no hay ninguno); `--perfil=pruebas` acepta además los `false` con `validacion: "no_validado"` y `version_paquete` X.Y.Z, que salen con `estado: 'no_validado'` y se cuentan aparte, nunca como habilitados (el perfil `produccion`, por omisión, no los admite ni en el tipo); un registro `true` que además trae `validacion: "no_validado"` es contradictorio y se rechaza en ambos perfiles (`registro_contradictorio`); acepta raíz arreglo, `{registros: [...]}` u
 objeto único y falla con cualquier otra. La bandera se lee solo como valor de datos propio (un
 getter, un Proxy o un objeto no plano no habilitan) y, si el JSON repite la clave, gana la última.
 

@@ -14,7 +14,9 @@
  * deja pasar además los `false` que traen la marca literal `validacion: "no_validado"` y un
  * `version_paquete` con forma X.Y.Z; esos salen con `estado: 'no_validado'` en una unión discriminada
  * y JAMÁS en el resultado de `produccion`, cuyo tipo ni siquiera los admite. Un registro no validado
- * nunca debe poder confundirse con uno habilitado.
+ * nunca debe poder confundirse con uno habilitado. Un registro `true` que además trae
+ * `validacion: "no_validado"` es una contradicción y se rechaza en ambos perfiles
+ * (`registro_contradictorio`).
  *
  * Qué NO garantiza: no valida la veracidad del contenido ni que la persona
  * responsable del contenido de SLT lo haya revisado; solo lee una bandera booleana.
@@ -37,7 +39,8 @@ export type MotivoRechazo =
   | 'campo_ausente'
   | 'registro_invalido'
   | 'sin_marca_no_validado'
-  | 'version_invalida';
+  | 'version_invalida'
+  | 'registro_contradictorio';
 
 export interface RegistroRechazado {
   indice: number;
@@ -120,6 +123,7 @@ export function separarRegistrosHabilitados(registros: unknown, perfil: PerfilVa
     registro_invalido: 0,
     sin_marca_no_validado: 0,
     version_invalida: 0,
+    registro_contradictorio: 0,
   };
   const rechazar = (indice: number, motivo: MotivoRechazo): void => {
     rechazados.push({ indice, motivo });
@@ -142,7 +146,9 @@ export function separarRegistrosHabilitados(registros: unknown, perfil: PerfilVa
     } else if (!('value' in d)) {
       rechazar(i, 'valor_no_booleano');
     } else if (d.value === true) {
-      aceptados.push({ estado: 'habilitado', registro: structuredClone(registro) });
+      // Contradicción de datos: habilitado y a la vez marcado no validado. Falla cerrado en ambos perfiles.
+      if (valorPropio(registro, 'validacion') === MARCA) rechazar(i, 'registro_contradictorio');
+      else aceptados.push({ estado: 'habilitado', registro: structuredClone(registro) });
     } else if (d.value === false) {
       if (perfil === 'produccion') {
         rechazar(i, 'no_habilitado');

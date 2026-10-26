@@ -58,6 +58,7 @@ describe('separarRegistrosHabilitados', () => {
       registro_invalido: 4,
       sin_marca_no_validado: 0,
       version_invalida: 0,
+      registro_contradictorio: 0,
     });
   });
 
@@ -229,6 +230,20 @@ describe('perfiles produccion y pruebas', () => {
       (entrada[0] as Record<string, unknown>)['t'] = 'MUTADO';
       expect(r.aceptados[0]?.registro['t']).toBe('a');
       expect(separarRegistrosHabilitados({ a: 1 }, 'pruebas').rechazados).toEqual([{ indice: -1, motivo: 'registro_invalido' }]);
+    });
+  });
+
+  describe('contradicción: true con marca no_validado', () => {
+    const contradictorio = { id: 'c', habilitado_produccion: true, validacion: 'no_validado', version_paquete: '1.0.0' };
+    it.each(['produccion', 'pruebas'] as const)('se rechaza en %s con registro_contradictorio y se cuenta', (perfil) => {
+      const r = separarRegistrosHabilitados([contradictorio, { id: 'ok', habilitado_produccion: true }], perfil);
+      expect(r.rechazados).toEqual([{ indice: 0, motivo: 'registro_contradictorio' }]);
+      expect(r.conteo).toMatchObject({ total: 2, habilitados: 1, aceptados: 1, rechazados: 1 });
+      expect(r.conteo.porMotivo.registro_contradictorio).toBe(1);
+      expect(r.conteo.porEstado.no_validado).toBe(0);
+    });
+    it('un true con otra marca (no «no_validado» exacto) sigue habilitado', () => {
+      expect(separarRegistrosHabilitados([{ habilitado_produccion: true, validacion: 'validado' }]).habilitados).toHaveLength(1);
     });
   });
 });
