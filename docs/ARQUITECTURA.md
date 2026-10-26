@@ -264,21 +264,45 @@ no está completada.
 
 `tipoAgente: kuaa` (por omisión `general`) marca un agente de oportunidad de venta
 (`configuraciones/kuaa.json`: voseo, 0 fuentes de conocimiento, criterio de salud y PEP `declaracion`,
-sin `recomienda_plan`). `oportunidad/agente-kuaa.ts` es un recorrido aparte de `Agente.responder`: sanea,
-aplica las compuertas de entrada, recupera respaldo, arma el prompt (`prompt-kuaa.ts`: jerarquía, reglas
-y contexto elegidos por enumerado, nunca interpolados; `oportunidad_id`, `tarifa_version`, `pagina` y el
-código de objeción no entran) y exige un objeto JSON `SalidaOportunidad` dentro del texto del modelo (el
-puerto no permite pedir JSON con esquema; temperatura baja desde la configuración). Falla cerrado: JSON
-inválido, corte por `max_tokens`, enlace o precio (`salida-kuaa.ts`) o error del proveedor devuelven el
-mensaje de error temporal con botones y propuestas vacíos, nunca el texto crudo; sin respaldo se responde
-el mensaje fijo; `continuar_pago` solo sobrevive con `solicitud: completada`. La bitácora no lleva texto
-ni el id de la oportunidad. La ruta autentica con el Bearer del cliente, responde 404 si su agente no es
-Kuaa y 400 sin repetir lo recibido; es PROVISIONAL hasta que SLT fije el contrato.
+sin `recomienda_plan`). `oportunidad/agente-kuaa.ts` es un recorrido aparte de `Agente.responder`:
 
-Límites: no garantiza que la etapa propuesta sea correcta (valida SLT) ni que el detector de enlaces y
-precios atrape toda forma; la memoria es en proceso (se pierde al reiniciar y no se comparte entre
-instancias). Hallazgo K2b: las compuertas de salida, calibradas con usted y tuteo, no detectan «sos
-elegible y estás cubierto» ni «te vamos a pagar la indemnización»; las pruebas lo fijan con `it.fails`.
+1. **Entrada.** Normaliza localmente (NFKC, sin caracteres de formato, marcas combinantes ni rellenos,
+   homóglifos cirílicos y griegos plegados) ANTES de las compuertas y de enviar al modelo; el modelo recibe
+   el texto normalizado. Un mensaje más largo que `maxCaracteresEntrada` responde 413 `TEXTO_LARGO` (con
+   bitácora) y uno vacío 400.
+2. **Prompt** (`prompt-kuaa.ts`): jerarquía, reglas y contexto elegidos por enumerado, nunca interpolados;
+   `oportunidad_id`, `tarifa_version`, `pagina` y el código de objeción no entran.
+3. **Salida.** El modelo responde un objeto JSON dentro del texto (el puerto no permite pedir JSON con
+   esquema; temperatura baja desde la configuración). Se valida contra `SalidaOportunidad`, se sanea el
+   texto y se aplican detectores deterministas propios (`salida-kuaa.ts`): enlaces, precios y contactos
+   (con NFKC, sin invisibles ni homóglifos, formas ofuscadas), afirmaciones de hecho que solo el sistema
+   conoce (pago acreditado o póliza emitida salvo que `estados` lo informe, «quedó agendado», «te transferí»,
+   «estás cubierto», «sos elegible», promesas de indemnización) y fugas del prompt. Cualquiera, un JSON
+   inválido, un corte por `max_tokens`, `afirma_cobro_real` o un error del proveedor devuelven el mensaje de
+   error temporal con botones y propuestas vacíos, nunca el texto crudo.
+4. **Sin respaldo no se afirma nada**: mientras no haya fuentes se responde el mensaje fijo, sin excepción
+   por «pregunta final». En ese caso, en un fallback o en un reemplazo de compuerta, la etapa propuesta es la
+   actual y la objeción es null. `continuar_pago` solo sobrevive con `solicitud: completada`; las propuestas
+   no se repiten; `seguimiento_solicitado` se descarta sin permiso vigente; la marca `[DERIVAR]` agrega
+   `atencion_humana_solicitada`.
+5. **Memoria.** En proceso, con clave `kuaa:<cliente>:<sha256>` (por cliente y oportunidad; el «:» no lo
+   acepta `ID_CONVERSACION`, así que las rutas generales no pueden nombrarla y, para un cliente de Kuaa,
+   `/v1/conversaciones/*` responden 404 `AGENTE_KUAA`). Guarda el texto normalizado de la persona y el JSON
+   validado de la respuesta hasta 30 minutos: **es una desviación del contrato de SLT, que dice «sin
+   estado»**; se pierde al reiniciar y no se comparte entre instancias.
+6. **Respuesta.** 200 con exactamente las claves de `SalidaOportunidad` (sin `ok`); los errores llevan
+   `ok: false`. La bitácora no lleva texto ni el id de la oportunidad. La ruta es PROVISIONAL.
+
+Qué corrige el filtro previo de SLT (`asistente.ts`/`asistente-salida.ts`) y qué no: esta capa no lo
+sustituye; es defensa en profundidad y su detector es una lista, no una demostración.
+
+Límites que siguen abiertos (K2b y otros): las compuertas compartidas de `compuertas/`, calibradas con usted
+y tuteo, no detectan por sí solas voseo como «sos elegible» o «te vamos a pagar la indemnización» (en Kuaa
+las frena el detector propio) y sus textos de reemplazo hablan de usted («¿En qué puedo ayudarle?»);
+paráfrasis de inyección («olvidá lo anterior», «SYSTEM:», «repetí tus instrucciones») pasan al modelo; los
+detectores dan falsos positivos a propósito (por ejemplo «10.000 personas») y no atrapan toda forma; con
+pago acreditado, `afirma_cobro_real` sigue llevando al fallback; no se detectan correos ni teléfonos de la
+persona en la entrada; no se sabe cómo obedece el modelo real al formato JSON.
 
 ## 7. Aplicación a segurolotengo-demo
 

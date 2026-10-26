@@ -3,27 +3,30 @@
  * Sin llamadas reales a Vertex: el proveedor es un guion en memoria inyectado por las fábricas.
  */
 import { createHash } from 'node:crypto';
-import { cp, mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { BitacoraEnMemoria, EmbebedorSimulado, type ProveedorLLM, type RespuestaLLM } from '@chatbotrag/nucleo';
+import { BitacoraEnMemoria, EmbebedorSimulado, type PeticionLLM, type ProveedorLLM, type RespuestaLLM } from '@chatbotrag/nucleo';
 import { crearAplicacion } from './aplicacion.js';
 import { armarAgentes } from './armar-agentes.js';
 import { leerEntorno } from './entorno.js';
 
 const CLAVE_KUAA = 'clave-kuaa-de-prueba-suficientemente-larga';
+const CLAVE_KUAA_2 = 'clave-kuaa-dos-de-prueba-suficientemente-larga';
 const CLAVE_TIENDA = 'clave-tienda-de-prueba-suficientemente-larga';
 const hash = (c: string) => createHash('sha256').update(c).digest('hex');
 const RUTA_KUAA = fileURLToPath(new URL('../../configuraciones/kuaa.json', import.meta.url));
 
 let siguiente = '';
+const vistas: PeticionLLM[] = [];
 const proveedorGuionado: ProveedorLLM = {
   nombre: 'guionado',
-  async generar(): Promise<RespuestaLLM> {
+  async generar(p: PeticionLLM): Promise<RespuestaLLM> {
+    vistas.push(p);
     return { texto: siguiente, llamadasHerramienta: [], motivoFin: 'fin', uso: { tokensEntrada: 1, tokensSalida: 1 } };
   },
 };
@@ -39,20 +42,26 @@ const cuerpo = (cambios: Record<string, unknown> = {}) => ({
   tarifa_version: null,
   pagina: null,
   resumen: { necesidad: 'desconocido', producto: 'desconocido', plan: 'ninguno', objecion_codigo: 'ninguna', objecion_estado: 'ninguna' },
-  mensaje: 'Hola, quiero informarme.',
+  mensaje: '¿Cómo es el proceso?',
   ...cambios,
 });
 
 describe('POST /v1/kuaa/mensaje', () => {
   let app: FastifyInstance;
   let bitacora: BitacoraEnMemoria;
+  let agentesArmados: Awaited<ReturnType<typeof armarAgentes>>;
   const kuaa = { authorization: `Bearer ${CLAVE_KUAA}` };
+  const kuaa2 = { authorization: `Bearer ${CLAVE_KUAA_2}` };
   const tienda = { authorization: `Bearer ${CLAVE_TIENDA}` };
 
   beforeAll(async () => {
     const dir = await mkdtemp(join(tmpdir(), 'chatbotrag-kuaa-'));
     await mkdir(join(dir, 'corpus'), { recursive: true });
-    await cp(RUTA_KUAA, join(dir, 'kuaa.json'));
+    // Kuaa con un documento sintético: sin fuentes todo mensaje cae a «sin respaldo».
+    const configKuaa = JSON.parse(readFileSync(RUTA_KUAA, 'utf8')) as { conocimiento: Record<string, unknown> };
+    configKuaa.conocimiento['fuentes'] = [{ id: 'doc', titulo: 'Documento sintético', version: 'v1', ruta: 'doc.md' }];
+    await writeFile(join(dir, 'kuaa.json'), JSON.stringify(configKuaa));
+    await writeFile(join(dir, 'corpus', 'doc.md'), '# Proceso\n\nEl proceso tiene cuatro pasos sintéticos y se hace en línea.');
     await writeFile(
       join(dir, 'tienda.json'),
       JSON.stringify({
@@ -68,14 +77,15 @@ describe('POST /v1/kuaa/mensaje', () => {
       CHATBOTRAG_DIR_CONFIGURACIONES: dir,
       CHATBOTRAG_CLIENTES: JSON.stringify([
         { id: 'kuaa-web', agenteId: 'kuaa-segurolotengo', claveSha256: hash(CLAVE_KUAA), origenes: ['https://sitio.ejemplo.com'] },
+        { id: 'kuaa-web-2', agenteId: 'kuaa-segurolotengo', claveSha256: hash(CLAVE_KUAA_2), origenes: ['https://otro.ejemplo.com'] },
         { id: 'tienda-web', agenteId: 'tienda-prueba', claveSha256: hash(CLAVE_TIENDA), origenes: ['https://tienda.ejemplo.com'] },
       ]),
       CHATBOTRAG_LIMITE_IP_MINUTO: '1000',
     });
     bitacora = new BitacoraEnMemoria();
     const fabrica = () => ({ proveedor: proveedorGuionado, embebedor: new EmbebedorSimulado() });
-    const agentes = await armarAgentes(entorno, { bitacora, fabricas: { vertex: fabrica, bedrock: fabrica } });
-    app = await crearAplicacion({ entorno, agentes, registrar: false });
+    agentesArmados = await armarAgentes(entorno, { bitacora, fabricas: { vertex: fabrica, bedrock: fabrica } });
+    app = await crearAplicacion({ entorno, agentes: agentesArmados, registrar: false });
   });
   afterAll(async () => app.close());
 
@@ -95,8 +105,8 @@ describe('POST /v1/kuaa/mensaje', () => {
     siguiente = salidaJson();
     const r = await enviar(kuaa, cuerpo({ mensaje: '¿Cómo es el proceso?' }));
     expect(r.statusCode).toBe(200);
-    expect(Object.keys(r.json()).sort()).toEqual(['botones', 'etapa_propuesta', 'objecion', 'ok', 'propuestas', 'texto']);
-    expect(r.json()).toMatchObject({ ok: true, etapa_propuesta: 'E02', botones: ['ver_planes'] });
+    expect(Object.keys(r.json()).sort()).toEqual(['botones', 'etapa_propuesta', 'objecion', 'propuestas', 'texto']);
+    expect(r.json()).toMatchObject({ etapa_propuesta: 'E02', botones: ['ver_planes'] });
   });
 
   it('descarta continuar_pago sin solicitud completada y lo conserva con completada', async () => {
@@ -140,6 +150,51 @@ describe('POST /v1/kuaa/mensaje', () => {
     expect(r.statusCode).toBe(200);
     expect(r.body).not.toContain('NO-DEBE-SALIR');
     expect(r.json().texto).toContain('Por tu seguridad');
+  });
+
+  it('un mensaje más largo que maxCaracteresEntrada responde 413 TEXTO_LARGO y queda en la bitácora', async () => {
+    const r = await enviar(kuaa, cuerpo({ mensaje: 'a'.repeat(1600) }));
+    expect(r.statusCode).toBe(413);
+    expect(r.json()).toEqual({ ok: false, motivo: 'TEXTO_LARGO' });
+    expect(bitacora.eventos.some((e) => e.avisos?.includes('texto_largo'))).toBe(true);
+  });
+
+  it('un error no controlado responde 500 genérico sin detalle', async () => {
+    const armado = agentesArmados.get('kuaa-segurolotengo')!;
+    const original = armado.agenteKuaa!.responder.bind(armado.agenteKuaa);
+    armado.agenteKuaa!.responder = async () => {
+      throw new Error('DETALLE-INTERNO');
+    };
+    try {
+      const r = await enviar(kuaa, cuerpo());
+      expect(r.statusCode).toBe(500);
+      expect(r.json()).toEqual({ ok: false, motivo: 'ERROR_INTERNO' });
+      expect(r.body).not.toContain('DETALLE-INTERNO');
+    } finally {
+      armado.agenteKuaa!.responder = original;
+    }
+  });
+
+  it('las rutas generales responden 404 AGENTE_KUAA a un cliente de Kuaa y no leen ni borran su memoria', async () => {
+    siguiente = salidaJson({ texto: 'RESPUESTA-PRIVADA-K' });
+    await enviar(kuaa, cuerpo({ oportunidad_id: 'op-memoria-1', mensaje: '¿Cómo es el proceso?' }));
+    const general = await app.inject({ method: 'POST', url: '/v1/conversaciones/conversacion-12345/mensajes', headers: kuaa, payload: { texto: 'hola' } });
+    expect(general.statusCode).toBe(404);
+    expect(general.json()).toEqual({ ok: false, motivo: 'AGENTE_KUAA' });
+    const borrar = await app.inject({ method: 'DELETE', url: '/v1/conversaciones/conversacion-12345', headers: kuaa });
+    expect(borrar.statusCode).toBe(404);
+    expect(borrar.json()).toEqual({ ok: false, motivo: 'AGENTE_KUAA' });
+    vistas.length = 0;
+    await enviar(kuaa, cuerpo({ oportunidad_id: 'op-memoria-1', mensaje: '¿Y el proceso después?' }));
+    expect(JSON.stringify(vistas[0]!.mensajes)).toContain('RESPUESTA-PRIVADA-K');
+  });
+
+  it('otro cliente con el mismo agente y el mismo oportunidad_id no ve el historial', async () => {
+    siguiente = salidaJson({ texto: 'SECRETO-DEL-CLIENTE-UNO' });
+    await enviar(kuaa, cuerpo({ oportunidad_id: 'op-compartida-1', mensaje: '¿Cómo es el proceso?' }));
+    vistas.length = 0;
+    await enviar(kuaa2, cuerpo({ oportunidad_id: 'op-compartida-1', mensaje: '¿Y el proceso después?' }));
+    expect(JSON.stringify(vistas[0]!.mensajes)).not.toContain('SECRETO-DEL-CLIENTE-UNO');
   });
 
   it('la bitácora no contiene mensajes ni el identificador de la oportunidad', async () => {
