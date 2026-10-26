@@ -260,6 +260,26 @@ tienen formas estrictas. `estados` y
 endpoint) y el esquema de salida; `filtrarBotonesSalida` descarta `continuar_pago` si la solicitud
 no está completada.
 
+### Agente Kuaa y ruta provisional `POST /v1/kuaa/mensaje`
+
+`tipoAgente: kuaa` (por omisión `general`) marca un agente de oportunidad de venta
+(`configuraciones/kuaa.json`: voseo, 0 fuentes de conocimiento, criterio de salud y PEP `declaracion`,
+sin `recomienda_plan`). `oportunidad/agente-kuaa.ts` es un recorrido aparte de `Agente.responder`: sanea,
+aplica las compuertas de entrada, recupera respaldo, arma el prompt (`prompt-kuaa.ts`: jerarquía, reglas
+y contexto elegidos por enumerado, nunca interpolados; `oportunidad_id`, `tarifa_version`, `pagina` y el
+código de objeción no entran) y exige un objeto JSON `SalidaOportunidad` dentro del texto del modelo (el
+puerto no permite pedir JSON con esquema; temperatura baja desde la configuración). Falla cerrado: JSON
+inválido, corte por `max_tokens`, enlace o precio (`salida-kuaa.ts`) o error del proveedor devuelven el
+mensaje de error temporal con botones y propuestas vacíos, nunca el texto crudo; sin respaldo se responde
+el mensaje fijo; `continuar_pago` solo sobrevive con `solicitud: completada`. La bitácora no lleva texto
+ni el id de la oportunidad. La ruta autentica con el Bearer del cliente, responde 404 si su agente no es
+Kuaa y 400 sin repetir lo recibido; es PROVISIONAL hasta que SLT fije el contrato.
+
+Límites: no garantiza que la etapa propuesta sea correcta (valida SLT) ni que el detector de enlaces y
+precios atrape toda forma; la memoria es en proceso (se pierde al reiniciar y no se comparte entre
+instancias). Hallazgo K2b: las compuertas de salida, calibradas con usted y tuteo, no detectan «sos
+elegible y estás cubierto» ni «te vamos a pagar la indemnización»; las pruebas lo fijan con `it.fails`.
+
 ## 7. Aplicación a segurolotengo-demo
 
 El demo (Next.js 15 en AWS Amplify) **no embebe** el núcleo: consume el servicio por

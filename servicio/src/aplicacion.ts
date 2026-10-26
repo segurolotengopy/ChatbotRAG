@@ -6,6 +6,9 @@
  *   GET    /v1/agente                                      — perfiles y bienvenida del agente del cliente
  *   POST   /v1/conversaciones/:conversacionId/mensajes     — { perfilId?, pagina?, texto, canal? }
  *   DELETE /v1/conversaciones/:conversacionId              — olvidar la conversación
+ *   POST   /v1/kuaa/mensaje                                — PROVISIONAL: contexto de oportunidad + `mensaje` → salida estructurada
+ *                                                            (solo para clientes cuyo agente es `tipoAgente: kuaa`; el contrato
+ *                                                            definitivo lo fija SLT y esta ruta puede cambiar)
  *
  * AUTENTICACIÓN: `Authorization: Bearer <clave>`. Se compara el SHA-256 de la
  * clave contra los clientes configurados, en tiempo constante. El agente que
@@ -22,7 +25,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
-import { ErrorPeticion, esIdConversacionValido, listarPerfiles, resolverConfiguracion } from '@chatbotrag/nucleo';
+import { EntradaKuaa, ErrorPeticion, esIdConversacionValido, listarPerfiles, resolverConfiguracion } from '@chatbotrag/nucleo';
 import type { AgenteArmado } from './armar-agentes.js';
 import type { Cliente, Entorno } from './entorno.js';
 
@@ -182,6 +185,25 @@ export async function crearAplicacion(opciones: OpcionesAplicacion): Promise<Fas
         return r.code(codigo).send({ ok: false, motivo: e.codigo });
       }
       p.log.error({ err: e instanceof Error ? e.message : String(e) }, 'error no controlado al responder');
+      return r.code(500).send({ ok: false, motivo: 'ERROR_INTERNO' });
+    }
+  });
+
+  // RUTA PROVISIONAL de Kuaa. Misma autenticación, límites y CORS que las demás. Nunca repite en el
+  // error los valores recibidos; la respuesta lleva exactamente las claves de `SalidaOportunidad`.
+  app.post('/v1/kuaa/mensaje', async (p, r) => {
+    const acceso = await conCliente(p);
+    if ('error' in acceso) return r.code(acceso.error).send({ ok: false, motivo: acceso.motivo });
+    const kuaa = acceso.armado.agenteKuaa;
+    if (!kuaa) return r.code(404).send({ ok: false, motivo: 'AGENTE_NO_KUAA' });
+    const entrada = EntradaKuaa.safeParse(p.body);
+    if (!entrada.success) return r.code(400).send({ ok: false, motivo: 'PETICION_INVALIDA' });
+    if (/^#simular:/i.test(entrada.data.mensaje.trim()) && acceso.armado.proveedor !== 'simulado') return r.code(400).send({ ok: false, motivo: 'TEXTO_INVALIDO' });
+    try {
+      const { salida } = await kuaa.responder(entrada.data);
+      return { ok: true, ...salida };
+    } catch (e) {
+      p.log.error({ err: e instanceof Error ? e.message : String(e) }, 'error no controlado en kuaa');
       return r.code(500).send({ ok: false, motivo: 'ERROR_INTERNO' });
     }
   });

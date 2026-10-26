@@ -17,6 +17,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import {
   Agente,
+  AgenteKuaa,
   BitacoraConsola,
   cargarConfiguracionDesdeJson,
   cargarCorpus,
@@ -41,6 +42,8 @@ import type { Entorno } from './entorno.js';
 export interface AgenteArmado {
   config: ConfiguracionAgente;
   agente: Agente;
+  /** Solo en agentes con `tipoAgente: 'kuaa'`; atiende la ruta provisional `/v1/kuaa/mensaje`. */
+  agenteKuaa?: AgenteKuaa;
   memoria: MemoriaEnProceso;
   indice: IndiceConocimiento;
   proveedor: string;
@@ -110,15 +113,17 @@ export async function armarAgentes(
     await cargarCorpus(config, lector, indice, bitacora);
 
     const memoria = new MemoriaEnProceso();
-    const agente = new Agente({
+    const dependencias = {
       config,
       proveedor: nube.proveedor,
       indice,
       memoria,
       herramientas: new RegistroHerramientas(opciones.ejecutorExterno ?? null),
       bitacora,
-    });
-    agentes.set(config.id, { config, agente, memoria, indice, proveedor: nube.proveedor.nombre });
+    };
+    const agente = new Agente(dependencias);
+    const agenteKuaa = config.tipoAgente === 'kuaa' ? new AgenteKuaa(dependencias) : undefined;
+    agentes.set(config.id, { config, agente, ...(agenteKuaa ? { agenteKuaa } : {}), memoria, indice, proveedor: nube.proveedor.nombre });
     bitacora.registrar({ tipo: 'configuracion_cargada', agenteId: config.id, perfilId: null, conversacionHash: '-', canal: '-', detalle: `archivo=${archivo} proveedor=${nube.proveedor.nombre} indice=${indice.nombre} perfiles=${Object.keys(config.perfiles).length}` });
   }
   return agentes;
