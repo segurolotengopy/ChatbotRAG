@@ -151,6 +151,13 @@ export const ContextoOportunidad = z
   .strict();
 export type ContextoOportunidad = z.infer<typeof ContextoOportunidad>;
 
+/**
+ * Entrada de la ruta de Kuaa: el contexto de oportunidad más el mensaje de la persona. El largo
+ * real lo recorta después `sanearTexto` con `maxCaracteresEntrada`; este tope solo acota el cuerpo.
+ */
+export const EntradaKuaa = ContextoOportunidad.extend({ mensaje: z.string().min(1).max(8000) }).strict();
+export type EntradaKuaa = z.infer<typeof EntradaKuaa>;
+
 /** Tipos de evento firmado (contrato F2). Solo el enum: no hay endpoint de eventos en esta fase. */
 export const TIPOS_EVENTO_OPORTUNIDAD = [
   'solicitud_iniciada',

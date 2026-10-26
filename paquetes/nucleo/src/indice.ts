@@ -23,3 +23,7 @@ export * from './proveedores/simulado.js';
 export * from './bitacora/bitacora-consola.js';
 export * from './conocimiento/registros-habilitados.js';
 export * from './oportunidad/esquemas.js';
+export * from './oportunidad/frases-kuaa.js';
+export * from './oportunidad/prompt-kuaa.js';
+export * from './oportunidad/salida-kuaa.js';
+export * from './oportunidad/agente-kuaa.js';

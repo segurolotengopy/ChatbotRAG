@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ContextoOportunidad,
+  EntradaKuaa,
   RESUMEN_DESCONOCIDO,
   SalidaOportunidad,
   TIPOS_EVENTO_OPORTUNIDAD,
@@ -208,5 +209,15 @@ describe('SalidaOportunidad y filtrarBotonesSalida', () => {
   it('conserva continuar_pago con solicitud completada', () => {
     const r = filtrarBotonesSalida(salida, { ...ESTADOS_OPERATIVOS_DESCONOCIDOS, solicitud: 'completada' });
     expect(r.botones).toEqual(['ver_planes', 'continuar_pago', 'iniciar_solicitud']);
+  });
+});
+
+describe('EntradaKuaa', () => {
+  it('es el contexto más un mensaje de 1 a 8000 caracteres, y es estricta', () => {
+    expect(EntradaKuaa.safeParse({ ...contextoValido, mensaje: 'hola' }).success).toBe(true);
+    expect(EntradaKuaa.safeParse({ ...contextoValido, mensaje: '' }).success).toBe(false);
+    expect(EntradaKuaa.safeParse({ ...contextoValido, mensaje: 'a'.repeat(8001) }).success).toBe(false);
+    expect(EntradaKuaa.safeParse({ ...contextoValido }).success).toBe(false);
+    expect(EntradaKuaa.safeParse({ ...contextoValido, mensaje: 'hola', cedula: '1' }).success).toBe(false);
   });
 });
