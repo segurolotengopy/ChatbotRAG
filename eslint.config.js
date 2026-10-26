@@ -10,6 +10,7 @@ const SDKS_DE_NUBE = [
   { name: '@google-cloud/vertexai', message: 'Los SDK de nube viven en paquetes/proveedor-*.' },
   { name: '@aws-sdk/client-bedrock-runtime', message: 'Los SDK de nube viven en paquetes/proveedor-*.' },
   { name: 'pg', message: 'El acceso a PostgreSQL vive en paquetes/conocimiento-pgvector.' },
+  { name: '@google-cloud/storage', message: 'El acceso a Cloud Storage vive en paquetes/conocimiento-gcs.' },
 ];
 
 export default tseslint.config(

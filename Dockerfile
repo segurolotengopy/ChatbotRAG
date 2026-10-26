@@ -16,6 +16,7 @@ COPY paquetes/nucleo/package.json paquetes/nucleo/
 COPY paquetes/proveedor-vertex/package.json paquetes/proveedor-vertex/
 COPY paquetes/proveedor-bedrock/package.json paquetes/proveedor-bedrock/
 COPY paquetes/conocimiento-pgvector/package.json paquetes/conocimiento-pgvector/
+COPY paquetes/conocimiento-gcs/package.json paquetes/conocimiento-gcs/
 COPY paquetes/canal-web/package.json paquetes/canal-web/
 COPY servicio/package.json servicio/
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile

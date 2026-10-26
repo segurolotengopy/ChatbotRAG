@@ -7,6 +7,7 @@
     { "path": "../paquetes/nucleo" },
     { "path": "../paquetes/proveedor-vertex" },
     { "path": "../paquetes/proveedor-bedrock" },
-    { "path": "../paquetes/conocimiento-pgvector" }
+    { "path": "../paquetes/conocimiento-pgvector" },
+    { "path": "../paquetes/conocimiento-gcs" }
   ]
 }
