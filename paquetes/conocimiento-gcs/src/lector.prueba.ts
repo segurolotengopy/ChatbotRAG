@@ -1,6 +1,24 @@
 import { createHash } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
-import { ErrorPaqueteGcs, LectorPaqueteGcs, type ClienteObjetos } from './lector.js';
+import { describe, expect, it, vi } from 'vitest';
+import { ErrorPaqueteGcs, LectorPaqueteGcs, crearClienteGcs, type ClienteObjetos } from './lector.js';
+
+const gcs = vi.hoisted(() => ({ pedidos: [] as string[], bucket: '', fallo: 0 }));
+vi.mock('@google-cloud/storage', () => ({
+  Storage: class {
+    bucket(nombre: string) {
+      gcs.bucket = nombre;
+      return {
+        file: (ruta: string) => ({
+          async download() {
+            gcs.pedidos.push(ruta);
+            if (gcs.fallo) throw Object.assign(new Error('x'), { code: gcs.fallo });
+            return [Buffer.from('contenido-falso', 'utf8')];
+          },
+        }),
+      };
+    }
+  },
+}));
 
 const sha = (t: string) => createHash('sha256').update(t).digest('hex');
 
@@ -72,5 +90,22 @@ describe('LectorPaqueteGcs', () => {
     expect(await codigoDe(roto.leerManifiesto())).toBe('MANIFIESTO');
     const malo = new LectorPaqueteGcs({ bucket: 'b', version: '1.0.0', cliente: cliente({ '1.0.0/manifiesto.json': '{"version":"x","archivos":[]}' }) });
     expect(await codigoDe(malo.leerManifiesto())).toBe('MANIFIESTO');
+  });
+});
+
+describe('crearClienteGcs', () => {
+  it('descarga del bucket indicado con la identidad del entorno (cliente falso)', async () => {
+    gcs.fallo = 0;
+    const c = crearClienteGcs('mi-bucket');
+    expect((await c.descargar('1.0.0/a.json')).toString('utf8')).toBe('contenido-falso');
+    expect(gcs.bucket).toBe('mi-bucket');
+    expect(gcs.pedidos).toEqual(['1.0.0/a.json']);
+  });
+
+  it('propaga el código del error para que el lector lo traduzca', async () => {
+    gcs.fallo = 403;
+    const l = new LectorPaqueteGcs({ bucket: 'mi-bucket', version: '1.0.0' });
+    expect(await codigoDe(l.leerManifiesto())).toBe('NO_AUTORIZADO');
+    gcs.fallo = 0;
   });
 });

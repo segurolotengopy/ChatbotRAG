@@ -8,13 +8,33 @@ import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { BitacoraEnMemoria, EmbebedorSimulado, type LectorPaquete, type PeticionLLM, type ProveedorLLM, type RespuestaLLM } from '@chatbotrag/nucleo';
 import { ErrorPaqueteGcs } from '@chatbotrag/conocimiento-gcs';
 import { crearAplicacion } from './aplicacion.js';
 import { armarAgentes } from './armar-agentes.js';
 import { leerEntorno } from './entorno.js';
+
+// El lector por omisión se reemplaza por uno que siempre responde 403 (sin red) y anota con qué se construyó.
+const construidos = vi.hoisted(() => [] as Array<{ bucket: string; version: string }>);
+vi.mock('@chatbotrag/conocimiento-gcs', async (original) => {
+  const real = await original<{ ErrorPaqueteGcs: typeof ErrorPaqueteGcs }>();
+  return {
+    ...real,
+    LectorPaqueteGcs: class {
+      constructor(opciones: { bucket: string; version: string }) {
+        construidos.push(opciones);
+      }
+      async leerManifiesto(): Promise<never> {
+        throw new real.ErrorPaqueteGcs('NO_AUTORIZADO');
+      }
+      async leer(): Promise<never> {
+        throw new real.ErrorPaqueteGcs('NO_AUTORIZADO');
+      }
+    },
+  };
+});
 
 const CLAVE = 'clave-kuaa-de-prueba-suficientemente-larga';
 const hash = (c: string) => createHash('sha256').update(c).digest('hex');
@@ -64,7 +84,7 @@ afterEach(async () => {
   await Promise.all(apps.splice(0).map((a) => a.close()));
 });
 
-async function levantar(extraEntorno: Record<string, string>, lectorPaquete: () => LectorPaquete) {
+async function levantar(extraEntorno: Record<string, string>, lectorPaquete?: () => LectorPaquete) {
   const dir = await mkdtemp(join(tmpdir(), 'chatbotrag-paquete-'));
   await mkdir(join(dir, 'corpus'), { recursive: true });
   await writeFile(join(dir, 'kuaa.json'), readFileSync(RUTA_KUAA, 'utf8'));
@@ -76,7 +96,7 @@ async function levantar(extraEntorno: Record<string, string>, lectorPaquete: () 
   });
   const bitacora = new BitacoraEnMemoria();
   const fabrica = () => ({ proveedor, embebedor: new EmbebedorSimulado() });
-  const agentes = await armarAgentes(entorno, { bitacora, fabricas: { vertex: fabrica, bedrock: fabrica }, lectorPaquete });
+  const agentes = await armarAgentes(entorno, { bitacora, fabricas: { vertex: fabrica, bedrock: fabrica }, ...(lectorPaquete ? { lectorPaquete } : {}) });
   const app = await crearAplicacion({ entorno, agentes, registrar: false });
   apps.push(app);
   const enviar = () => app.inject({ method: 'POST', url: '/v1/kuaa/mensaje', headers: { authorization: `Bearer ${CLAVE}` }, payload: cuerpo });
@@ -160,5 +180,12 @@ describe('paquete no validado de Kuaa en el servicio', () => {
     expect(armado.versionPaquete).toBeNull();
     expect(bitacora.eventos.find((e) => e.tipo === 'paquete_no_cargado')).toMatchObject({ codigo: 'ERROR' });
     expect(JSON.stringify(bitacora.eventos)).not.toContain(MARCA_TEXTO);
+  });
+
+  it('sin lector inyectado usa el de GCS y un 403 deja el arranque en pie con paquete_no_cargado', async () => {
+    const { armado, bitacora } = await levantar(PRUEBAS);
+    expect(construidos).toEqual([{ bucket: 'bucket-sintetico', version: '1.0.0' }]);
+    expect(armado.versionPaquete).toBeNull();
+    expect(bitacora.eventos.find((e) => e.tipo === 'paquete_no_cargado')).toMatchObject({ codigo: 'NO_AUTORIZADO' });
   });
 });
