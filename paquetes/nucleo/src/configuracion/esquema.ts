@@ -182,6 +182,12 @@ export const esquemaConocimiento = z
      * menos `tamanoFragmento + 200` (lo valida `cargar.ts`), para que entre al menos un fragmento.
      */
     maxCaracteresPagina: z.number().int().min(500).max(8000).default(4000),
+    /**
+     * Paquete de conocimiento no validado (solo Kuaa). `habilitado` permite que el servicio, ÚNICAMENTE con el
+     * perfil `pruebas` del entorno, cargue el paquete desde su bucket privado. Es un booleano y no lleva ni
+     * bucket ni versión: esos viajan en el entorno, fuera del repo. Con el perfil `produccion` no tiene efecto.
+     */
+    paquete: z.object({ habilitado: z.boolean().default(false) }).strict().prefault({}),
   })
   .strict();
 
