@@ -21,3 +21,26 @@ describe('tipoAgente', () => {
     expect(tipo('kuaa.json')).toBe('kuaa');
   });
 });
+
+function detalles(f: () => unknown): string {
+  try {
+    f();
+  } catch (e) {
+    return ((e as { detalles?: string[] }).detalles ?? []).join('; ');
+  }
+  return '';
+}
+
+describe('conocimiento.paquete', () => {
+  const conPaquete = (extra: Record<string, unknown>) => ({ ...CONFIG_PRUEBA, conocimiento: { ...CONFIG_PRUEBA.conocimiento, paquete: { habilitado: true } }, ...extra });
+  it('por omisión no está habilitado', () => {
+    expect(validarConfiguracion(CONFIG_PRUEBA).conocimiento.paquete.habilitado).toBe(false);
+  });
+  it('un agente general no puede habilitarlo; uno kuaa sí', () => {
+    expect(detalles(() => validarConfiguracion(conPaquete({})))).toMatch(/solo se admite con tipoAgente/);
+    expect(validarConfiguracion(conPaquete({ tipoAgente: 'kuaa' })).conocimiento.paquete.habilitado).toBe(true);
+  });
+  it('un perfil no puede definirlo', () => {
+    expect(detalles(() => validarConfiguracion({ ...CONFIG_PRUEBA, tipoAgente: 'kuaa', perfiles: { PA: { nombre: 'A', conocimiento: { paquete: { habilitado: true } } } } }))).toMatch(/perfil no puede definir/);
+  });
+});

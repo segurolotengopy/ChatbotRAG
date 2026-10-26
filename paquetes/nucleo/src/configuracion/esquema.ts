@@ -421,6 +421,14 @@ export const esquemaConfiguracionAgente = z
     message: 'operacion.contactoHumano.modo «canal» exige al menos una vía de contacto (whatsapp, correo o telefono)',
     path: ['operacion', 'contactoHumano'],
   })
+  .refine((c) => c.tipoAgente === 'kuaa' || !c.conocimiento.paquete.habilitado, {
+    message: 'conocimiento.paquete.habilitado solo se admite con tipoAgente «kuaa»',
+    path: ['conocimiento', 'paquete'],
+  })
+  .refine((c) => Object.values(c.perfiles).every((p) => p.conocimiento?.paquete === undefined), {
+    message: 'un perfil no puede definir conocimiento.paquete: el paquete se habilita solo en la base',
+    path: ['perfiles'],
+  })
   .refine((c) => !c.perfilPorDefecto || c.perfilPorDefecto in c.perfiles, {
     message: 'perfilPorDefecto debe existir en perfiles',
     path: ['perfilPorDefecto'],

@@ -29,12 +29,20 @@ describe('perfil del conocimiento', () => {
     expect(() => leerEntorno(base({ CHATBOTRAG_BUCKET_PAQUETE: 'bucket-sintetico', CHATBOTRAG_VERSION_PAQUETE: '1.0.0' }))).toThrow(ErrorEntorno);
   });
 
-  it('un valor inválido cae a produccion, nunca a pruebas', () => {
-    for (const valor of ['PRUEBAS', 'staging', 'Pruebas ', '']) {
-      expect(leerEntorno(base({ CHATBOTRAG_PERFIL_CONOCIMIENTO: valor })).perfilConocimiento).toBe('produccion');
+  it('ausente o vacío es produccion; un valor no vacío e inválido es un error de entorno', () => {
+    expect(leerEntorno(base({ CHATBOTRAG_PERFIL_CONOCIMIENTO: '' })).perfilConocimiento).toBe('produccion');
+    expect(leerEntorno(base({ CHATBOTRAG_PERFIL_CONOCIMIENTO: 'produccion' })).perfilConocimiento).toBe('produccion');
+    for (const valor of ['PRUEBAS', 'staging', 'Pruebas ']) {
+      expect(() => leerEntorno(base({ CHATBOTRAG_PERFIL_CONOCIMIENTO: valor }))).toThrow(ErrorEntorno);
     }
-    // Un valor inválido con bucket sigue siendo incoherente: no se activa nada.
-    expect(() => leerEntorno(base({ CHATBOTRAG_PERFIL_CONOCIMIENTO: 'PRUEBAS', CHATBOTRAG_BUCKET_PAQUETE: 'bucket-sintetico', CHATBOTRAG_VERSION_PAQUETE: '1.0.0' }))).toThrow(ErrorEntorno);
+  });
+
+  it('APP_ENV=production veda el perfil pruebas y el bucket del paquete', () => {
+    const p = { CHATBOTRAG_PERFIL_CONOCIMIENTO: 'pruebas', CHATBOTRAG_BUCKET_PAQUETE: 'bucket-sintetico', CHATBOTRAG_VERSION_PAQUETE: '1.0.0' };
+    expect(() => leerEntorno(base({ ...p, APP_ENV: 'production' }))).toThrow(/APP_ENV=production/);
+    expect(() => leerEntorno(base({ CHATBOTRAG_BUCKET_PAQUETE: 'bucket-sintetico', APP_ENV: 'production' }))).toThrow(ErrorEntorno);
+    expect(leerEntorno(base({ APP_ENV: 'production' })).perfilConocimiento).toBe('produccion');
+    expect(leerEntorno(base({ ...p, APP_ENV: 'staging' })).perfilConocimiento).toBe('pruebas');
   });
 
   it('rechaza un nombre de bucket o una versión con forma inválida', () => {

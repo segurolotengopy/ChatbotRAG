@@ -42,9 +42,11 @@ export const esquemaEntorno = z.object({
   CHATBOTRAG_LIMITE_IP_MINUTO: z.coerce.number().int().min(1).default(60),
   /** Secreto HMAC para firmar las llamadas a herramientas `http`. Opcional. */
   CHATBOTRAG_HMAC_HERRAMIENTAS: z.string().min(16).optional(),
+  /** Ambiente que fija deploy.sh (`staging` | `production`). Con `production` el paquete no validado está vedado. */
+  APP_ENV: z.string().optional(),
   /**
-   * Perfil del conocimiento de Kuaa. Solo el texto exacto `pruebas` lo activa; cualquier otro valor (ausente,
-   * vacío, «PRUEBAS», «staging») cae a `produccion`: ante la duda no se carga nada no validado.
+   * Perfil del conocimiento de Kuaa. Ausente o vacío = `produccion`; `pruebas` lo activa; cualquier otro valor
+   * («PRUEBAS», «staging») es un error de entorno: un typo no debe pasar por una configuración válida.
    */
   CHATBOTRAG_PERFIL_CONOCIMIENTO: z.string().optional(),
   /** Bucket privado con el paquete de conocimiento no validado. Solo con perfil `pruebas`. */
@@ -87,9 +89,17 @@ export function leerEntorno(fuente: NodeJS.ProcessEnv = process.env): Entorno {
     ids.add(c.id);
   }
   if (r.data.CHATBOTRAG_INDICE === 'pgvector' && !r.data.PGVECTOR_URL) throw new ErrorEntorno(['CHATBOTRAG_INDICE=pgvector exige PGVECTOR_URL']);
-  const perfilConocimiento = r.data.CHATBOTRAG_PERFIL_CONOCIMIENTO === 'pruebas' ? 'pruebas' : 'produccion';
+  const crudoPerfil = r.data.CHATBOTRAG_PERFIL_CONOCIMIENTO;
+  if (crudoPerfil !== undefined && crudoPerfil !== '' && crudoPerfil !== 'pruebas' && crudoPerfil !== 'produccion') {
+    throw new ErrorEntorno(['CHATBOTRAG_PERFIL_CONOCIMIENTO debe ser «produccion» o «pruebas»']);
+  }
+  const perfilConocimiento: 'produccion' | 'pruebas' = crudoPerfil === 'pruebas' ? 'pruebas' : 'produccion';
   const bucket = r.data.CHATBOTRAG_BUCKET_PAQUETE;
   const version = r.data.CHATBOTRAG_VERSION_PAQUETE;
+  // El ambiente de producción jamás admite el paquete no validado, ni su perfil ni su bucket.
+  if (r.data.APP_ENV === 'production' && (perfilConocimiento === 'pruebas' || bucket !== undefined)) {
+    throw new ErrorEntorno(['APP_ENV=production no admite CHATBOTRAG_PERFIL_CONOCIMIENTO=pruebas ni CHATBOTRAG_BUCKET_PAQUETE']);
+  }
   // Combinaciones incoherentes: fallan el arranque en vez de adivinar la intención.
   if (perfilConocimiento === 'pruebas' && (!bucket || !version)) throw new ErrorEntorno(['CHATBOTRAG_PERFIL_CONOCIMIENTO=pruebas exige CHATBOTRAG_BUCKET_PAQUETE y CHATBOTRAG_VERSION_PAQUETE']);
   if (perfilConocimiento === 'produccion' && (bucket || version)) throw new ErrorEntorno(['CHATBOTRAG_BUCKET_PAQUETE y CHATBOTRAG_VERSION_PAQUETE solo se admiten con CHATBOTRAG_PERFIL_CONOCIMIENTO=pruebas']);
