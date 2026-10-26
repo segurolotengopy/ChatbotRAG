@@ -392,6 +392,12 @@ export const esquemaConfiguracionAgente = z
     $schema: z.string().optional(),
     version: z.literal(1),
     id: z.string().regex(ID_AGENTE),
+    /**
+     * Clase de agente. `general` (por omisión) es el asistente conversacional de siempre; `kuaa` habilita el
+     * agente de oportunidad de venta (`oportunidad/agente-kuaa.ts`), que responde con una salida estructurada.
+     * Es un enumerado: jamás se interpola en el prompt. No lo puede cambiar un perfil.
+     */
+    tipoAgente: z.enum(['general', 'kuaa']).default('general'),
     identidad: esquemaIdentidad,
     voz: esquemaVoz.prefault({}),
     operacion: esquemaOperacion.prefault({}),
