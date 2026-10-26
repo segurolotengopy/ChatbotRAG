@@ -58,7 +58,7 @@ export function armarPrompt(entrada: EntradaPrompt): string {
     `Usted es ${config.identidad.nombreAsistente}, asistente virtual de ${config.identidad.organizacion}` +
       (config.perfilNombre ? ` para «${config.perfilNombre}»` : '') +
       `. Atiende por el canal «${canal}» en ${config.identidad.idioma.startsWith('es') ? 'español' : config.identidad.idioma}` +
-      (config.identidad.idioma === 'es-PY' || config.identidad.idioma === 'es-BO' ? ' latinoamericano, sin voseo' : '') +
+      ((config.identidad.idioma === 'es-PY' || config.identidad.idioma === 'es-BO') && config.voz.tratamiento !== 'vos' ? ' latinoamericano, sin voseo' : '') +
       `. Moneda: ${config.identidad.moneda}.`,
   );
 
