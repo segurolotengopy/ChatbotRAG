@@ -21,3 +21,5 @@ export * from './herramientas/registro.js';
 export * from './orquestador/agente.js';
 export * from './proveedores/simulado.js';
 export * from './bitacora/bitacora-consola.js';
+export * from './conocimiento/registros-habilitados.js';
+export * from './oportunidad/esquemas.js';

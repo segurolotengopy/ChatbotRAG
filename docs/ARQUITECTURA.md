@@ -235,6 +235,27 @@ primera persona verbal clara: «me detectaron un tumor ¿me cubren?», «Fui PEP
 Las pruebas fijan este comportamiento actual para que un cambio futuro sea deliberado; no lo
 aprueban.
 
+### Carga a Kuaa: registros habilitados y oportunidad de venta
+
+`conocimiento/registros-habilitados.ts` (`separarRegistrosHabilitados`) deja pasar a Kuaa solo
+los registros con `habilitado_produccion === true` (booleano exacto); `estado_validacion` y
+`aprobacion` no habilitan. Falla cerrado («true», 1, «si», null o ausencia no habilitan) y
+devuelve de los rechazados solo índice y motivo. No valida la veracidad del contenido ni la
+revisión humana. `scripts/validar-paquete-kuaa.mts` imprime únicamente conteos
+(`--exigir-habilitados` sale con 1 si no hay ninguno).
+
+`oportunidad/esquemas.ts` define, con Zod estricto y enumerados, la etapa comercial E01..E12,
+los estados operativos (solicitud, pago, aceptación, póliza, documentos, atención humana), el
+estado de objeción, el permiso de seguimiento y el `ContextoOportunidad` mínimo, sin datos
+personales. `puedeTransicionarEstadoOperativo` no toma una etapa propuesta por el modelo como
+evidencia: esos estados solo cambian con un evento firmado (la verificación de la firma llega
+con el contrato de eventos). Contrato F2 v0.2 de SLT: el permiso de seguimiento es
+`{vigente, canal}` (sin `evidencia_id`), el contexto lleva `pagina` y un `resumen` de identificadores
+(`[a-z0-9_]{1,40}`; pendiente: enumerar necesidad/producto/plan cuando SLT los fije), `estados` y
+`resumen` son datos y nunca se interpolan en el prompt. Se declaran el enum de tipos de evento (sin
+endpoint) y el esquema de salida; `filtrarBotonesSalida` descarta `continuar_pago` si la solicitud
+no está completada.
+
 ## 7. Aplicación a segurolotengo-demo
 
 El demo (Next.js 15 en AWS Amplify) **no embebe** el núcleo: consume el servicio por
