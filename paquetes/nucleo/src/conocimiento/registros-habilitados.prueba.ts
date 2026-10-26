@@ -79,12 +79,70 @@ describe('separarRegistrosHabilitados', () => {
 
   it('un campo heredado del prototipo no habilita', () => {
     const r = separarRegistrosHabilitados([Object.create({ habilitado_produccion: true })]);
-    expect(r.rechazados[0]?.motivo).toBe('campo_ausente');
+    expect(r.rechazados[0]?.motivo).toBe('registro_invalido');
   });
 
   it('los rechazados solo llevan índice y motivo, nunca contenido', () => {
     const r = separarRegistrosHabilitados([{ secreto: 'DATO-SENSIBLE', habilitado_produccion: false }]);
     expect(JSON.stringify(r.rechazados)).not.toContain('DATO-SENSIBLE');
     expect(Object.keys(r.rechazados[0] ?? {}).sort()).toEqual(['indice', 'motivo']);
+  });
+
+  it('un getter no habilita, aunque devuelva true', () => {
+    let n = 0;
+    const g = {};
+    Object.defineProperty(g, 'habilitado_produccion', { get: () => n++ === 0, enumerable: true });
+    const r = separarRegistrosHabilitados([g]);
+    expect(r.habilitados).toHaveLength(0);
+    expect(r.rechazados).toEqual([{ indice: 0, motivo: 'valor_no_booleano' }]);
+  });
+
+  it('rechaza Proxy, Date, Map, clases y Boolean objeto', () => {
+    class Clase {
+      habilitado_produccion = true;
+    }
+    const proxy = new Proxy({}, { has: () => true, getOwnPropertyDescriptor: () => ({ value: true, configurable: true, enumerable: true }), get: () => true });
+    const r = separarRegistrosHabilitados([
+      proxy,
+      Object.assign(new Date(), { habilitado_produccion: true }),
+      Object.assign(new Map(), { habilitado_produccion: true }),
+      new Clase(),
+      { habilitado_produccion: new Boolean(true) },
+    ]);
+    expect(r.habilitados).toHaveLength(0);
+    expect(r.rechazados.map((x) => x.motivo)).toEqual([
+      'registro_invalido', 'registro_invalido', 'registro_invalido', 'registro_invalido', 'valor_no_booleano',
+    ]);
+  });
+
+  it('acepta objetos con prototipo null', () => {
+    const o = Object.create(null) as Record<string, unknown>;
+    o['habilitado_produccion'] = true;
+    expect(separarRegistrosHabilitados([o]).habilitados).toHaveLength(1);
+  });
+
+  it('un arreglo Proxy se rechaza entero', () => {
+    expect(separarRegistrosHabilitados(new Proxy([{ habilitado_produccion: true }], {})).conteo.habilitados).toBe(0);
+  });
+
+  it('los huecos de un arreglo disperso son registro_invalido', () => {
+    // eslint-disable-next-line no-sparse-arrays
+    const r = separarRegistrosHabilitados([, { habilitado_produccion: true }]);
+    expect(r.rechazados).toEqual([{ indice: 0, motivo: 'registro_invalido' }]);
+    expect(r.conteo).toMatchObject({ total: 2, habilitados: 1, rechazados: 1 });
+  });
+
+  it('__proto__ de JSON no habilita y en clave duplicada gana la última', () => {
+    expect(separarRegistrosHabilitados(JSON.parse('[{"__proto__":{"habilitado_produccion":true}}]')).habilitados).toHaveLength(0);
+    expect(separarRegistrosHabilitados(JSON.parse('[{"habilitado_produccion":false,"habilitado_produccion":true}]')).habilitados).toHaveLength(1);
+    expect(separarRegistrosHabilitados(JSON.parse('[{"habilitado_produccion":true,"habilitado_produccion":false}]')).habilitados).toHaveLength(0);
+  });
+
+  it('devuelve copias: mutar la entrada después no altera los habilitados', () => {
+    const entrada = [{ habilitado_produccion: true, t: 'a', anidado: { x: 1 } }];
+    const r = separarRegistrosHabilitados(entrada);
+    entrada[0]!.t = 'MUTADO';
+    entrada[0]!.anidado.x = 99;
+    expect(r.habilitados[0]).toEqual({ habilitado_produccion: true, t: 'a', anidado: { x: 1 } });
   });
 });

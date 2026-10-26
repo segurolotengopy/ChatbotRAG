@@ -25,17 +25,23 @@ function correr(args: string[]) {
 
 const sinHabilitar = join(dir, 'a.json');
 const conHabilitado = join(dir, 'b.json');
+const conClave = join(dir, 'd.json');
+const unico = join(dir, 'e.json');
+const escalar = join(dir, 'f.json');
 const roto = join(dir, 'c.json');
 writeFileSync(sinHabilitar, JSON.stringify([{ t: 'TEXTO-SINTETICO-1', habilitado_produccion: false }, { habilitado_produccion: 'true' }, {}]));
 writeFileSync(conHabilitado, JSON.stringify([{ t: 'TEXTO-SINTETICO-2', habilitado_produccion: true }]));
+writeFileSync(conClave, JSON.stringify({ registros: [{ habilitado_produccion: true }, { habilitado_produccion: false }], otro: 'TEXTO-SINTETICO-3' }));
+writeFileSync(unico, JSON.stringify({ habilitado_produccion: true, t: 'TEXTO-SINTETICO-4' }));
+writeFileSync(escalar, '42');
 writeFileSync(roto, '{no es json');
 
 describe('validar-paquete-kuaa', () => {
   it('imprime conteos y nunca contenido', async () => {
     const r = await correr([sinHabilitar, conHabilitado]);
     expect(r.codigo).toBe(0);
-    expect(r.salida).toContain('total=3 habilitados=0 rechazados=3 (no_habilitado=1 valor_no_booleano=1 campo_ausente=1');
-    expect(r.salida).toContain('total=1 habilitados=1');
+    expect(r.salida).toContain('forma=array total=3 habilitados=0 rechazados=3 (no_habilitado=1 valor_no_booleano=1 campo_ausente=1');
+    expect(r.salida).toContain('forma=array total=1 habilitados=1');
     expect(r.salida).not.toContain('TEXTO-SINTETICO');
   });
   it('--exigir-habilitados falla si no hay ninguno', async () => {
@@ -45,5 +51,17 @@ describe('validar-paquete-kuaa', () => {
   it('un archivo ilegible falla y sin argumentos sale con 2', async () => {
     expect((await correr([roto])).codigo).toBe(1);
     expect((await correr([])).codigo).toBe(2);
+  });
+  it('reconoce la forma {registros: [...]} y el objeto único', async () => {
+    const a = await correr([conClave]);
+    expect(a.salida).toContain('forma=registros total=2 habilitados=1 rechazados=1');
+    const b = await correr([unico]);
+    expect(b.salida).toContain('forma=objeto total=1 habilitados=1');
+    expect(a.salida + b.salida).not.toContain('TEXTO-SINTETICO');
+  });
+  it('una raíz que no es objeto ni arreglo falla', async () => {
+    const r = await correr([escalar]);
+    expect(r.codigo).toBe(1);
+    expect(r.salida).toContain('no es un arreglo de registros');
   });
 });

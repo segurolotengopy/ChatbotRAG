@@ -242,16 +242,21 @@ los registros con `habilitado_produccion === true` (booleano exacto); `estado_va
 `aprobacion` no habilitan. Falla cerrado («true», 1, «si», null o ausencia no habilitan) y
 devuelve de los rechazados solo índice y motivo. No valida la veracidad del contenido ni la
 revisión humana. `scripts/validar-paquete-kuaa.mts` imprime únicamente conteos
-(`--exigir-habilitados` sale con 1 si no hay ninguno).
+(`--exigir-habilitados` sale con 1 si no hay ninguno); acepta raíz arreglo, `{registros: [...]}` u
+objeto único y falla con cualquier otra. La bandera se lee solo como valor de datos propio (un
+getter, un Proxy o un objeto no plano no habilitan) y, si el JSON repite la clave, gana la última.
 
 `oportunidad/esquemas.ts` define, con Zod estricto y enumerados, la etapa comercial E01..E12,
 los estados operativos (solicitud, pago, aceptación, póliza, documentos, atención humana), el
 estado de objeción, el permiso de seguimiento y el `ContextoOportunidad` mínimo, sin datos
-personales. `puedeTransicionarEstadoOperativo` no toma una etapa propuesta por el modelo como
-evidencia: esos estados solo cambian con un evento firmado (la verificación de la firma llega
-con el contrato de eventos). Contrato F2 v0.2 de SLT: el permiso de seguimiento es
+personales. `estadosTrasPropuestaDeEtapa` devuelve una copia sin cambios: una etapa propuesta por el modelo
+nunca es evidencia, y en ChatbotRAG no existe ninguna transición operativa (los estados los fija
+SLT en cada petición). Contrato F2 v0.2 de SLT: el permiso de seguimiento es
 `{vigente, canal}` (sin `evidencia_id`), el contexto lleva `pagina` y un `resumen` de identificadores
-(`[a-z0-9_]{1,40}`; pendiente: enumerar necesidad/producto/plan cuando SLT los fije), `estados` y
+(segmentos cortos sin cadenas largas de dígitos; una regex no impide un nombre como
+«cancer_de_mama_juan_perez», la defensa real es enumerar: pendiente de SLT para necesidad,
+producto, plan y objecion_codigo; `oportunidad_id`, `tarifa_version` y `pagina` tienen formas
+estrictas, `pagina` con `ID_PAGINA`), `estados` y
 `resumen` son datos y nunca se interpolan en el prompt. Se declaran el enum de tipos de evento (sin
 endpoint) y el esquema de salida; `filtrarBotonesSalida` descarta `continuar_pago` si la solicitud
 no está completada.

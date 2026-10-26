@@ -12,9 +12,10 @@
  * ignora se rechaza (`.strict()`), no se descarta en silencio.
  *
  * Qué NO garantiza: no verifica firmas de eventos ni persiste nada; solo define la
- * forma y la regla de transición.
+ * forma y la regla de que la propuesta del modelo no cambia estados.
  */
 import { z } from 'zod';
+import { ID_PAGINA } from '../configuracion/esquema.js';
 
 export const ETAPAS_VENTA = [
   'E01',
@@ -99,11 +100,18 @@ export const PermisoSeguimiento = z
 export type PermisoSeguimiento = z.infer<typeof PermisoSeguimiento>;
 
 /**
- * Identificador, no texto libre: minúsculas, dígitos y guion bajo, sin espacios ni saltos
- * de línea. PENDIENTE: el contrato v0.2 no enumera necesidad/producto/plan/código de
- * objeción; cuando SLT fije las listas, sustituir por enumerados.
+ * Identificador, no texto libre: letras minúsculas al inicio y segmentos cortos (1 a 3
+ * caracteres) separados por guion bajo; sin espacios, saltos de línea ni secuencias largas de
+ * dígitos (rechaza cédulas, tarjetas y celulares). Tope de 40.
+ *
+ * Qué NO garantiza: una regex no impide un nombre como «cancer_de_mama_juan_perez» escrito en
+ * segmentos cortos. La defensa real es ENUMERAR los valores. PENDIENTE de SLT: el contrato
+ * v0.2 no enumera necesidad, producto, plan ni objecion_codigo; al fijarlos, sustituir por enum.
  */
-export const Identificador = z.string().regex(/^[a-z0-9_]{1,40}$/);
+export const Identificador = z
+  .string()
+  .max(40)
+  .regex(/^[a-z]+(_[a-z0-9]{1,3})*$/);
 
 /** Resumen para recuperar contexto tras un reinicio; solo datos, jamás interpolado en el prompt. */
 export const ResumenOportunidad = z
@@ -128,12 +136,15 @@ export const RESUMEN_DESCONOCIDO: ResumenOportunidad = {
 /** Contexto de entrada. `pagina` es el id de pantalla que ya recibe el servicio. Sin datos personales. */
 export const ContextoOportunidad = z
   .object({
-    oportunidad_id: z.string().min(1).max(128),
-    etapa_actual: EtapaVenta.nullable(),
+    oportunidad_id: z
+      .string()
+      .regex(/^[A-Za-z0-9_-]{8,128}$/)
+      .regex(/[A-Za-z]/),
+    etapa_actual: EtapaVenta,
     estados: EstadosOperativos,
     permiso_seguimiento: PermisoSeguimiento,
-    tarifa_version: z.string().min(1).max(64).nullable(),
-    pagina: z.string().min(1).max(128).nullable(),
+    tarifa_version: z.string().regex(/^[a-z0-9._-]{1,64}$/).nullable(),
+    pagina: z.string().regex(ID_PAGINA).nullable(),
     resumen: ResumenOportunidad,
   })
   .strict();
@@ -165,7 +176,7 @@ export const PropuestaSalida = z.enum([
 /** Esquema de SALIDA del asistente. `etapa_propuesta` es una propuesta, nunca evidencia. */
 export const SalidaOportunidad = z
   .object({
-    texto: z.string(),
+    texto: z.string().min(1).max(4000),
     etapa_propuesta: EtapaVenta,
     objecion: z.object({ codigo: Identificador, estado: EstadoObjecion }).strict().nullable(),
     botones: z.array(BotonSalida),
@@ -176,44 +187,23 @@ export type SalidaOportunidad = z.infer<typeof SalidaOportunidad>;
 
 /**
  * Defensa en profundidad: descarta `continuar_pago` si la solicitud no está completada
- * según los estados (SLT también lo descarta). Pura: no muta la salida.
+ * según los estados (SLT también lo descarta). Valida `estados` (lanza si no son válidos) y
+ * devuelve siempre una copia, sin botones repetidos. No muta la salida.
  */
 export function filtrarBotonesSalida(salida: SalidaOportunidad, estados: EstadosOperativos): SalidaOportunidad {
-  if (estados.solicitud === 'completada') return salida;
-  return { ...salida, botones: salida.botones.filter((b) => b !== 'continuar_pago') };
-}
-
-/** Eventos que sí pueden cambiar un estado operativo: vienen firmados por el sistema. */
-export interface EventoOperativoFirmado {
-  estado: keyof EstadosOperativos;
-  valor: string;
-  firmado: true;
-}
-
-/** Lo que propone el modelo: una etapa comercial. Nunca es evidencia operativa. */
-export interface PropuestaDelModelo {
-  etapa_propuesta: EtapaVenta;
+  const validos = EstadosOperativos.parse(estados);
+  const unicos = [...new Set(salida.botones)];
+  const botones = validos.solicitud === 'completada' ? unicos : unicos.filter((b) => b !== 'continuar_pago');
+  return { ...salida, botones, propuestas: [...salida.propuestas] };
 }
 
 /**
- * Contrato de transición de un estado operativo. Solo un evento firmado lo cambia; una
- * propuesta del modelo (`etapa_propuesta`) devuelve los estados SIN alteración. En esta
- * fase no hay verificación criptográfica: el contrato exige `firmado: true` en el tipo y
- * en ejecución, y la firma real llega con el contrato de eventos.
+ * En ChatbotRAG ninguna transición operativa existe: los estados vienen de SLT en cada
+ * petición. Una etapa propuesta por el modelo es solo una propuesta y jamás es evidencia de
+ * pago, póliza o documentos. Valida `estados` (lanza si no son válidos) y devuelve una COPIA
+ * sin cambios, sea cual sea la etapa; no hay retroceso ni avance posible desde acá.
  */
-export function puedeTransicionarEstadoOperativo(
-  actuales: EstadosOperativos,
-  evidencia: EventoOperativoFirmado | PropuestaDelModelo | unknown,
-): { permitido: boolean; estados: EstadosOperativos } {
-  const sinCambio = { permitido: false, estados: { ...actuales } };
-  if (typeof evidencia !== 'object' || evidencia === null) return sinCambio;
-  const ev = evidencia as Record<string, unknown>;
-  if (ev['firmado'] !== true) return sinCambio;
-  const estado = ev['estado'];
-  if (typeof estado !== 'string' || !Object.prototype.hasOwnProperty.call(actuales, estado)) return sinCambio;
-  const clave = estado as keyof EstadosOperativos;
-  const enumerado = EstadosOperativos.shape[clave];
-  const valor = enumerado.safeParse(ev['valor']);
-  if (!valor.success) return sinCambio;
-  return { permitido: true, estados: { ...actuales, [clave]: valor.data } };
+export function estadosTrasPropuestaDeEtapa(estados: EstadosOperativos, etapa: unknown): EstadosOperativos {
+  void etapa; // la propuesta se ignora a propósito
+  return { ...EstadosOperativos.parse(estados) };
 }
