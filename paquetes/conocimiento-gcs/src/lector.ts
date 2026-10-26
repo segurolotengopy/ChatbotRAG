@@ -6,8 +6,8 @@
  * en el entorno). Este paquete es el único que importa `@google-cloud/storage` (frontera de nube).
  *
  * Layout: `gs://<bucket>/<version>/manifiesto.json` y los archivos que el manifiesto lista. Solo lee: no
- * crea, no modifica, no borra. Cada archivo se verifica contra el SHA-256 del manifiesto: un archivo sin
- * huella, o con otra, invalida la lectura (`INTEGRIDAD`). Un 403 o un 404 se convierten en un error
+ * crea, no modifica, no borra. Cada archivo se verifica contra los `bytes` (metadatos y descarga) y el SHA-256
+ * del manifiesto: otro tamaño u otra huella invalida la lectura (`INTEGRIDAD`). Un 403 o un 404 se convierten en un error
  * tipado (`ErrorPaqueteGcs`) cuyo mensaje NO incluye el nombre del bucket ni de la ruta.
  *
  * Qué NO garantiza: que la huella del manifiesto sea honesta (quien escribe el bucket escribe ambos); la
@@ -17,7 +17,7 @@ import { createHash } from 'node:crypto';
 import { Storage } from '@google-cloud/storage';
 import { esquemaManifiestoPaquete, type LectorPaquete, type ManifiestoPaquete } from '@chatbotrag/nucleo';
 
-export type CodigoErrorPaquete = 'NO_AUTORIZADO' | 'NO_ENCONTRADO' | 'INTEGRIDAD' | 'MANIFIESTO' | 'ERROR';
+export type CodigoErrorPaquete = 'NO_AUTORIZADO' | 'NO_ENCONTRADO' | 'INTEGRIDAD' | 'MANIFIESTO' | 'VERSION' | 'ERROR';
 
 export class ErrorPaqueteGcs extends Error {
   constructor(public readonly codigo: CodigoErrorPaquete) {
@@ -28,12 +28,18 @@ export class ErrorPaqueteGcs extends Error {
 
 /** Costura mínima sobre el cliente de GCS: descarga un objeto del bucket ya fijado. */
 export interface ClienteObjetos {
+  /** Tamaño en bytes según los metadatos del objeto, SIN descargarlo. */
+  tamano(rutaObjeto: string): Promise<number>;
   descargar(rutaObjeto: string): Promise<Buffer>;
 }
 
 export function crearClienteGcs(bucket: string): ClienteObjetos {
   const b = new Storage().bucket(bucket);
   return {
+    async tamano(rutaObjeto) {
+      const [metadatos] = await b.file(rutaObjeto).getMetadata();
+      return Number(metadatos.size);
+    },
     async descargar(rutaObjeto) {
       const [contenido] = await b.file(rutaObjeto).download();
       return contenido;
@@ -74,6 +80,7 @@ export class LectorPaqueteGcs implements LectorPaquete {
     }
     const r = esquemaManifiestoPaquete.safeParse(analizado);
     if (!r.success) throw new ErrorPaqueteGcs('MANIFIESTO');
+    if (r.data.version !== this.version) throw new ErrorPaqueteGcs('VERSION');
     this.manifiesto = r.data;
     return r.data;
   }
@@ -81,13 +88,16 @@ export class LectorPaqueteGcs implements LectorPaquete {
   async leer(rutaRelativa: string): Promise<string> {
     const entrada = this.manifiesto?.archivos.find((a) => a.ruta === rutaRelativa);
     // Sin manifiesto leído, o fuera de él, o sin huella: no se lee nada.
-    if (!entrada?.sha256) throw new ErrorPaqueteGcs('INTEGRIDAD');
+    if (!entrada) throw new ErrorPaqueteGcs('INTEGRIDAD');
     let contenido: Buffer;
     try {
+      // El tamaño declarado se contrasta con los metadatos ANTES de descargar: un objeto más grande no se baja.
+      if ((await this.cliente.tamano(`${this.version}/${rutaRelativa}`)) !== entrada.bytes) throw new ErrorPaqueteGcs('INTEGRIDAD');
       contenido = await this.cliente.descargar(`${this.version}/${rutaRelativa}`);
     } catch (e) {
       throw traducir(e);
     }
+    if (contenido.length !== entrada.bytes) throw new ErrorPaqueteGcs('INTEGRIDAD');
     if (createHash('sha256').update(contenido).digest('hex') !== entrada.sha256) throw new ErrorPaqueteGcs('INTEGRIDAD');
     return contenido.toString('utf8');
   }
