@@ -56,6 +56,8 @@ describe('separarRegistrosHabilitados', () => {
       valor_no_booleano: 2,
       campo_ausente: 1,
       registro_invalido: 4,
+      sin_marca_no_validado: 0,
+      version_invalida: 0,
     });
   });
 
@@ -144,5 +146,89 @@ describe('separarRegistrosHabilitados', () => {
     entrada[0]!.t = 'MUTADO';
     entrada[0]!.anidado.x = 99;
     expect(r.habilitados[0]).toEqual({ habilitado_produccion: true, t: 'a', anidado: { x: 1 } });
+  });
+});
+
+describe('perfiles produccion y pruebas', () => {
+  const nv = (extra: Record<string, unknown> = {}) => ({ id: 'x', habilitado_produccion: false, validacion: 'no_validado', version_paquete: '1.0.0', ...extra });
+
+  // RED-LINE: el perfil de producción jamás deja entrar un registro no habilitado, tenga la marca que tenga.
+  describe('red-line: produccion', () => {
+    const intrusos: [string, unknown][] = [
+      ['false con marca no_validado y versión', nv()],
+      ['false con marca y sin versión', nv({ version_paquete: undefined })],
+      ['false sin marca', { habilitado_produccion: false }],
+      ['«true» texto con marca', nv({ habilitado_produccion: 'true' })],
+      ['1 con marca', nv({ habilitado_produccion: 1 })],
+      ['null con marca', nv({ habilitado_produccion: null })],
+      ['ausente con marca', { validacion: 'no_validado', version_paquete: '1.0.0' }],
+    ];
+    it.each(intrusos)('no entra: %s', (_n, registro) => {
+      const r = separarRegistrosHabilitados([registro]);
+      expect(r.perfil).toBe('produccion');
+      expect(r.habilitados).toHaveLength(0);
+      expect(r.conteo).toMatchObject({ habilitados: 0, aceptados: 0, rechazados: 1 });
+      expect(r.conteo.porEstado.no_validado).toBe(0);
+      expect(JSON.stringify(r.habilitados)).not.toContain('no_validado');
+    });
+    it('explícito y por omisión dan lo mismo, y de una mezcla solo salen los true', () => {
+      const mezcla = [nv(), { id: 'ok', habilitado_produccion: true }, nv({ version_paquete: 'x' }), { id: 'b', habilitado_produccion: false }];
+      const a = separarRegistrosHabilitados(mezcla);
+      const b = separarRegistrosHabilitados(mezcla, 'produccion');
+      expect(a).toEqual(b);
+      expect(a.habilitados).toEqual([{ id: 'ok', habilitado_produccion: true }]);
+      expect('aceptados' in a).toBe(false);
+    });
+  });
+
+  describe('pruebas', () => {
+    it('acepta false con marca exacta y versión X.Y.Z, con su estado visible, y los true con estado habilitado', () => {
+      const r = separarRegistrosHabilitados([nv(), { id: 'ok', habilitado_produccion: true }, nv({ version_paquete: '12.0.345' })], 'pruebas');
+      expect(r.perfil).toBe('pruebas');
+      expect(r.aceptados.map((a) => a.estado)).toEqual(['no_validado', 'habilitado', 'no_validado']);
+      const primero = r.aceptados[0]!;
+      expect(primero.estado === 'no_validado' && primero.version_paquete).toBe('1.0.0');
+      expect(r.conteo).toMatchObject({ total: 3, habilitados: 1, aceptados: 3, rechazados: 0, porEstado: { habilitado: 1, no_validado: 2 } });
+      expect('habilitados' in r).toBe(false);
+    });
+
+    it.each([
+      ['sin marca', { habilitado_produccion: false, version_paquete: '1.0.0' }, 'sin_marca_no_validado'],
+      ['marca distinta', nv({ validacion: 'validado' }), 'sin_marca_no_validado'],
+      ['marca con otra capitalización', nv({ validacion: 'NO_VALIDADO' }), 'sin_marca_no_validado'],
+      ['marca con espacio', nv({ validacion: 'no_validado ' }), 'sin_marca_no_validado'],
+      ['marca no texto', nv({ validacion: true }), 'sin_marca_no_validado'],
+      ['sin versión', nv({ version_paquete: undefined }), 'version_invalida'],
+      ['versión sin patch', nv({ version_paquete: '1.0' }), 'version_invalida'],
+      ['versión con prefijo', nv({ version_paquete: 'v1.0.0' }), 'version_invalida'],
+      ['versión con salto de línea', nv({ version_paquete: '1.0.0\n' }), 'version_invalida'],
+      ['versión numérica', nv({ version_paquete: 1 }), 'version_invalida'],
+      ['habilitado texto', nv({ habilitado_produccion: 'false' }), 'valor_no_booleano'],
+      ['habilitado null', nv({ habilitado_produccion: null }), 'valor_no_booleano'],
+      ['habilitado ausente', { validacion: 'no_validado', version_paquete: '1.0.0' }, 'campo_ausente'],
+      ['registro no objeto', 'texto', 'registro_invalido'],
+    ])('rechaza %s con el motivo %#', (_n, registro, motivo) => {
+      const r = separarRegistrosHabilitados([registro], 'pruebas');
+      expect(r.aceptados).toHaveLength(0);
+      expect(r.rechazados).toEqual([{ indice: 0, motivo }]);
+    });
+
+    it('la marca y la versión leídas por getter no cuentan', () => {
+      const g = { habilitado_produccion: false } as Record<string, unknown>;
+      Object.defineProperty(g, 'validacion', { get: () => 'no_validado', enumerable: true });
+      Object.defineProperty(g, 'version_paquete', { get: () => '1.0.0', enumerable: true });
+      expect(separarRegistrosHabilitados([g], 'pruebas').rechazados[0]?.motivo).toBe('sin_marca_no_validado');
+      const h = { habilitado_produccion: false, validacion: 'no_validado' } as Record<string, unknown>;
+      Object.defineProperty(h, 'version_paquete', { get: () => '1.0.0', enumerable: true });
+      expect(separarRegistrosHabilitados([h], 'pruebas').rechazados[0]?.motivo).toBe('version_invalida');
+    });
+
+    it('devuelve copias y la entrada que no es arreglo se rechaza', () => {
+      const entrada = [nv({ t: 'a' })];
+      const r = separarRegistrosHabilitados(entrada, 'pruebas');
+      (entrada[0] as Record<string, unknown>)['t'] = 'MUTADO';
+      expect(r.aceptados[0]?.registro['t']).toBe('a');
+      expect(separarRegistrosHabilitados({ a: 1 }, 'pruebas').rechazados).toEqual([{ indice: -1, motivo: 'registro_invalido' }]);
+    });
   });
 });
