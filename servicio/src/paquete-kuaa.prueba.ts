@@ -111,7 +111,7 @@ async function levantar(extraEntorno: Record<string, string>, lectorPaquete?: ()
   return { agentes, bitacora, enviar, armado: agentes.get('kuaa-segurolotengo')! };
 }
 
-const PRUEBAS = { CHATBOTRAG_PERFIL_CONOCIMIENTO: 'pruebas', CHATBOTRAG_BUCKET_PAQUETE: 'bucket-sintetico', CHATBOTRAG_VERSION_PAQUETE: '1.0.0' };
+const PRUEBAS = { APP_ENV: 'test', CHATBOTRAG_PERFIL_CONOCIMIENTO: 'pruebas', CHATBOTRAG_BUCKET_PAQUETE: 'bucket-sintetico', CHATBOTRAG_VERSION_PAQUETE: '1.0.0' };
 
 describe('paquete no validado de Kuaa en el servicio', () => {
   it('con perfil pruebas carga el paquete, lo marca y lo hace visible en la respuesta', async () => {

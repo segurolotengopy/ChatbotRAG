@@ -291,8 +291,9 @@ Para probar el paquete de contenido antes de que alguien lo valide, el servicio 
 
 - **Perfil por entorno.** `CHATBOTRAG_PERFIL_CONOCIMIENTO` ausente o vacío = `produccion`; `pruebas` lo activa;
   cualquier otro valor no vacío («PRUEBAS», «staging») es un `ErrorEntorno` (un typo no pasa por válido). `pruebas`
-  exige `CHATBOTRAG_BUCKET_PAQUETE` y `CHATBOTRAG_VERSION_PAQUETE` (X.Y.Z); `produccion` los rechaza; y con
-  `APP_ENV=production` ni el perfil `pruebas` ni el bucket se admiten.
+  exige `CHATBOTRAG_BUCKET_PAQUETE` y `CHATBOTRAG_VERSION_PAQUETE` (X.Y.Z); `produccion` los rechaza; y el perfil `pruebas` o el bucket
+  solo se admiten con `APP_ENV` (sin espacios ni mayúsculas) en {staging, development, test}: ausente, `prod*`,
+  `production` en cualquier grafía o un valor desconocido dan `ErrorEntorno` (NODE_ENV no distingue lo local).
 - **Solo agentes `kuaa`.** `conocimiento.paquete.habilitado` (booleano, solo en la base, nunca en un perfil)
   lo exige el esquema; `armar-agentes` carga el paquete solo si el agente es `kuaa`, el perfil es `pruebas` y el
   índice no es pgvector (con pgvector queda el evento `paquete_no_cargado` con código `PGVECTOR_NO_ADMITE`, sin
@@ -314,8 +315,9 @@ Para probar el paquete de contenido antes de que alguien lo valide, el servicio 
   prompts, formularios, imágenes, CSV ni `PRUEBAS_*`; `MANUAL_CAPACITACION_IA.docx` tampoco, porque contiene
   instrucciones a una IA) y escribe solo en una carpeta de salida ajena al repo. `CONVERSACIONES.json` exige
   **revisión humana por datos personales antes de subir**. No anonimiza nada.
-- `prompt/armar.ts` neutraliza en los fragmentos `═{2,}`, `━{3,}`, `={3,}` y la cadena «FIN DE RESPALDO
-  DOCUMENTAL», para que un texto del paquete no cierre el bloque de respaldo.
+- `prompt/armar.ts` normaliza (NFKC, sin ancho cero) y neutraliza en los fragmentos los dibujos de
+  caja, `═`/`━`/`=` repetidos (incluso separados por espacios), «FIN DE RESPALDO|DATOS», «INICIO DE RESPALDO|DATOS» y
+  un falso encabezado `[n] Documento:` al inicio de línea, para que un texto del paquete no cierre el bloque de respaldo.
 
 ### Agente Kuaa y ruta provisional `POST /v1/kuaa/mensaje`
 

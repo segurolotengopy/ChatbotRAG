@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { ErrorEntorno, leerEntorno } from './entorno.js';
 
 const CLIENTES = JSON.stringify([{ id: 'c1', agenteId: 'agente-uno', claveSha256: createHash('sha256').update('x').digest('hex') }]);
+const AMB = { APP_ENV: 'staging' };
 const base = (extra: Record<string, string> = {}): NodeJS.ProcessEnv => ({ CHATBOTRAG_CLIENTES: CLIENTES, ...extra });
 
 describe('perfil del conocimiento', () => {
@@ -14,7 +15,7 @@ describe('perfil del conocimiento', () => {
   });
 
   it('pruebas con bucket y versión es válido', () => {
-    const e = leerEntorno(base({ CHATBOTRAG_PERFIL_CONOCIMIENTO: 'pruebas', CHATBOTRAG_BUCKET_PAQUETE: 'bucket-sintetico', CHATBOTRAG_VERSION_PAQUETE: '1.0.0' }));
+    const e = leerEntorno(base({ ...AMB, CHATBOTRAG_PERFIL_CONOCIMIENTO: 'pruebas', CHATBOTRAG_BUCKET_PAQUETE: 'bucket-sintetico', CHATBOTRAG_VERSION_PAQUETE: '1.0.0' }));
     expect(e.perfilConocimiento).toBe('pruebas');
   });
 
@@ -37,12 +38,18 @@ describe('perfil del conocimiento', () => {
     }
   });
 
-  it('APP_ENV=production veda el perfil pruebas y el bucket del paquete', () => {
+  it('el paquete no validado solo se admite con APP_ENV staging, development o test (normalizado)', () => {
     const p = { CHATBOTRAG_PERFIL_CONOCIMIENTO: 'pruebas', CHATBOTRAG_BUCKET_PAQUETE: 'bucket-sintetico', CHATBOTRAG_VERSION_PAQUETE: '1.0.0' };
-    expect(() => leerEntorno(base({ ...p, APP_ENV: 'production' }))).toThrow(/APP_ENV=production/);
-    expect(() => leerEntorno(base({ CHATBOTRAG_BUCKET_PAQUETE: 'bucket-sintetico', APP_ENV: 'production' }))).toThrow(ErrorEntorno);
+    for (const ok of ['staging', 'Staging', ' development ', 'TEST']) expect(leerEntorno(base({ ...p, APP_ENV: ok })).perfilConocimiento).toBe('pruebas');
+    for (const malo of ['production', 'Production', 'PRODUCTION', 'production ', ' production', 'prod', 'produccion', 'prod-1', 'otro', '']) {
+      expect(() => leerEntorno(base({ ...p, APP_ENV: malo }))).toThrow(/APP_ENV/);
+      expect(() => leerEntorno(base({ CHATBOTRAG_BUCKET_PAQUETE: 'bucket-sintetico', APP_ENV: malo }))).toThrow(ErrorEntorno);
+    }
+    // Ausente: no se puede distinguir un entorno local con certeza (NODE_ENV vale development por omisión).
+    expect(() => leerEntorno(base(p))).toThrow(/APP_ENV/);
+    expect(() => leerEntorno(base({ ...p, NODE_ENV: 'development' }))).toThrow(/APP_ENV/);
+    // Sin paquete, cualquier APP_ENV es válido y el perfil es produccion.
     expect(leerEntorno(base({ APP_ENV: 'production' })).perfilConocimiento).toBe('produccion');
-    expect(leerEntorno(base({ ...p, APP_ENV: 'staging' })).perfilConocimiento).toBe('pruebas');
   });
 
   it('rechaza un nombre de bucket o una versión con forma inválida', () => {

@@ -28,6 +28,9 @@ export const esquemaCliente = z
 
 export type Cliente = z.infer<typeof esquemaCliente>;
 
+/** Ambientes no productivos donde se admite el paquete no validado. */
+const AMBIENTES_PRUEBAS: readonly string[] = ['staging', 'development', 'test'];
+
 export const esquemaEntorno = z.object({
   PUERTO: z.coerce.number().int().min(1).max(65535).default(8080),
   /** Directorio con los `*.json` de agentes y su carpeta `corpus/`. */
@@ -42,7 +45,7 @@ export const esquemaEntorno = z.object({
   CHATBOTRAG_LIMITE_IP_MINUTO: z.coerce.number().int().min(1).default(60),
   /** Secreto HMAC para firmar las llamadas a herramientas `http`. Opcional. */
   CHATBOTRAG_HMAC_HERRAMIENTAS: z.string().min(16).optional(),
-  /** Ambiente que fija deploy.sh (`staging` | `production`). Con `production` el paquete no validado está vedado. */
+  /** Ambiente que fija deploy.sh (`staging` | `production`). El paquete no validado solo se admite con staging, development o test. */
   APP_ENV: z.string().optional(),
   /**
    * Perfil del conocimiento de Kuaa. Ausente o vacío = `produccion`; `pruebas` lo activa; cualquier otro valor
@@ -96,9 +99,14 @@ export function leerEntorno(fuente: NodeJS.ProcessEnv = process.env): Entorno {
   const perfilConocimiento: 'produccion' | 'pruebas' = crudoPerfil === 'pruebas' ? 'pruebas' : 'produccion';
   const bucket = r.data.CHATBOTRAG_BUCKET_PAQUETE;
   const version = r.data.CHATBOTRAG_VERSION_PAQUETE;
-  // El ambiente de producción jamás admite el paquete no validado, ni su perfil ni su bucket.
-  if (r.data.APP_ENV === 'production' && (perfilConocimiento === 'pruebas' || bucket !== undefined)) {
-    throw new ErrorEntorno(['APP_ENV=production no admite CHATBOTRAG_PERFIL_CONOCIMIENTO=pruebas ni CHATBOTRAG_BUCKET_PAQUETE']);
+  // Lista BLANCA: el paquete no validado solo se admite si APP_ENV, normalizado, es un ambiente no productivo
+  // conocido. `NODE_ENV` vale `development` por omisión, así que no distingue un entorno local con certeza:
+  // sin APP_ENV, o con cualquier otro valor («prod», «production» en cualquier grafía, desconocido), se veda.
+  if (perfilConocimiento === 'pruebas' || bucket !== undefined) {
+    const ambiente = (r.data.APP_ENV ?? '').trim().toLowerCase();
+    if (!AMBIENTES_PRUEBAS.includes(ambiente)) {
+      throw new ErrorEntorno(['CHATBOTRAG_PERFIL_CONOCIMIENTO=pruebas y CHATBOTRAG_BUCKET_PAQUETE exigen APP_ENV en {staging, development, test}']);
+    }
   }
   // Combinaciones incoherentes: fallan el arranque en vez de adivinar la intención.
   if (perfilConocimiento === 'pruebas' && (!bucket || !version)) throw new ErrorEntorno(['CHATBOTRAG_PERFIL_CONOCIMIENTO=pruebas exige CHATBOTRAG_BUCKET_PAQUETE y CHATBOTRAG_VERSION_PAQUETE']);
