@@ -31,7 +31,7 @@
  */
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -170,6 +170,17 @@ function estamparRaiz(raiz: unknown, version: string): { raiz: unknown; registro
   throw new Error('la raíz de un JSON no es un arreglo ni un objeto');
 }
 
+/** Abre sin seguir enlaces y mide y lee con el mismo descriptor: entre la comprobación y la lectura el archivo no puede cambiar de objeto. */
+function leerArchivoAcotado(archivo: string, ruta: string): Buffer {
+  const fd = openSync(archivo, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    if (fstatSync(fd).size > TOPE_ARCHIVO) throw new Error(`el archivo supera ${TOPE_ARCHIVO} bytes: ${ruta}`);
+    return readFileSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+}
+
 export async function prepararPaquete(opciones: OpcionesPreparacion): Promise<ResumenPreparacion> {
   const { version } = opciones;
   const lista = opciones.lista ?? LISTA_PAQUETE_REAL;
@@ -201,8 +212,7 @@ export async function prepararPaquete(opciones: OpcionesPreparacion): Promise<Re
     // Un enlace en un directorio intermedio también sale del origen: se compara la ruta real.
     if (!dentroDe(origen, rutaReal(archivo))) throw new Error(`la ruta real queda fuera del origen: ${entrada.ruta}`);
     if (esSymlink(archivo)) throw new Error(`enlace simbólico en el origen: ${entrada.ruta}`);
-    if (statSync(archivo).size > TOPE_ARCHIVO) throw new Error(`el archivo supera ${TOPE_ARCHIVO} bytes: ${entrada.ruta}`);
-    const bytes = readFileSync(archivo);
+    const bytes = leerArchivoAcotado(archivo, entrada.ruta);
     if (sha256(bytes) !== esperada) throw new Error(`el SHA-256 no coincide con el manifiesto: ${entrada.ruta}`);
     const esDocx = entrada.ruta.endsWith('.docx');
     const nombre = basename(entrada.ruta).replace(/\.docx$/, '.md');
