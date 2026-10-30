@@ -2,7 +2,7 @@
  * Pruebas de la preparación del paquete de Kuaa. Solo fixtures sintéticos; el conversor de .docx se inyecta.
  */
 import { createHash } from 'node:crypto';
-import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -91,8 +91,11 @@ describe('prepararPaquete', () => {
 
   it('se niega a escribir en la raíz real del repositorio, en ~/Documentos (cualquier capitalización) y vía un enlace simbólico', async () => {
     const base = { origen: ORIGEN, version: '1.0.0', lista: LISTA, convertirDocx: conversor };
-    const raizRepo = fileURLToPath(new URL('../../../..', import.meta.url)); // raíz real del repositorio cuando corre en un worktree
-    await expect(prepararPaquete({ ...base, salida: join(raizRepo, 'salida-prohibida') })).rejects.toThrow(/repositorio/);
+    // Solo dentro de un worktree (.claude/worktrees/<nombre>) cuatro niveles arriba está la raíz real del repositorio; en el CI no.
+    const raizRepo = fileURLToPath(new URL('../../../..', import.meta.url));
+    if (existsSync(join(raizRepo, '.git'))) {
+      await expect(prepararPaquete({ ...base, salida: join(raizRepo, 'salida-prohibida') })).rejects.toThrow(/repositorio/);
+    }
     await expect(prepararPaquete({ ...base, salida: join(homedir(), 'DOCUMENTOS', 'salida-prohibida') })).rejects.toThrow(/Documentos/);
     await expect(prepararPaquete({ ...base, salida: join(homedir(), 'documentos', 'x') })).rejects.toThrow(/Documentos/);
     const tmp = temporal('preparar-kuaa-');
