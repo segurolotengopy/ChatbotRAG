@@ -2,18 +2,19 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { ErrorPaqueteGcs, LectorPaqueteGcs, crearClienteGcs, type ClienteObjetos } from './lector.js';
 
-const gcs = vi.hoisted(() => ({ pedidos: [] as string[], bucket: '', fallo: 0 }));
+const gcs = vi.hoisted(() => ({ pedidos: [] as string[], opciones: [] as unknown[], bucket: '', fallo: 0 }));
 vi.mock('@google-cloud/storage', () => ({
   Storage: class {
     bucket(nombre: string) {
       gcs.bucket = nombre;
       return {
-        file: (ruta: string) => ({
+        file: (ruta: string, opciones?: unknown) => ({
           async getMetadata() {
-            return [{ size: String(Buffer.byteLength('contenido-falso')) }];
+            return [{ size: String(Buffer.byteLength('contenido-falso')), generation: 1234567 }];
           },
           async download() {
             gcs.pedidos.push(ruta);
+            gcs.opciones.push(opciones);
             if (gcs.fallo) throw Object.assign(new Error('x'), { code: gcs.fallo });
             return [Buffer.from('contenido-falso', 'utf8')];
           },
@@ -25,16 +26,20 @@ vi.mock('@google-cloud/storage', () => ({
 
 const sha = (t: string) => createHash('sha256').update(t).digest('hex');
 
-function cliente(objetos: Record<string, string>, fallo?: { ruta: string; code: number }): ClienteObjetos & { pedidos: string[] } {
+function cliente(objetos: Record<string, string>, fallo?: { ruta: string; code: number }): ClienteObjetos & { pedidos: string[]; generaciones: string[] } {
   const pedidos: string[] = [];
+  const generaciones: string[] = [];
   return {
     pedidos,
-    async tamano(ruta) {
+    generaciones,
+    async metadatos(ruta) {
+      if (fallo && ruta === fallo.ruta) throw Object.assign(new Error('detalle-interno-con-bucket'), { code: fallo.code });
       const o = objetos[ruta];
       if (o === undefined) throw Object.assign(new Error('no existe'), { code: 404 });
-      return Buffer.byteLength(o);
+      return { tamano: Buffer.byteLength(o), generacion: `g-${ruta}` };
     },
-    async descargar(ruta) {
+    async descargar(ruta, generacion) {
+      generaciones.push(`${ruta}@${generacion}`);
       pedidos.push(ruta);
       if (fallo && ruta === fallo.ruta) throw Object.assign(new Error('detalle-interno-con-bucket'), { code: fallo.code });
       const o = objetos[ruta];
@@ -85,9 +90,30 @@ describe('LectorPaqueteGcs', () => {
 
   it('un cliente cuyos metadatos mienten pero descarga otro largo también falla', async () => {
     const c = cliente({ '1.0.0/manifiesto.json': manifiesto(), '1.0.0/a.json': `${contenido}   ` });
-    const l = new LectorPaqueteGcs({ bucket: 'b', version: '1.0.0', cliente: { ...c, tamano: async () => Buffer.byteLength(contenido) } });
+    const l = new LectorPaqueteGcs({ bucket: 'b', version: '1.0.0', cliente: { ...c, metadatos: async () => ({ tamano: Buffer.byteLength(contenido), generacion: 'g' }) } });
     await l.leerManifiesto();
     expect(await codigoDe(l.leer('a.json'))).toBe('INTEGRIDAD');
+  });
+
+  it('descarga cada objeto fijando la generación que devolvieron los metadatos', async () => {
+    const c = cliente({ '1.0.0/manifiesto.json': manifiesto(), '1.0.0/a.json': contenido });
+    const l = new LectorPaqueteGcs({ bucket: 'b', version: '1.0.0', cliente: c });
+    await l.leerManifiesto();
+    await l.leer('a.json');
+    expect(c.generaciones).toEqual(['1.0.0/manifiesto.json@g-1.0.0/manifiesto.json', '1.0.0/a.json@g-1.0.0/a.json']);
+  });
+
+  it('un manifiesto de más de 256 KB no se descarga (MANIFIESTO)', async () => {
+    const c = cliente({ '1.0.0/manifiesto.json': 'x'.repeat(256 * 1024 + 1) });
+    const l = new LectorPaqueteGcs({ bucket: 'b', version: '1.0.0', cliente: c });
+    expect(await codigoDe(l.leerManifiesto())).toBe('MANIFIESTO');
+    expect(c.pedidos).toEqual([]);
+  });
+
+  it('un manifiesto que dice pesar poco pero baja más de 256 KB también falla', async () => {
+    const c = cliente({ '1.0.0/manifiesto.json': 'x'.repeat(256 * 1024 + 1) });
+    const l = new LectorPaqueteGcs({ bucket: 'b', version: '1.0.0', cliente: { ...c, metadatos: async () => ({ tamano: 10, generacion: 'g' }) } });
+    expect(await codigoDe(l.leerManifiesto())).toBe('MANIFIESTO');
   });
 
   it('un manifiesto de otra versión da VERSION, distinto de MANIFIESTO', async () => {
@@ -139,9 +165,12 @@ describe('crearClienteGcs', () => {
   it('descarga del bucket indicado con la identidad del entorno (cliente falso)', async () => {
     gcs.fallo = 0;
     const c = crearClienteGcs('mi-bucket');
-    expect((await c.descargar('1.0.0/a.json')).toString('utf8')).toBe('contenido-falso');
+    expect(await c.metadatos('1.0.0/a.json')).toEqual({ tamano: Buffer.byteLength('contenido-falso'), generacion: '1234567' });
+    gcs.pedidos.length = 0;
+    expect((await c.descargar('1.0.0/a.json', '1234567')).toString('utf8')).toBe('contenido-falso');
     expect(gcs.bucket).toBe('mi-bucket');
     expect(gcs.pedidos).toEqual(['1.0.0/a.json']);
+    expect(gcs.opciones).toEqual([{ generation: '1234567' }]);
   });
 
   it('propaga el código del error para que el lector lo traduzca', async () => {

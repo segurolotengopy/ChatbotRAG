@@ -28,20 +28,24 @@ export class ErrorPaqueteGcs extends Error {
 
 /** Costura mínima sobre el cliente de GCS: descarga un objeto del bucket ya fijado. */
 export interface ClienteObjetos {
-  /** Tamaño en bytes según los metadatos del objeto, SIN descargarlo. */
-  tamano(rutaObjeto: string): Promise<number>;
-  descargar(rutaObjeto: string): Promise<Buffer>;
+  /** Tamaño y generación según los metadatos del objeto, SIN descargarlo. */
+  metadatos(rutaObjeto: string): Promise<{ tamano: number; generacion: string }>;
+  /** Descarga EXACTAMENTE esa generación: si el objeto se reemplaza entre la consulta y la descarga, falla. */
+  descargar(rutaObjeto: string, generacion: string): Promise<Buffer>;
 }
+
+/** Tope del manifiesto: se consulta su tamaño antes de bajarlo. */
+export const TOPE_BYTES_MANIFIESTO = 256 * 1024;
 
 export function crearClienteGcs(bucket: string): ClienteObjetos {
   const b = new Storage().bucket(bucket);
   return {
-    async tamano(rutaObjeto) {
-      const [metadatos] = await b.file(rutaObjeto).getMetadata();
-      return Number(metadatos.size);
+    async metadatos(rutaObjeto) {
+      const [m] = await b.file(rutaObjeto).getMetadata();
+      return { tamano: Number(m.size), generacion: String(m.generation) };
     },
-    async descargar(rutaObjeto) {
-      const [contenido] = await b.file(rutaObjeto).download();
+    async descargar(rutaObjeto, generacion) {
+      const [contenido] = await b.file(rutaObjeto, { generation: generacion }).download();
       return contenido;
     },
   };
@@ -68,7 +72,11 @@ export class LectorPaqueteGcs implements LectorPaquete {
   async leerManifiesto(): Promise<ManifiestoPaquete> {
     let crudo: Buffer;
     try {
-      crudo = await this.cliente.descargar(`${this.version}/manifiesto.json`);
+      const ruta = `${this.version}/manifiesto.json`;
+      const m = await this.cliente.metadatos(ruta);
+      if (!(m.tamano <= TOPE_BYTES_MANIFIESTO)) throw new ErrorPaqueteGcs('MANIFIESTO');
+      crudo = await this.cliente.descargar(ruta, m.generacion);
+      if (crudo.length > TOPE_BYTES_MANIFIESTO) throw new ErrorPaqueteGcs('MANIFIESTO');
     } catch (e) {
       throw traducir(e);
     }
@@ -92,8 +100,11 @@ export class LectorPaqueteGcs implements LectorPaquete {
     let contenido: Buffer;
     try {
       // El tamaño declarado se contrasta con los metadatos ANTES de descargar: un objeto más grande no se baja.
-      if ((await this.cliente.tamano(`${this.version}/${rutaRelativa}`)) !== entrada.bytes) throw new ErrorPaqueteGcs('INTEGRIDAD');
-      contenido = await this.cliente.descargar(`${this.version}/${rutaRelativa}`);
+      const ruta = `${this.version}/${rutaRelativa}`;
+      const m = await this.cliente.metadatos(ruta);
+      if (m.tamano !== entrada.bytes) throw new ErrorPaqueteGcs('INTEGRIDAD');
+      // Se baja la generación que se midió, no «la última»: evita un cambio entre la consulta y la descarga.
+      contenido = await this.cliente.descargar(ruta, m.generacion);
     } catch (e) {
       throw traducir(e);
     }
