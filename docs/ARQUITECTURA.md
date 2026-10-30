@@ -213,7 +213,7 @@ marcas siguen borrándose; no garantiza que el modelo cite la marca.
 
 ### Criterio de salud y PEP
 
-`seguridad.criterioSaludPep` (`primera_persona` por omisión, `declaracion`) decide cuándo bloquea
+`seguridad.criterioSaludPep` (`primera_persona` por omisión, `declaracion`, `sin_sujeto`) decide cuándo bloquea
 la compuerta de entrada `salud` y `pep`. Con `declaracion` solo queda libre una consulta de
 formulario: el mensaje EMPIEZA con «si» condicional (sin tilde; «Sí marco…» es una afirmación y se
 comprueba sobre el texto con tildes) seguido de «marco/respondo/pongo/…» (no «declaro» ni «indico»,
@@ -228,12 +228,35 @@ Sobre los 174 mensajes de la batería la única diferencia entre ambos criterios
 No cambia cédula, tarjeta, código, clave ni inyección. Quien escribe «SI» en mayúsculas sin tilde
 pasa como condicional si el resto es una pregunta de procedimiento.
 
-**Límite preexistente en ambos criterios (pendiente de decisión del propietario).** La regla de
-`esPreguntaGeneral` deja pasar una declaración de salud o de PEP escrita como pregunta, sin
-primera persona verbal clara: «me detectaron un tumor ¿me cubren?», «Fui PEP hasta el año pasado,
-¿me afecta?», «Era ministro, ¿puedo contratar?» pasan con `primera_persona` y con `declaracion`.
-Las pruebas fijan este comportamiento actual para que un cambio futuro sea deliberado; no lo
-aprueban.
+**Límite preexistente en `primera_persona` y `declaracion`.** La regla de `esPreguntaGeneral` deja
+pasar una declaración de salud o de PEP escrita como pregunta, sin primera persona verbal clara:
+«me detectaron un tumor ¿me cubren?», «Fui PEP hasta el año pasado, ¿me afecta?», «Era ministro,
+¿puedo contratar?». Las pruebas fijan ese comportamiento para que un cambio sea deliberado. El
+criterio `sin_sujeto` (siguiente sección) lo cierra en gran parte.
+
+### Criterio `sin_sujeto` para salud y PEP
+
+`seguridad.criterioSaludPep` (`primera_persona` por omisión | `declaracion` | `sin_sujeto`; este último admite también el marco de formulario de `declaracion`) decide cómo trata la compuerta de entrada el vocabulario de salud y de PEP. Origen: hallazgo HIGH sobre la regla #7. `esPreguntaGeneral` deja pasar todo texto con «?», de modo que una declaración escrita como pregunta («me detectaron un tumor, ¿me cubren?», «fui PEP hasta el año pasado, ¿me afecta?») llegaba al modelo y a la memoria.
+
+Con `sin_sujeto`, el vocabulario de salud o de PEP bloquea siempre, salvo que el mensaje sea una pregunta de producto sin sujeto personal (`compuertas/sujeto-personal.ts`). Esa excepción exige, a la vez: pregunta (lleva «?» o empieza con «¿»); 200 caracteres o menos y una sola oración; apertura con una palabra de una lista cerrada (interrogativo, artículo o verbo del producto en tercera persona); ningún marcador personal (pronombres, verbos en primera persona, parientes, terceros); ninguna ancla de tiempo; y que además la apruebe la regla de siempre. Excepción estrecha: «¿Me cubre el cáncer…?» pasa (equivale a «¿cubre cáncer?»). Dentro de `sin_sujeto` también se quitan los caracteres invisibles, se detecta «P E P» con separadores y se neutralizan las frases de pago con «operación».
+
+Monotonía: `sin_sujeto` bloquea todo lo que bloquea `primera_persona` y nunca bloquea menos; la prueba `entrada-sin-sujeto.prueba.ts` lo verifica con la ruta vieja como oráculo. Las demás categorías y el `modo` de `vocabularioEntrada` no cambian. Si el PR de `declaracion` (`esConsultaDeFormulario`) se integra, `sin_sujeto` debe componer con él (`criterio !== 'primera_persona'`).
+
+Impacto medido sobre 543 entradas (174 de la batería por pantalla y 369 de la batería del demo): cambian 5, todas de PASA a BLOQUEA; ninguna de BLOQUEA a PASA.
+
+| Caso | Mensaje | Lectura |
+|---|---|---|
+| SEN-030 | «¿Mi enfermedad está cubierta por el seguro?» | Correcto (era una fuga) |
+| PAG-revision-manual-004 | «¿Fue por mi enfermedad o por ser PEP?» | Correcto |
+| DER-015 | «Si me diagnostican cáncer el mes que viene, ¿me pagan?» | Falso positivo por especificación (hipótesis personal) |
+| MED-002 | «¿Qué medicamento me conviene tomar para la presión alta?» | Aceptable: es consejo médico y lleva dato implícito |
+| GUA-005 | «Pe seguro ojapo piko cobertura cáncer rehe?» | Falso positivo en guaraní |
+
+Qué NO garantiza: reduce, no elimina. Bloquea las declaraciones de salud o PEP que usan el vocabulario conocido, aunque vengan como pregunta; no detecta datos personales escritos sin ese vocabulario ni sin marcas de persona (sinónimos como «biopsia» o «diálisis», diagnósticos impersonales, guaraní o portugués sin vocabulario en español, homóglifos de otros alfabetos, datos repartidos en varios turnos). Falso positivo conocido: «¿Funcionario público de alto rango cuenta como PEP?».
+
+Revisión posterior (revisor de código y seguridad): la excepción también rechaza la cláusula subordinada sobre la condición (`que` no interrogativo, `aunque`, `porque`, `mientras`, `cuando` fuera de la apertura y `si` seguido de un verbo en primera persona), los enclíticos («cubrirme», «tratarme»), `acabo` y las anclas de tiempo («hoy», «semana pasada», días de la semana). Los invisibles y combinantes (\p{Mn}, \p{Me}, \p{Cf} y rellenos Hangul o braille) se quitan antes del vocabulario, y la sigla PEP admite hasta tres separadores no alfanuméricos. Solo se neutralizan «Recibimos tu operación» (sin complemento médico), «operación de pago», «operación bancaria» y «número, código o comprobante de operación».
+
+Límites que quedan abiertos y se documentan, no se corrigen aquí: terceros con nombre propio sin cláusula relativa («¿La señora Gómez con diabetes puede contratar?»), sinónimos fuera del vocabulario («diálisis», «biopsia»), «¿Cubre el cáncer de mamá?» (se admite «de mamá» para no bloquear «cáncer de mama»), homóglifos y letras separadas. Compromiso: PR de ampliación del vocabulario de salud en 30 días. Además, un perfil puede volver a `primera_persona` con su propia sección `seguridad` (como con las demás claves de seguridad), así que el cierre del hallazgo depende de la configuración vigente y no del código solo.
 
 ## 7. Aplicación a segurolotengo-demo
 

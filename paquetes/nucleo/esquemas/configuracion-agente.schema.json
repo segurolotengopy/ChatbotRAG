@@ -468,7 +468,8 @@
           "type": "string",
           "enum": [
             "primera_persona",
-            "declaracion"
+            "declaracion",
+            "sin_sujeto"
           ]
         },
         "marcasPermitidas": {
@@ -1191,7 +1192,8 @@
                 "type": "string",
                 "enum": [
                   "primera_persona",
-                  "declaracion"
+                  "declaracion",
+                  "sin_sujeto"
                 ]
               },
               "marcasPermitidas": {
