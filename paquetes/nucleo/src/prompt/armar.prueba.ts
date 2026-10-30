@@ -123,3 +123,27 @@ describe('pantalla actual (contexto de página)', () => {
     expect(p).toContain('[2] Documento: «Paso 2 · Verifique su número» (versión v1)\nPulse Continuar.');
   });
 });
+
+describe('«sin voseo» y el tratamiento de la persona', () => {
+  const armar = (idioma: string, tratamiento: 'usted' | 'vos') =>
+    armarPrompt({
+      config: validarConfiguracion({
+        ...CONFIG_PRUEBA,
+        identidad: { ...CONFIG_PRUEBA.identidad, idioma },
+        voz: { ...CONFIG_PRUEBA.voz, tratamiento },
+      }),
+      ahora: new Date('2026-10-12T14:00:00Z'),
+      fragmentos: [],
+      orientacion: { facetas: {} },
+      canal: 'web',
+    });
+
+  it.each(['es-PY', 'es-BO'])('con %s y usted conserva «sin voseo»', (idioma) => {
+    expect(armar(idioma, 'usted')).toContain('latinoamericano, sin voseo');
+  });
+  it.each(['es-PY', 'es-BO'])('con %s y vos no se contradice: no dice «sin voseo»', (idioma) => {
+    const p = armar(idioma, 'vos');
+    expect(p).not.toContain('sin voseo');
+    expect(p).toContain('VOS');
+  });
+});

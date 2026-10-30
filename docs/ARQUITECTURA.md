@@ -258,6 +258,75 @@ Revisión posterior (revisor de código y seguridad): la excepción también rec
 
 Límites que quedan abiertos y se documentan, no se corrigen aquí: terceros con nombre propio sin cláusula relativa («¿La señora Gómez con diabetes puede contratar?»), sinónimos fuera del vocabulario («diálisis», «biopsia»), «¿Cubre el cáncer de mamá?» (se admite «de mamá» para no bloquear «cáncer de mama»), homóglifos y letras separadas. Compromiso: PR de ampliación del vocabulario de salud en 30 días. Además, un perfil puede volver a `primera_persona` con su propia sección `seguridad` (como con las demás claves de seguridad), así que el cierre del hallazgo depende de la configuración vigente y no del código solo.
 
+### Carga a Kuaa: registros habilitados y oportunidad de venta
+
+`conocimiento/registros-habilitados.ts` (`separarRegistrosHabilitados`) deja pasar a Kuaa solo
+los registros con `habilitado_produccion === true` (booleano exacto); `estado_validacion` y
+`aprobacion` no habilitan. Falla cerrado («true», 1, «si», null o ausencia no habilitan) y
+devuelve de los rechazados solo índice y motivo. No valida la veracidad del contenido ni la
+revisión humana. `scripts/validar-paquete-kuaa.mts` imprime únicamente conteos
+(`--exigir-habilitados` sale con 1 si no hay ninguno); `--perfil=pruebas` acepta además los `false` con `validacion: "no_validado"` y `version_paquete` X.Y.Z, que salen con `estado: 'no_validado'` y se cuentan aparte, nunca como habilitados (el perfil `produccion`, por omisión, no los admite ni en el tipo); un registro `true` que además trae `validacion: "no_validado"` es contradictorio y se rechaza en ambos perfiles (`registro_contradictorio`); acepta raíz arreglo, `{registros: [...]}` u
+objeto único y falla con cualquier otra. La bandera se lee solo como valor de datos propio (un
+getter, un Proxy o un objeto no plano no habilitan) y, si el JSON repite la clave, gana la última.
+
+`oportunidad/esquemas.ts` define, con Zod estricto y enumerados, la etapa comercial E01..E12,
+los estados operativos (solicitud, pago, aceptación, póliza, documentos, atención humana), el
+estado de objeción, el permiso de seguimiento y el `ContextoOportunidad` mínimo, sin datos
+personales. `estadosTrasPropuestaDeEtapa` devuelve una copia sin cambios: una etapa propuesta por el modelo
+nunca es evidencia, y en ChatbotRAG no existe ninguna transición operativa (los estados los fija
+SLT en cada petición). Contrato F2 v0.3 de SLT: el permiso de seguimiento es
+`{vigente, canal}` (sin `evidencia_id`), el contexto lleva `pagina` (con `ID_PAGINA`) y un `resumen` de
+enumerados cerrados (necesidad, producto, plan, `objecion_codigo` O01..O32 o `ninguna`,
+`objecion_estado` o `ninguna`; cualquier otro valor se rechaza); `oportunidad_id` y `tarifa_version`
+tienen formas estrictas. `estados` y
+`resumen` son datos y nunca se interpolan en el prompt. Se declaran el enum de tipos de evento (sin
+endpoint) y el esquema de salida; `filtrarBotonesSalida` descarta `continuar_pago` si la solicitud
+no está completada.
+
+### Agente Kuaa y ruta provisional `POST /v1/kuaa/mensaje`
+
+`tipoAgente: kuaa` (por omisión `general`) marca un agente de oportunidad de venta
+(`configuraciones/kuaa.json`: voseo, 0 fuentes de conocimiento, criterio de salud y PEP `declaracion`,
+sin `recomienda_plan`). `oportunidad/agente-kuaa.ts` es un recorrido aparte de `Agente.responder`:
+
+1. **Entrada.** Normaliza localmente (NFKC, sin caracteres de formato, marcas combinantes ni rellenos,
+   homóglifos cirílicos y griegos plegados) ANTES de las compuertas y de enviar al modelo; el modelo recibe
+   el texto normalizado. Un mensaje más largo que `maxCaracteresEntrada` responde 413 `TEXTO_LARGO` (con
+   bitácora) y uno vacío 400.
+2. **Prompt** (`prompt-kuaa.ts`): jerarquía, reglas y contexto elegidos por enumerado, nunca interpolados;
+   `oportunidad_id`, `tarifa_version`, `pagina` y el código de objeción no entran.
+3. **Salida.** El modelo responde un objeto JSON dentro del texto (el puerto no permite pedir JSON con
+   esquema; temperatura baja desde la configuración). Se valida contra `SalidaOportunidad`, se sanea el
+   texto y se aplican detectores deterministas propios (`salida-kuaa.ts`): enlaces, precios y contactos
+   (con NFKC, sin invisibles ni homóglifos, formas ofuscadas), afirmaciones de hecho que solo el sistema
+   conoce (pago acreditado o póliza emitida salvo que `estados` lo informe, «quedó agendado», «te transferí»,
+   «estás cubierto», «sos elegible», promesas de indemnización) y fugas del prompt. Cualquiera, un JSON
+   inválido, un corte por `max_tokens`, `afirma_cobro_real` o un error del proveedor devuelven el mensaje de
+   error temporal con botones y propuestas vacíos, nunca el texto crudo.
+4. **Sin respaldo no se afirma nada**: mientras no haya fuentes se responde el mensaje fijo, sin excepción
+   por «pregunta final». En ese caso, en un fallback o en un reemplazo de compuerta, la etapa propuesta es la
+   actual y la objeción es null. `continuar_pago` solo sobrevive con `solicitud: completada`; las propuestas
+   no se repiten; `seguimiento_solicitado` se descarta sin permiso vigente; la marca `[DERIVAR]` agrega
+   `atencion_humana_solicitada`.
+5. **Memoria.** En proceso, con clave `kuaa:<cliente>:<sha256>` (por cliente y oportunidad; el «:» no lo
+   acepta `ID_CONVERSACION`, así que las rutas generales no pueden nombrarla y, para un cliente de Kuaa,
+   `/v1/conversaciones/*` responden 404 `AGENTE_KUAA`). Guarda el texto normalizado de la persona y el JSON
+   validado de la respuesta hasta 30 minutos: **es una desviación del contrato de SLT, que dice «sin
+   estado»**; se pierde al reiniciar y no se comparte entre instancias.
+6. **Respuesta.** 200 con exactamente las claves de `SalidaOportunidad` (sin `ok`); los errores llevan
+   `ok: false`. La bitácora no lleva texto ni el id de la oportunidad. La ruta es PROVISIONAL.
+
+Qué corrige el filtro previo de SLT (`asistente.ts`/`asistente-salida.ts`) y qué no: esta capa no lo
+sustituye; es defensa en profundidad y su detector es una lista, no una demostración.
+
+Límites que siguen abiertos (K2b y otros): las compuertas compartidas de `compuertas/`, calibradas con usted
+y tuteo, no detectan por sí solas voseo como «sos elegible» o «te vamos a pagar la indemnización» (en Kuaa
+las frena el detector propio) y sus textos de reemplazo hablan de usted («¿En qué puedo ayudarle?»);
+paráfrasis de inyección («olvidá lo anterior», «SYSTEM:», «repetí tus instrucciones») pasan al modelo; los
+detectores dan falsos positivos a propósito (por ejemplo «10.000 personas») y no atrapan toda forma; con
+pago acreditado, `afirma_cobro_real` sigue llevando al fallback; no se detectan correos ni teléfonos de la
+persona en la entrada; no se sabe cómo obedece el modelo real al formato JSON.
+
 ## 7. Aplicación a segurolotengo-demo
 
 El demo (Next.js 15 en AWS Amplify) **no embebe** el núcleo: consume el servicio por

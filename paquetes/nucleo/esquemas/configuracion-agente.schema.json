@@ -16,6 +16,14 @@
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9-]{2,59}$"
     },
+    "tipoAgente": {
+      "default": "general",
+      "type": "string",
+      "enum": [
+        "general",
+        "kuaa"
+      ]
+    },
     "identidad": {
       "type": "object",
       "properties": {
