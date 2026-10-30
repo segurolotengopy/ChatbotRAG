@@ -155,4 +155,25 @@ describe('prepararPaquete', () => {
     const r = await prepararPaquete({ origen: ORIGEN, salida: carpetaNueva(), version: '1.0.0', lista });
     expect(r.revisionHumana).toEqual(['A/LISTA.json']);
   });
+
+  it('un directorio intermedio que es enlace simbólico hacia fuera del origen se rechaza', async () => {
+    const copia = temporal('origen-kuaa-');
+    cpSync(ORIGEN, copia, { recursive: true });
+    const fuera = temporal('fuera-kuaa-');
+    cpSync(join(copia, 'A'), fuera, { recursive: true }); // mismos archivos y mismas huellas
+    rmSync(join(copia, 'A'), { recursive: true });
+    symlinkSync(fuera, join(copia, 'A'));
+    await expect(prepararPaquete({ origen: copia, salida: carpetaNueva(), version: '1.0.0', lista: LISTA, convertirDocx: conversor })).rejects.toThrow(/fuera del origen/);
+  });
+
+  it('quita cualquier URI data: y rechaza el archivo si queda uno', async () => {
+    const salida = carpetaNueva();
+    const conUri = async () => 'Texto [enlace](data:text/html;base64,PHNjcmlwdD4=) y data:application/json,abc más; metadata: es una palabra';
+    await prepararPaquete({ origen: ORIGEN, salida, version: '1.0.0', lista: LISTA, convertirDocx: conUri });
+    const md = leer(salida, 'MANUAL.md');
+    expect(md).not.toMatch(/(?<![a-z])data:/i);
+    expect(md).toContain('metadata: es una palabra');
+    const queda = async () => 'Intento: data: sin carga útil que sobrevive';
+    await expect(prepararPaquete({ origen: ORIGEN, salida: carpetaNueva(), version: '1.0.0', lista: LISTA, convertirDocx: queda })).rejects.toThrow(/data:/);
+  });
 });

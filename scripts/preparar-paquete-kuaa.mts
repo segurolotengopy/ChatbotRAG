@@ -136,11 +136,11 @@ function bajoDocumentos(salidaReal: string): boolean {
   return readdirSync(casa).some((n) => n.toLowerCase() === 'documentos' && dentroDe(rutaReal(join(casa, n)), salidaReal));
 }
 
-/** Quita las imágenes incrustadas (`data:`): no son texto y pueden esconder carga útil o datos personales. */
+/** Quita las imágenes incrustadas y cualquier URI `data:` (no son texto y pueden esconder carga útil o datos personales). */
 export function quitarImagenesIncrustadas(markdown: string): string {
   let actual = markdown;
   for (;;) {
-    const siguiente = actual.replace(/!\[[^\]]*\]\(data:[^)]*\)/gi, '');
+    const siguiente = actual.replace(/!\[[^\]]*\]\(data:[^)]*\)/gi, '').replace(/data:[^\s)"'>]+/gi, '');
     if (siguiente === actual) return actual;
     actual = siguiente;
   }
@@ -198,6 +198,8 @@ export async function prepararPaquete(opciones: OpcionesPreparacion): Promise<Re
     if (esperada === undefined) throw new Error(`falta en el manifiesto de origen: ${entrada.ruta}`);
     const archivo = join(origen, entrada.ruta);
     if (!dentroDe(origen, archivo)) throw new Error('ruta fuera del origen');
+    // Un enlace en un directorio intermedio también sale del origen: se compara la ruta real.
+    if (!dentroDe(origen, rutaReal(archivo))) throw new Error(`la ruta real queda fuera del origen: ${entrada.ruta}`);
     if (esSymlink(archivo)) throw new Error(`enlace simbólico en el origen: ${entrada.ruta}`);
     if (statSync(archivo).size > TOPE_ARCHIVO) throw new Error(`el archivo supera ${TOPE_ARCHIVO} bytes: ${entrada.ruta}`);
     const bytes = readFileSync(archivo);
@@ -208,6 +210,8 @@ export async function prepararPaquete(opciones: OpcionesPreparacion): Promise<Re
     nombres.add(nombre);
     if (esDocx) {
       const md = quitarImagenesIncrustadas(await convertir(archivo)).trim();
+      // Lo que sobreviva a la limpieza (p. ej. un `data:` partido) invalida el archivo; «metadata:» no cuenta.
+      if (/(?<![A-Za-z0-9_])data:/i.test(md)) throw new Error(`queda un URI data: en la conversión: ${entrada.ruta}`);
       if (md === '') throw new Error(`la conversión quedó vacía: ${entrada.ruta}`);
       salidas.push({ nombre, contenido: `${md}\n`, titular: entrada.titular });
       registros += 1;
