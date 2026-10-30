@@ -429,6 +429,16 @@ export const esquemaConfiguracionAgente = z
     message: 'un perfil no puede definir conocimiento.paquete: el paquete se habilita solo en la base',
     path: ['perfiles'],
   })
+  // La colección `<agente>--paquete` es del paquete no validado: ni un perfil ni una colección configurada
+  // pueden coincidir con ella, o el corpus público y lo no validado compartirían fragmentos.
+  .refine((c) => Object.keys(c.perfiles).every((id) => id.toLowerCase() !== 'paquete'), {
+    message: 'el id de perfil «paquete» está reservado para el paquete no validado',
+    path: ['perfiles'],
+  })
+  .refine((c) => [c.conocimiento.coleccion, ...Object.values(c.perfiles).map((p) => p.conocimiento?.coleccion)].every((x) => x === undefined || !x.endsWith('--paquete')), {
+    message: 'conocimiento.coleccion no puede terminar en «--paquete» (reservado)',
+    path: ['conocimiento', 'coleccion'],
+  })
   .refine((c) => !c.perfilPorDefecto || c.perfilPorDefecto in c.perfiles, {
     message: 'perfilPorDefecto debe existir en perfiles',
     path: ['perfilPorDefecto'],

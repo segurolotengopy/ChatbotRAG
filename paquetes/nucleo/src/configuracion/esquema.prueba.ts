@@ -43,4 +43,12 @@ describe('conocimiento.paquete', () => {
   it('un perfil no puede definirlo', () => {
     expect(detalles(() => validarConfiguracion({ ...CONFIG_PRUEBA, tipoAgente: 'kuaa', perfiles: { PA: { nombre: 'A', conocimiento: { paquete: { habilitado: true } } } } }))).toMatch(/perfil no puede definir/);
   });
+  it('reserva el id de perfil «paquete» (cualquier capitalización) y las colecciones que terminan en --paquete', () => {
+    for (const id of ['PAQUETE', 'Paquete']) {
+      expect(detalles(() => validarConfiguracion({ ...CONFIG_PRUEBA, perfiles: { [id]: { nombre: 'X' } } }))).toMatch(/reservado/);
+    }
+    expect(detalles(() => validarConfiguracion({ ...CONFIG_PRUEBA, conocimiento: { ...CONFIG_PRUEBA.conocimiento, coleccion: 'kuaa--paquete' } }))).toMatch(/--paquete/);
+    expect(detalles(() => validarConfiguracion({ ...CONFIG_PRUEBA, perfiles: { PA: { nombre: 'A', conocimiento: { coleccion: 'otra--paquete' } } } }))).toMatch(/--paquete/);
+    expect(validarConfiguracion({ ...CONFIG_PRUEBA, conocimiento: { ...CONFIG_PRUEBA.conocimiento, coleccion: 'kuaa-paquete' } }).conocimiento.coleccion).toBe('kuaa-paquete');
+  });
 });
