@@ -80,7 +80,7 @@
     "terminosConfidenciales": ["margen interno", "comisión de intermediación", "meta comercial", "Gemini", "Vertex", "entrenado por Google", "modelo de Google", "creado por Google", "desarrollado por Google", "Google AI"],
     "maxCaracteresEntrada": 1500,
     "vocabularioEntrada": "dato",
-    "criterioSaludPep": "declaracion",
+    "criterioSaludPep": "sin_sujeto",
     "marcasPermitidas": ["DERIVAR"],
     "marcasLiterales": ["PENDIENTE_DE_DEFINICION_LEGAL"],
     "nombresDePlanes": ["VIVE TOTAL", "VIVE+", "VIVE"]

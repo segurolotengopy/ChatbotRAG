@@ -214,12 +214,9 @@ export const esquemaSeguridad = z
      * del 24-oct-2026 (una de 10 entradas bloqueadas, la única por error). Es un enumerado: jamás se
      * interpola texto libre. NO garantiza detectar toda declaración personal escrita de otra forma:
      * fuera del marco bloquea lo mismo que `primera_persona` (probado con una lista cerrada, no
-     * demostrado para todo texto). LÍMITE PREEXISTENTE EN AMBOS CRITERIOS, pendiente de decisión del
-     * propietario: `esPreguntaGeneral` deja pasar una declaración escrita como pregunta («me detectaron
-     * un tumor ¿me cubren?», «Fui PEP hasta el año pasado, ¿me afecta?», «Era ministro, ¿puedo
-     * contratar?»). No cambia cédula, tarjeta, código, clave ni inyección.
+     * demostrado para todo texto). `sin_sujeto` cierra el límite preexistente de `esPreguntaGeneral` (una declaración escrita como pregunta: «me detectaron un tumor ¿me cubren?», «Fui PEP hasta el año pasado, ¿me afecta?», «Era ministro, ¿puedo contratar?»): bloquea siempre el vocabulario de salud y PEP salvo una pregunta única, corta y sin marcas de persona ni de tiempo sobre el producto («¿cubre cáncer?»), y conserva el marco de formulario de `declaracion`; nunca bloquea menos que `primera_persona`. NO garantiza detectar datos personales sin ese vocabulario (sinónimos, otros idiomas, datos repartidos en varios turnos). No cambia cédula, tarjeta, código, clave ni inyección.
      */
-    criterioSaludPep: z.enum(['primera_persona', 'declaracion']).default('primera_persona'),
+    criterioSaludPep: z.enum(['primera_persona', 'declaracion', 'sin_sujeto']).default('primera_persona'),
     /** Marcas de control `[MARCA]` que el modelo puede emitir. Cualquier otra se borra. */
     marcasPermitidas: z.array(z.string().regex(/^[A-Z_]{3,30}$/)).max(10).default(['DERIVAR']),
     /**

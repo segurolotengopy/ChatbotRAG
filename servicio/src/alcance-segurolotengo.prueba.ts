@@ -413,8 +413,8 @@ describe('criterio de salud y PEP con la configuración real, de punta a punta',
     return { agente, bitacora, peticiones };
   }
 
-  it('usa criterioSaludPep «declaracion» y sigue bloqueando salud y pep', () => {
-    expect(config.seguridad.criterioSaludPep).toBe('declaracion');
+  it('usa criterioSaludPep «sin_sujeto» y sigue bloqueando salud y pep', () => {
+    expect(config.seguridad.criterioSaludPep).toBe('sin_sujeto');
     expect(config.seguridad.bloquearEntrada).toEqual(expect.arrayContaining(['salud', 'pep']));
   });
 

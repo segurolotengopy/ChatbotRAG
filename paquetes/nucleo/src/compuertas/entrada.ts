@@ -22,6 +22,7 @@ import {
   PATRON_INYECCION,
   VOCABULARIO_SENSIBLE,
 } from './vocabulario.js';
+import { esPreguntaDeProductoSinSujeto, PATRON_PEP_ESPACIADO, textoParaVocabularioReforzado } from './sujeto-personal.js';
 
 export interface ResultadoEntrada {
   bloqueada: boolean;
@@ -34,6 +35,9 @@ export interface ResultadoEntrada {
  * Distingue «¿el seguro cubre cáncer?» (pregunta sobre el producto, permitida) de
  * «tengo cáncer» (dato personal de salud, bloqueado). La heurística es
  * conservadora: si el texto habla en primera persona o de un familiar, es dato.
+ * Límite conocido: cualquier texto con «?» pasa, así que una declaración escrita como
+ * pregunta («me detectaron un tumor, ¿me cubren?») evade esta heurística; el criterio
+ * `sin_sujeto` (`sujeto-personal.ts`) lo cierra.
  */
 export function esPreguntaGeneral(textoNormalizado: string): boolean {
   const primeraPersona =
@@ -113,11 +117,20 @@ export function detectarCategorias(
   if (VOCABULARIO_SENSIBLE.clave.test(n)) detectadas.push('clave');
   // Datos por VOCABULARIO: salud y PEP. Una pregunta general sobre el producto
   // («¿cubre cáncer?») también coincide; `esPreguntaGeneral` la deja pasar.
-  // Con `declaracion`, solo la consulta de formulario (marco cerrado) queda libre de salud y PEP.
-  const consultaDeFormulario = criterio === 'declaracion' && esConsultaDeFormulario(t);
+  // Con `declaracion` y `sin_sujeto`, solo la consulta de formulario (marco cerrado) queda libre de salud y PEP.
+  // Con `sin_sujeto` se añade una segunda vía: el vocabulario sobre texto sin invisibles bloquea salvo que
+  // sea una pregunta de producto sin sujeto personal. Solo suma bloqueos.
+  const consultaDeFormulario = criterio !== 'primera_persona' && esConsultaDeFormulario(t);
   if (!consultaDeFormulario) {
-    if (VOCABULARIO_SENSIBLE.salud.test(n) && !esPreguntaGeneral(n)) detectadas.push('salud');
-    if (VOCABULARIO_SENSIBLE.pep.test(n) && !esPreguntaGeneral(n)) detectadas.push('pep');
+    const estricto = criterio === 'sin_sujeto';
+    const r = estricto ? textoParaVocabularioReforzado(t) : '';
+    const libre = estricto && esPreguntaDeProductoSinSujeto(t);
+    if ((VOCABULARIO_SENSIBLE.salud.test(n) && !esPreguntaGeneral(n)) || (estricto && VOCABULARIO_SENSIBLE.salud.test(r) && !libre)) detectadas.push('salud');
+    if (
+      (VOCABULARIO_SENSIBLE.pep.test(n) && !esPreguntaGeneral(n)) ||
+      (estricto && (VOCABULARIO_SENSIBLE.pep.test(r) || PATRON_PEP_ESPACIADO.test(r)) && !libre)
+    )
+      detectadas.push('pep');
   }
   if (PATRON_INYECCION.test(n)) detectadas.push('inyeccion');
   return [...new Set(detectadas)];
