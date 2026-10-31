@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GenerateContentResponse } from '@google/genai';
-import { aContenidos, EmbebedorVertex, ErrorProveedor, ProveedorVertex, type ClienteGemini } from './indice.js';
+import { agruparPorPresupuesto, aContenidos, EmbebedorVertex, ErrorProveedor, MAX_CARACTERES_POR_LOTE, MAX_TEXTOS_POR_LOTE, ProveedorVertex, type ClienteGemini } from './indice.js';
 
 function clienteFalso(respuesta: Partial<GenerateContentResponse>, capturar: { ultima?: unknown } = {}): ClienteGemini {
   return {
@@ -80,6 +80,31 @@ describe('EmbebedorVertex', () => {
     expect(await e.embeber([])).toEqual([]);
     const roto: ClienteGemini = { generateContent: async () => ({}) as GenerateContentResponse, embedContent: async () => ({ embeddings: [] }) };
     await expect(new EmbebedorVertex(roto).embeber(['a'])).rejects.toThrow(/devolvió 0 vectores/);
+  });
+
+  it('parte las peticiones por caracteres y por cantidad, sin perder ni reordenar textos', async () => {
+    const peticiones: number[] = [];
+    const cliente: ClienteGemini = {
+      generateContent: async () => ({}) as GenerateContentResponse,
+      async embedContent(p) {
+        peticiones.push(p.contents.reduce((n, c) => n + String(c).length, 0));
+        return { embeddings: p.contents.map((c) => ({ values: [String(c).length] })) };
+      },
+    };
+    // 100 fragmentos de 900 caracteres: el caso que falló en staging (31 145 tokens en una sola petición).
+    const textos = Array.from({ length: 534 }, (_, i) => 'x'.repeat(850 + (i % 50)));
+    const vectores = await new EmbebedorVertex(cliente).embeber(textos);
+    expect(vectores.map((v) => v[0])).toEqual(textos.map((t) => t.length));
+    expect(peticiones.length).toBeGreaterThan(5);
+    expect(Math.max(...peticiones)).toBeLessThanOrEqual(MAX_CARACTERES_POR_LOTE);
+  });
+
+  it('agruparPorPresupuesto: respeta el tope de textos, deja pasar un texto largo solo y no emite lotes vacíos', () => {
+    expect(agruparPorPresupuesto([])).toEqual([]);
+    const cortos = Array.from({ length: MAX_TEXTOS_POR_LOTE * 2 + 1 }, () => 'a');
+    expect(agruparPorPresupuesto(cortos).map((l) => l.length)).toEqual([MAX_TEXTOS_POR_LOTE, MAX_TEXTOS_POR_LOTE, 1]);
+    const largo = 'y'.repeat(MAX_CARACTERES_POR_LOTE + 5);
+    expect(agruparPorPresupuesto(['a', largo, 'b'])).toEqual([['a'], [largo], ['b']]);
   });
 });
 
