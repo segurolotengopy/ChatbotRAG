@@ -16,19 +16,30 @@ import { SalidaOportunidad, type EstadosOperativos, type EtapaVenta } from './es
 
 const RE_BLOQUE = /^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```$/i;
 
-export function interpretarSalidaModelo(texto: string): SalidaOportunidad | null {
+/** Por qué una salida del modelo no sirvió. Solo códigos y nombres de campo del esquema: jamás texto del modelo. */
+export type CausaSalidaInvalida = 'sin_objeto' | 'json_roto' | `esquema:${string}`;
+
+export function analizarSalida(texto: string): { salida: SalidaOportunidad } | { causa: CausaSalidaInvalida } {
   let cuerpo = texto.trim();
   const bloque = RE_BLOQUE.exec(cuerpo);
   if (bloque?.[1] !== undefined) cuerpo = bloque[1].trim();
-  if (!cuerpo.startsWith('{') || !cuerpo.endsWith('}')) return null;
+  if (!cuerpo.startsWith('{') || !cuerpo.endsWith('}')) return { causa: 'sin_objeto' };
   let valor: unknown;
   try {
     valor = JSON.parse(cuerpo);
   } catch {
-    return null;
+    return { causa: 'json_roto' };
   }
   const r = SalidaOportunidad.safeParse(valor);
-  return r.success ? r.data : null;
+  if (r.success) return { salida: r.data };
+  // Del primer problema solo viaja la ruta si sus partes son claves simples o índices; lo demás es dato del modelo.
+  const ruta = (r.error.issues[0]?.path ?? []).map((p) => (typeof p === 'number' || (typeof p === 'string' && /^[a-z_]{1,30}$/.test(p)) ? String(p) : '?')).join('.');
+  return { causa: `esquema:${ruta === '' ? 'raiz' : ruta}` };
+}
+
+export function interpretarSalidaModelo(texto: string): SalidaOportunidad | null {
+  const a = analizarSalida(texto);
+  return 'salida' in a ? a.salida : null;
 }
 
 /**

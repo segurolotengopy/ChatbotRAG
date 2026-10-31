@@ -5,7 +5,7 @@ import { cargarConfiguracionDesdeJson } from '../configuracion/cargar.js';
 import { resolverConfiguracion } from '../configuracion/perfiles.js';
 import { ESTADOS_OPERATIVOS_DESCONOCIDOS, EntradaKuaa, ETAPAS_VENTA, RESUMEN_DESCONOCIDO } from './esquemas.js';
 import * as F from './frases-kuaa.js';
-import { armarPromptKuaa } from './prompt-kuaa.js';
+import { armarPromptKuaa, presentarFuente } from './prompt-kuaa.js';
 
 const RUTA = fileURLToPath(new URL('../../../../configuraciones/kuaa.json', import.meta.url));
 const config = resolverConfiguracion(cargarConfiguracionDesdeJson(readFileSync(RUTA, 'utf8')), null);
@@ -116,5 +116,22 @@ describe('armarPromptKuaa', () => {
 
   it('sin fragmentos y con respaldo exigido incluye la sección de sin respaldo', () => {
     expect(armarPromptKuaa(config, entrada(), [], AHORA)).toContain('SIN RESPALDO DOCUMENTAL');
+  });
+});
+
+describe('presentarFuente: el título interno de un archivo del paquete no llega al prompt', () => {
+  const frag = (fuenteTitulo: string, cambios: Record<string, unknown> = {}) => ({ id: 'f1', fuenteId: 'x', fuenteTitulo, fuenteVersion: '1', texto: 'Texto del fragmento.', puntaje: 0.9, ...cambios });
+  const delPaquete = { validacion: 'no_validado', versionPaquete: '0.1.0' };
+  it.each(['PREGUNTAS_RESPUESTAS', 'carpeta/PREGUNTAS_RESPUESTAS', 'MANUAL_OPERACIÓN', 'Glosario'])('«%s» del paquete se presenta con rótulo neutro', (titulo) => {
+    expect(presentarFuente(frag(titulo, delPaquete)).fuenteTitulo).toBe('material informativo de Kuaa');
+  });
+  it('el corpus configurado a mano conserva su título, tenga o no forma de archivo', () => {
+    expect(presentarFuente(frag('Condiciones del seguro oncológico')).fuenteTitulo).toBe('Condiciones del seguro oncológico');
+    expect(presentarFuente(frag('Glosario')).fuenteTitulo).toBe('Glosario');
+  });
+  it('el prompt completo no contiene el nombre interno', () => {
+    const prompt = armarPromptKuaa(config, entrada(), [frag('faq/PREGUNTAS_RESPUESTAS', delPaquete)], AHORA);
+    expect(prompt).not.toContain('PREGUNTAS_RESPUESTAS');
+    expect(prompt).toContain('material informativo de Kuaa');
   });
 });
