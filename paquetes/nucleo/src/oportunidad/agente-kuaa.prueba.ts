@@ -196,6 +196,28 @@ describe('AgenteKuaa', () => {
       expect(avisos).toContain(aviso);
       expect(JSON.stringify(salida)).not.toContain('pagar_ya');
     });
+    it.each([
+      ['texto libre', 'Hola, soy una respuesta sin JSON.', 'causa_salida:sin_objeto'],
+      ['JSON cortado', '{"texto": "a"', 'causa_salida:sin_objeto'],
+      ['JSON roto', '{"texto": a}', 'causa_salida:json_roto'],
+      ['clave extra', salidaJson({ extra: 1 }), 'causa_salida:esquema:raiz'],
+      ['botón inventado', salidaJson({ botones: ['pagar_ya'] }), 'causa_salida:esquema:botones.0'],
+      ['texto vacío', salidaJson({ texto: '' }), 'causa_salida:esquema:texto'],
+      ['texto solo de controles', salidaJson({ texto: '\u0007\u200f' }), 'causa_salida:vacia_tras_sanear'],
+    ] as [string, string, string][])('la bitácora registra la causa de salida_invalida: %s, sin texto del modelo', async (_n, respuesta, causa) => {
+      const { agente, bitacora } = await armar(() => respuesta, true);
+      const { avisos } = await resp(agente, entrada());
+      expect(avisos).toContain('salida_invalida');
+      expect(avisos).toContain(causa);
+      const atendido = bitacora.eventos.filter((e) => e.tipo === 'mensaje_atendido');
+      expect(atendido[0]?.avisos).toContain(causa);
+      expect(JSON.stringify(bitacora.eventos)).not.toContain('pagar_ya');
+    });
+    it('la causa no incluye claves inventadas por el modelo', async () => {
+      const { agente } = await armar(() => salidaJson({ 'Clave Rara!': 1 }), true);
+      const { avisos } = await resp(agente, entrada());
+      expect(avisos.filter((a) => a.startsWith('causa_salida:'))).toEqual(['causa_salida:esquema:raiz']);
+    });
     it('un error del proveedor también cae al error temporal', async () => {
       const { agente, config } = await armar(() => {
         throw new Error('falla');

@@ -39,7 +39,7 @@ import type { FragmentoRecuperado } from '../puertos/indice-conocimiento.js';
 import { EntradaKuaa, SalidaOportunidad, filtrarBotonesSalida } from './esquemas.js';
 import { normalizarEntradaKuaa } from './normalizar-entrada.js';
 import { armarPromptKuaa } from './prompt-kuaa.js';
-import { afirmaHechoNoRespaldado, contieneEnlaceOPrecio, filtraPrompt, interpretarSalidaModelo, salidaFallback } from './salida-kuaa.js';
+import { afirmaHechoNoRespaldado, contieneEnlaceOPrecio, analizarSalida, filtraPrompt, salidaFallback } from './salida-kuaa.js';
 
 export interface ResultadoKuaa {
   salida: SalidaOportunidad;
@@ -156,12 +156,13 @@ export class AgenteKuaa {
 
     const cierre = (r: ResultadoKuaa): ResultadoKuaa => this.cerrar(base, r, tokens, fragmentos);
     if (cortado) return cierre(fallback(avisos, 'respuesta_incompleta'));
-    const interpretada = interpretarSalidaModelo(textoModelo);
-    if (!interpretada) return cierre(fallback(avisos, 'salida_invalida'));
+    const analizada = analizarSalida(textoModelo);
+    if ('causa' in analizada) return cierre(fallback([...avisos, `causa_salida:${analizada.causa}`], 'salida_invalida'));
+    const interpretada = analizada.salida;
 
     // La salida también se sanea (controles, marcas bidi) antes de cualquier control y de la memoria.
     const textoSaneado = sanearTexto(interpretada.texto, 4000);
-    if (textoSaneado === '') return cierre(fallback(avisos, 'salida_invalida'));
+    if (textoSaneado === '') return cierre(fallback([...avisos, 'causa_salida:vacia_tras_sanear'], 'salida_invalida'));
     if (contieneEnlaceOPrecio(textoSaneado)) return cierre(fallback(avisos, 'enlace_o_precio'));
     const hecho = afirmaHechoNoRespaldado(textoSaneado, entrada.estados);
     if (hecho) return cierre(fallback(avisos, `hecho_no_respaldado:${hecho}`));
@@ -190,7 +191,8 @@ export class AgenteKuaa {
     salida = { ...salida, propuestas: [...new Set(salida.propuestas)].filter((p) => p !== 'seguimiento_solicitado' || entrada.permiso_seguimiento.vigente) };
 
     const valida = SalidaOportunidad.safeParse(salida);
-    if (!valida.success) return cierre(fallback(avisos, 'salida_invalida'));
+    // Camino defensivo: tras el esquema y las compuertas no debería fallar; si falla, queda su causa en la bitácora.
+    if (!valida.success) return cierre(fallback([...avisos, 'causa_salida:validacion_final'], 'salida_invalida'));
     const final = filtrarBotonesSalida(valida.data, entrada.estados);
 
     // Se guarda el JSON validado: el historial le enseña al modelo el formato que debe seguir.

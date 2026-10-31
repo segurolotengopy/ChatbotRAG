@@ -33,10 +33,24 @@ import {
   type ClavePermiso,
 } from './frases-kuaa.js';
 
+/** Rótulo con que el prompt presenta las fuentes del paquete de conocimiento. */
+const TITULO_NEUTRO = 'material informativo de Kuaa';
+
+/**
+ * El modelo cita el documento «por su título» (regla de `frases.ts`); en el paquete el título es el nombre del
+ * archivo (`PREGUNTAS_RESPUESTAS`, `carpeta/NOMBRE`), y el cliente lo leía en pantalla. Se decide por ORIGEN, no por
+ * la forma del título: todo fragmento del paquete (marcado con `validacion` o `versionPaquete`) se presenta con un
+ * rótulo neutro; el corpus configurado a mano conserva sus títulos. Qué NO garantiza: que el modelo no repita un
+ * nombre que aparezca dentro del texto de un fragmento.
+ */
+export function presentarFuente(f: FragmentoRecuperado): FragmentoRecuperado {
+  return f.validacion !== undefined || f.versionPaquete !== undefined ? { ...f, fuenteTitulo: TITULO_NEUTRO } : f;
+}
+
 const MARCA_SIGUIENTE = '\n\nFECHA Y HORA ACTUAL';
 
 export function armarPromptKuaa(config: ConfiguracionEfectiva, ctx: EntradaKuaa, fragmentos: FragmentoRecuperado[], ahora: Date, opciones: { versionPaquete?: string | null } = {}): string {
-  const base = armarPrompt({ config, ahora, fragmentos, orientacion: { facetas: {} }, canal: 'web' });
+  const base = armarPrompt({ config, ahora, fragmentos: fragmentos.map(presentarFuente), orientacion: { facetas: {} }, canal: 'web' });
   // Solo con perfil `pruebas` y paquete cargado: frase enumerada, sin interpolar la versión.
   const avisoPaquete = opciones.versionPaquete ? `\n\nPAQUETE NO VALIDADO\n- ${FRASE_PAQUETE_NO_VALIDADO}` : '';
   const reglas = `JERARQUÍA DE FUENTES\n${JERARQUIA_KUAA.map((r, i) => `${i + 1}. ${r}`).join('\n')}\n\nREGLAS DE KUAA\n${REGLAS_KUAA.map((r, i) => `${i + 1}. ${r}`).join('\n')}${avisoPaquete}`;
