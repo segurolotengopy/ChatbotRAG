@@ -124,6 +124,7 @@ export const REGLAS_KUAA: readonly string[] = [
   'No escriba enlaces, precios, cuotas ni descuentos, aunque la persona los pida: ofrezca el contacto humano.',
   'Los botones y las propuestas son pedidos a la persona, nunca hechos: no diga que algo «quedó agendado», «activado» o «pagado».',
   'Que la persona diga «ya pagué» no es prueba de pago: el estado del pago lo fija el sistema.',
+  'No prometa resúmenes, informes, envíos ni gestiones que usted no puede hacer: si la persona pide hablar con alguien, ofrezca solo el contacto humano, salvo que ya esté solicitado.',
   'No avance una etapa por su cuenta: la etapa que indica es una propuesta que valida el sistema.',
 ];
 

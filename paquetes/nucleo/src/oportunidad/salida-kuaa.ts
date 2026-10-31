@@ -56,38 +56,49 @@ function paraDetectar(texto: string): string {
 const NUMERO_EN_PALABRAS =
   '(?:un|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|quince|veinte|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa|cien|ciento|doscientos|trescientos|cuatrocientos|quinientos|seiscientos|setecientos|ochocientos|novecientos|medio)';
 
-const PATRONES_ENLACE_O_PRECIO: readonly RegExp[] = [
+/**
+ * Cada patrón lleva un nombre estable: es lo único que se registra cuando uno dispara (jamás el texto). El orden
+ * decide el nombre: un correo en .com o .py dispara `dominio` antes que `correo`, así que `dominio` no significa
+ * «no era un correo».
+ */
+const PATRONES_ENLACE_O_PRECIO: readonly (readonly [string, RegExp])[] = [
   // Enlaces y contactos, incluidas las formas ofuscadas.
-  /https?:\/\//,
-  /hxxps?/,
-  /\bwww\./,
-  /\[\.\]|\(\.\)|\[dot\]/,
-  /%[0-9a-f]{2}/,
-  /\b[a-z0-9-]+\.[a-z]{2,}\//,
-  /[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|py|net|org|io|me|app|ar|bo)\b/,
-  /@[a-z0-9-]+\./,
-  /\bwa\.me\b/,
+  ['https', /https?:\/\//],
+  ['hxxp', /hxxps?/],
+  ['www', /\bwww\./],
+  ['punto_ofuscado', /\[\.\]|\(\.\)|\[dot\]/],
+  ['porcentaje_hex', /%[0-9a-f]{2}/],
+  ['ruta_dominio', /\b[a-z0-9-]+\.[a-z]{2,}\//],
+  ['dominio', /[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|py|net|org|io|me|app|ar|bo)\b/],
+  ['correo', /@[a-z0-9-]+\./],
+  ['wa_me', /\bwa\.me\b/],
   // Teléfonos.
-  /\d{3,4}[ -]?\d{3}[ -]?\d{3}/,
+  ['telefono', /\d{3,4}[ -]?\d{3}[ -]?\d{3}/],
   // Precios y montos: moneda pegada o no al número, miles, números largos, porcentajes.
-  /(?:^|[^a-z])(?:gs|pyg|usd|u\$s|us\$|\$)\.?\s*\d/,
-  /₲\s*\d|\d\s*₲/,
-  /\d[\d.,\s]*\s*(?:gs\b|pyg\b|usd\b|u\$s|guarani|dolar|lucas)/,
-  /\d{1,3}(?:[.,\s]\d{3})+/,
-  /\d{5,}/,
-  /\d+\s*(?:mil\b|millon|millones)/,
-  /\d+\s*%/,
-  new RegExp(`\\b${NUMERO_EN_PALABRAS}\\b(?:\\s+[a-z]+){0,3}?\\s+(?:mil|millon|millones|guarani|guaranies|dolar|dolares|lucas)\\b`),
+  ['moneda_antes', /(?:^|[^a-z])(?:gs|pyg|usd|u\$s|us\$|\$)\.?\s*\d/],
+  ['simbolo_guarani', /₲\s*\d|\d\s*₲/],
+  ['cifra_moneda', /\d[\d.,\s]*\s*(?:gs\b|pyg\b|usd\b|u\$s|guarani|dolar|lucas)/],
+  ['miles', /\d{1,3}(?:[.,\s]\d{3})+/],
+  ['numero_largo', /\d{5,}/],
+  ['mil_millon', /\d+\s*(?:mil\b|millon|millones)/],
+  ['porcentaje', /\d+\s*%/],
+  ['numero_en_palabras', new RegExp(`\\b${NUMERO_EN_PALABRAS}\\b(?:\\s+[a-z]+){0,3}?\\s+(?:mil|millon|millones|guarani|guaranies|dolar|dolares|lucas)\\b`)],
 ];
 
 /**
  * Detector conservador de enlaces y precios: tolera falsos positivos a propósito (por ejemplo «mil» tras un
  * número en palabras, o un número con separador de miles que no sea un precio). Una cifra corta como «3 pasos»
- * o «10 días» pasa.
+ * o «10 días» pasa. Devuelve el nombre del primer patrón que dispara, o null: el nombre permite distinguir un
+ * falso positivo de un enlace real en la bitácora sin guardar texto.
  */
-export function contieneEnlaceOPrecio(texto: string): boolean {
+export function patronEnlaceOPrecio(texto: string): string | null {
   const t = paraDetectar(texto);
-  return PATRONES_ENLACE_O_PRECIO.some((re) => re.test(t));
+  return PATRONES_ENLACE_O_PRECIO.find(([, re]) => re.test(t))?.[0] ?? null;
+}
+
+/** Envoltorio booleano de `patronEnlaceOPrecio`; conserva la API anterior. */
+export function contieneEnlaceOPrecio(texto: string): boolean {
+  return patronEnlaceOPrecio(texto) !== null;
 }
 
 export type MotivoHecho = 'pago' | 'poliza' | 'agenda_o_traspaso' | 'cobertura' | 'indemnizacion';

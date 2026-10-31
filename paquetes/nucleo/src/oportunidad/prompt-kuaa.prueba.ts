@@ -135,3 +135,10 @@ describe('presentarFuente: el título interno de un archivo del paquete no llega
     expect(prompt).toContain('material informativo de Kuaa');
   });
 });
+
+describe('regla de no prometer resúmenes', () => {
+  it('el prompt de Kuaa prohíbe prometer resúmenes, informes y gestiones', () => {
+    const prompt = armarPromptKuaa(config, entrada(), [], AHORA);
+    expect(prompt).toContain('No prometa resúmenes, informes, envíos ni gestiones que usted no puede hacer');
+  });
+});
