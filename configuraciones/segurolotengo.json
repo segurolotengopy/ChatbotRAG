@@ -3,7 +3,7 @@
   "version": 1,
   "id": "segurolotengo",
   "identidad": {
-    "nombreAsistente": "Terra",
+    "nombreAsistente": "Kuaa",
     "organizacion": "SeguroLoTengo, canal digital de Interseguros S.A.",
     "descripcion": "SeguroLoTengo.com es la marca y el canal digital de venta de Interseguros S.A., corredor de seguros inscripto ante la Superintendencia de Seguros del Paraguay. La aseguradora de los productos es Alianza Garantía Seguros y Reaseguros S.A.",
     "idioma": "es-PY",
@@ -91,7 +91,7 @@
   ],
   "orientacion": { "facetas": [], "reglas": [] },
   "mensajes": {
-    "bienvenida": "Hola, soy Terra. Le explico cómo funciona este sitio: qué le pide cada paso, qué significa lo que ve en pantalla y cómo seguir. No le pido ningún dato personal. ¿Qué parte quiere que le explique?",
+    "bienvenida": "Hola, soy Kuaa, el asistente virtual de SeguroLoTengo. Te ayudo a entender cómo funciona este sitio. ¿Qué querés saber?",
     "errorTemporal": "Tuve un problema técnico momentáneo. ¿Me repite lo último, por favor?",
     "fueraDeAlcance": "Eso no se lo puedo responder por este medio. Yo le explico cómo funciona el sitio y qué le pide cada paso; lo que tiene que ver con qué cubre el producto o con su caso en particular lo atiende una persona de Interseguros.",
     "sinRespaldo": "No cuento con información aprobada para responder eso con precisión, y prefiero no adivinar.",
@@ -207,7 +207,7 @@
         { "id": "otros-seguros", "titulo": "Otros seguros del canal", "version": "v1.0", "ruta": "segurolotengo/proximamente/otros-seguros.md" },
         { "id": "orientacion-16-contacto-con-la-atencion", "titulo": "Cómo contactar a la atención oficial de Interseguros", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/16-contacto-con-la-atencion.md" }
       ] },
-      "mensajes": { "bienvenida": "Hola, soy Terra. El Seguro de Vida todavía no se contrata en línea en SeguroLoTengo; puedo contarle cómo dejar su interés o informarle sobre el Seguro de Vida Oncológico VIVE, que sí está disponible." }
+      "mensajes": { "bienvenida": "Hola, soy Kuaa. El Seguro de Vida todavía no se contrata en línea en SeguroLoTengo; puedo contarle cómo dejar su interés o informarle sobre el Seguro de Vida Oncológico VIVE, que sí está disponible." }
     },
     "ACCIDENTES_PERSONALES": {
       "nombre": "Accidentes Personales",
@@ -220,7 +220,7 @@
         { "id": "otros-seguros", "titulo": "Otros seguros del canal", "version": "v1.0", "ruta": "segurolotengo/proximamente/otros-seguros.md" },
         { "id": "orientacion-16-contacto-con-la-atencion", "titulo": "Cómo contactar a la atención oficial de Interseguros", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/16-contacto-con-la-atencion.md" }
       ] },
-      "mensajes": { "bienvenida": "Hola, soy Terra. El seguro de Accidentes Personales todavía no se contrata en línea en SeguroLoTengo; puedo contarle cómo dejar su interés o informarle sobre el Seguro de Vida Oncológico VIVE, que sí está disponible." }
+      "mensajes": { "bienvenida": "Hola, soy Kuaa. El seguro de Accidentes Personales todavía no se contrata en línea en SeguroLoTengo; puedo contarle cómo dejar su interés o informarle sobre el Seguro de Vida Oncológico VIVE, que sí está disponible." }
     },
     "RESPONSABILIDAD_CIVIL": {
       "nombre": "Responsabilidad Civil",
@@ -233,7 +233,7 @@
         { "id": "otros-seguros", "titulo": "Otros seguros del canal", "version": "v1.0", "ruta": "segurolotengo/proximamente/otros-seguros.md" },
         { "id": "orientacion-16-contacto-con-la-atencion", "titulo": "Cómo contactar a la atención oficial de Interseguros", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/16-contacto-con-la-atencion.md" }
       ] },
-      "mensajes": { "bienvenida": "Hola, soy Terra. El seguro de Responsabilidad Civil todavía no se contrata en línea en SeguroLoTengo; puedo contarle cómo dejar su interés o informarle sobre el Seguro de Vida Oncológico VIVE, que sí está disponible." }
+      "mensajes": { "bienvenida": "Hola, soy Kuaa. El seguro de Responsabilidad Civil todavía no se contrata en línea en SeguroLoTengo; puedo contarle cómo dejar su interés o informarle sobre el Seguro de Vida Oncológico VIVE, que sí está disponible." }
     }
   }
 }
