@@ -14,6 +14,9 @@
       "path": "paquetes/conocimiento-pgvector"
     },
     {
+      "path": "paquetes/conocimiento-gcs"
+    },
+    {
       "path": "paquetes/canal-web"
     },
     {

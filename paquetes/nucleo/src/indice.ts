@@ -15,6 +15,7 @@ export * from './prompt/frases.js';
 export * from './conocimiento/trocear.js';
 export * from './conocimiento/indice-memoria.js';
 export * from './conocimiento/cargar-corpus.js';
+export * from './conocimiento/cargar-paquete.js';
 export * from './memoria/memoria-en-proceso.js';
 export * from './herramientas/internas.js';
 export * from './herramientas/registro.js';

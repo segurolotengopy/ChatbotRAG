@@ -1,0 +1,36 @@
+{
+  "version": "1.0.0",
+  "fecha": "2026-01-01",
+  "archivos": [
+    {
+      "archivo": "A/LISTA.json",
+      "bytes": 166,
+      "sha256": "621eea579b57b226ea87df276affd18c3dd1887991f018d0a699569e9e059d63"
+    },
+    {
+      "archivo": "A/REGISTROS.json",
+      "bytes": 133,
+      "sha256": "03705e8bdaad480750965f9ac8f02510dd1a16356ac0b80f3e329a365b817122"
+    },
+    {
+      "archivo": "A/FICHA.json",
+      "bytes": 61,
+      "sha256": "c296e5d07348e129a9ad468152b8c98b8185754c3a8bcfcdcec5e4f704f9175d"
+    },
+    {
+      "archivo": "B/MANUAL.docx",
+      "bytes": 88,
+      "sha256": "5dc8f21576b938ca340cad8153771e563240790588cc1970f4391fff58a85627"
+    },
+    {
+      "archivo": "B/PROMPT_X.txt",
+      "bytes": 48,
+      "sha256": "a723e29bd05ea56f257d0fd6514d0c79cdd0c03e181136a8a34bdc3901229030"
+    },
+    {
+      "archivo": "B/PRUEBAS_X.json",
+      "bytes": 15,
+      "sha256": "66b41d11996f9e18bfd5c07c0f270a2ab2f72a361bb13fb7d073440aa3dc7ed7"
+    }
+  ]
+}

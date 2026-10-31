@@ -182,6 +182,12 @@ export const esquemaConocimiento = z
      * menos `tamanoFragmento + 200` (lo valida `cargar.ts`), para que entre al menos un fragmento.
      */
     maxCaracteresPagina: z.number().int().min(500).max(8000).default(4000),
+    /**
+     * Paquete de conocimiento no validado (solo Kuaa). `habilitado` permite que el servicio, ÚNICAMENTE con el
+     * perfil `pruebas` del entorno, cargue el paquete desde su bucket privado. Es un booleano y no lleva ni
+     * bucket ni versión: esos viajan en el entorno, fuera del repo. Con el perfil `produccion` no tiene efecto.
+     */
+    paquete: z.object({ habilitado: z.boolean().default(false) }).strict().prefault({}),
   })
   .strict();
 
@@ -414,6 +420,24 @@ export const esquemaConfiguracionAgente = z
   .refine((c) => c.operacion.contactoHumano.modo !== 'canal' || Boolean(c.operacion.contactoHumano.whatsapp ?? c.operacion.contactoHumano.correo ?? c.operacion.contactoHumano.telefono), {
     message: 'operacion.contactoHumano.modo «canal» exige al menos una vía de contacto (whatsapp, correo o telefono)',
     path: ['operacion', 'contactoHumano'],
+  })
+  .refine((c) => c.tipoAgente === 'kuaa' || !c.conocimiento.paquete.habilitado, {
+    message: 'conocimiento.paquete.habilitado solo se admite con tipoAgente «kuaa»',
+    path: ['conocimiento', 'paquete'],
+  })
+  .refine((c) => Object.values(c.perfiles).every((p) => p.conocimiento?.paquete === undefined), {
+    message: 'un perfil no puede definir conocimiento.paquete: el paquete se habilita solo en la base',
+    path: ['perfiles'],
+  })
+  // La colección `<agente>--paquete` es del paquete no validado: ni un perfil ni una colección configurada
+  // pueden coincidir con ella, o el corpus público y lo no validado compartirían fragmentos.
+  .refine((c) => Object.keys(c.perfiles).every((id) => id.toLowerCase() !== 'paquete'), {
+    message: 'el id de perfil «paquete» está reservado para el paquete no validado',
+    path: ['perfiles'],
+  })
+  .refine((c) => [c.conocimiento.coleccion, ...Object.values(c.perfiles).map((p) => p.conocimiento?.coleccion)].every((x) => x === undefined || !x.endsWith('--paquete')), {
+    message: 'conocimiento.coleccion no puede terminar en «--paquete» (reservado)',
+    path: ['conocimiento', 'coleccion'],
   })
   .refine((c) => !c.perfilPorDefecto || c.perfilPorDefecto in c.perfiles, {
     message: 'perfilPorDefecto debe existir en perfiles',

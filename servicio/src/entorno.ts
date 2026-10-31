@@ -28,6 +28,9 @@ export const esquemaCliente = z
 
 export type Cliente = z.infer<typeof esquemaCliente>;
 
+/** Ambientes no productivos donde se admite el paquete no validado. */
+const AMBIENTES_PRUEBAS: readonly string[] = ['staging', 'development', 'test'];
+
 export const esquemaEntorno = z.object({
   PUERTO: z.coerce.number().int().min(1).max(65535).default(8080),
   /** Directorio con los `*.json` de agentes y su carpeta `corpus/`. */
@@ -42,6 +45,17 @@ export const esquemaEntorno = z.object({
   CHATBOTRAG_LIMITE_IP_MINUTO: z.coerce.number().int().min(1).default(60),
   /** Secreto HMAC para firmar las llamadas a herramientas `http`. Opcional. */
   CHATBOTRAG_HMAC_HERRAMIENTAS: z.string().min(16).optional(),
+  /** Ambiente que fija deploy.sh (`staging` | `production`). El paquete no validado solo se admite con staging, development o test. */
+  APP_ENV: z.string().optional(),
+  /**
+   * Perfil del conocimiento de Kuaa. Ausente o vacío = `produccion`; `pruebas` lo activa; cualquier otro valor
+   * («PRUEBAS», «staging») es un error de entorno: un typo no debe pasar por una configuración válida.
+   */
+  CHATBOTRAG_PERFIL_CONOCIMIENTO: z.string().optional(),
+  /** Bucket privado con el paquete de conocimiento no validado. Solo con perfil `pruebas`. */
+  CHATBOTRAG_BUCKET_PAQUETE: z.string().regex(/^[a-z0-9][a-z0-9._-]{2,62}$/).optional(),
+  /** Versión X.Y.Z del paquete dentro del bucket. Solo con perfil `pruebas`. */
+  CHATBOTRAG_VERSION_PAQUETE: z.string().regex(/^[0-9]+\.[0-9]+\.[0-9]+$/).optional(),
   GCP_PROYECTO: z.string().optional(),
   GCP_REGION: z.string().default('us-central1'),
   AWS_REGION: z.string().default('us-east-1'),
@@ -50,6 +64,8 @@ export const esquemaEntorno = z.object({
 
 export interface Entorno extends z.infer<typeof esquemaEntorno> {
   clientes: Cliente[];
+  /** Perfil efectivo del conocimiento: `produccion` salvo que la variable valga exactamente `pruebas`. */
+  perfilConocimiento: 'produccion' | 'pruebas';
 }
 
 export class ErrorEntorno extends Error {
@@ -76,5 +92,24 @@ export function leerEntorno(fuente: NodeJS.ProcessEnv = process.env): Entorno {
     ids.add(c.id);
   }
   if (r.data.CHATBOTRAG_INDICE === 'pgvector' && !r.data.PGVECTOR_URL) throw new ErrorEntorno(['CHATBOTRAG_INDICE=pgvector exige PGVECTOR_URL']);
-  return { ...r.data, clientes: clientes.data };
+  const crudoPerfil = r.data.CHATBOTRAG_PERFIL_CONOCIMIENTO;
+  if (crudoPerfil !== undefined && crudoPerfil !== '' && crudoPerfil !== 'pruebas' && crudoPerfil !== 'produccion') {
+    throw new ErrorEntorno(['CHATBOTRAG_PERFIL_CONOCIMIENTO debe ser «produccion» o «pruebas»']);
+  }
+  const perfilConocimiento: 'produccion' | 'pruebas' = crudoPerfil === 'pruebas' ? 'pruebas' : 'produccion';
+  const bucket = r.data.CHATBOTRAG_BUCKET_PAQUETE;
+  const version = r.data.CHATBOTRAG_VERSION_PAQUETE;
+  // Lista BLANCA: el paquete no validado solo se admite si APP_ENV, normalizado, es un ambiente no productivo
+  // conocido. `NODE_ENV` vale `development` por omisión, así que no distingue un entorno local con certeza:
+  // sin APP_ENV, o con cualquier otro valor («prod», «production» en cualquier grafía, desconocido), se veda.
+  if (perfilConocimiento === 'pruebas' || bucket !== undefined) {
+    const ambiente = (r.data.APP_ENV ?? '').trim().toLowerCase();
+    if (!AMBIENTES_PRUEBAS.includes(ambiente)) {
+      throw new ErrorEntorno(['CHATBOTRAG_PERFIL_CONOCIMIENTO=pruebas y CHATBOTRAG_BUCKET_PAQUETE exigen APP_ENV en {staging, development, test}']);
+    }
+  }
+  // Combinaciones incoherentes: fallan el arranque en vez de adivinar la intención.
+  if (perfilConocimiento === 'pruebas' && (!bucket || !version)) throw new ErrorEntorno(['CHATBOTRAG_PERFIL_CONOCIMIENTO=pruebas exige CHATBOTRAG_BUCKET_PAQUETE y CHATBOTRAG_VERSION_PAQUETE']);
+  if (perfilConocimiento === 'produccion' && (bucket || version)) throw new ErrorEntorno(['CHATBOTRAG_BUCKET_PAQUETE y CHATBOTRAG_VERSION_PAQUETE solo se admiten con CHATBOTRAG_PERFIL_CONOCIMIENTO=pruebas']);
+  return { ...r.data, clientes: clientes.data, perfilConocimiento };
 }

@@ -17,7 +17,9 @@ export type TipoEvento =
   | 'error_modelo'
   | 'suspendido'
   | 'configuracion_cargada'
-  | 'corpus_indexado';
+  | 'corpus_indexado'
+  | 'paquete_no_cargado'
+  | 'respuesta_no_validada';
 
 export interface EventoBitacora {
   tipo: TipoEvento;

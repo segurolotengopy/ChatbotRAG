@@ -5,6 +5,8 @@ import { BitacoraEnMemoria } from '../bitacora/bitacora-consola.js';
 import { cargarConfiguracionDesdeJson } from '../configuracion/cargar.js';
 import type { ConfiguracionAgente } from '../configuracion/esquema.js';
 import { coleccionDe } from '../conocimiento/cargar-corpus.js';
+import { coleccionPaquete } from '../conocimiento/cargar-paquete.js';
+import { FRASE_PAQUETE_NO_VALIDADO } from './frases-kuaa.js';
 import { IndiceEnMemoria } from '../conocimiento/indice-memoria.js';
 import { MemoriaEnProceso } from '../memoria/memoria-en-proceso.js';
 import type { PeticionLLM, ProveedorLLM, RespuestaLLM } from '../puertos/proveedor-llm.js';
@@ -394,5 +396,60 @@ describe('AgenteKuaa: endurecimiento tras la revisión', () => {
       const r = await resp(vacia.agente, entrada());
       expect(r.salida).toMatchObject({ botones: [], propuestas: [] });
     });
+  });
+});
+
+describe('perfil pruebas con paquete no validado', () => {
+  async function armarPruebas(perfil: 'pruebas' | 'produccion', versionPaquete: string | null) {
+    const config: ConfiguracionAgente = cargarConfiguracionDesdeJson(JSON_KUAA);
+    const indice = new IndiceEnMemoria(null);
+    const base = coleccionDe(config, null);
+    await indice.indexar([{ id: 'f1', coleccion: base, fuenteId: 'doc', fuenteTitulo: 'Documento sintético', fuenteVersion: 'v1', orden: 0, texto: 'El proceso tiene cuatro pasos sintéticos.' }]);
+    await indice.indexar([
+      { id: 'p1', coleccion: coleccionPaquete(base), fuenteId: 'paq', fuenteTitulo: 'Paquete', fuenteVersion: '1.0.0', orden: 0, texto: 'El proceso del paquete CENTINELA-PAQUETE tiene pasos sintéticos.', validacion: 'no_validado', versionPaquete: '1.0.0' },
+    ]);
+    const proveedor = new ProveedorGuionado(() => salidaJson({ texto: 'TEXTO-ASISTENTE-CENTINELA' }));
+    const bitacora = new BitacoraEnMemoria();
+    const agente = new AgenteKuaa({ config, proveedor, indice, memoria: new MemoriaEnProceso(), herramientas: new RegistroHerramientas(null), bitacora }, { perfilConocimiento: perfil, versionPaquete });
+    return { agente, proveedor, bitacora };
+  }
+
+  it('con pruebas consulta también la colección del paquete, rotula el fragmento y antepone la frase enumerada', async () => {
+    const { agente, proveedor, bitacora } = await armarPruebas('pruebas', '1.0.0');
+    await resp(agente, entrada({ mensaje: 'proceso pasos sintéticos paquete CENTINELA-PAQUETE' }));
+    const sistema = proveedor.peticiones[0]!.sistema;
+    expect(sistema).toContain('CENTINELA-PAQUETE');
+    expect(sistema).toContain('[NO VALIDADO, paquete 1.0.0]');
+    expect(sistema).toContain(FRASE_PAQUETE_NO_VALIDADO);
+    expect(bitacora.eventos.map((e) => e.tipo)).toContain('respuesta_no_validada');
+  });
+
+  it('con produccion no consulta el paquete ni agrega la frase', async () => {
+    const { agente, proveedor } = await armarPruebas('produccion', null);
+    await resp(agente, entrada({ mensaje: 'proceso pasos sintéticos paquete CENTINELA-PAQUETE' }));
+    const sistema = proveedor.peticiones[0]!.sistema;
+    expect(sistema).not.toContain('CENTINELA-PAQUETE');
+    expect(sistema).not.toContain(FRASE_PAQUETE_NO_VALIDADO);
+  });
+
+  it('la bitácora nunca contiene el texto, tampoco en los eventos del paquete', async () => {
+    const { agente, bitacora } = await armarPruebas('pruebas', '1.0.0');
+    await resp(agente, entrada({ mensaje: 'MENSAJE-PERSONA-CENTINELA proceso pasos sintéticos paquete CENTINELA-PAQUETE' }));
+    const volcado = JSON.stringify(bitacora.eventos);
+    expect(bitacora.eventos.map((e) => e.tipo)).toContain('respuesta_no_validada');
+    expect(volcado).not.toContain('CENTINELA');
+  });
+
+  it('un fallo del índice en la colección del paquete no impide responder con la base', async () => {
+    const { agente, bitacora } = await armarPruebas('pruebas', '1.0.0');
+    const original = (agente as unknown as { deps: { indice: IndiceEnMemoria } }).deps.indice;
+    const buscar = original.buscar.bind(original);
+    original.buscar = async (q, o) => {
+      if (o.coleccion.endsWith('--paquete')) throw new Error('falla');
+      return buscar(q, o);
+    };
+    const r = await resp(agente, entrada({ mensaje: 'proceso pasos sintéticos' }));
+    expect(r.avisos).toContain('indice_error');
+    expect(bitacora.eventos.some((e) => e.codigo === 'indice')).toBe(true);
   });
 });

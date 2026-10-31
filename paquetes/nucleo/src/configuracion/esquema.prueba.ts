@@ -21,3 +21,34 @@ describe('tipoAgente', () => {
     expect(tipo('kuaa.json')).toBe('kuaa');
   });
 });
+
+function detalles(f: () => unknown): string {
+  try {
+    f();
+  } catch (e) {
+    return ((e as { detalles?: string[] }).detalles ?? []).join('; ');
+  }
+  return '';
+}
+
+describe('conocimiento.paquete', () => {
+  const conPaquete = (extra: Record<string, unknown>) => ({ ...CONFIG_PRUEBA, conocimiento: { ...CONFIG_PRUEBA.conocimiento, paquete: { habilitado: true } }, ...extra });
+  it('por omisión no está habilitado', () => {
+    expect(validarConfiguracion(CONFIG_PRUEBA).conocimiento.paquete.habilitado).toBe(false);
+  });
+  it('un agente general no puede habilitarlo; uno kuaa sí', () => {
+    expect(detalles(() => validarConfiguracion(conPaquete({})))).toMatch(/solo se admite con tipoAgente/);
+    expect(validarConfiguracion(conPaquete({ tipoAgente: 'kuaa' })).conocimiento.paquete.habilitado).toBe(true);
+  });
+  it('un perfil no puede definirlo', () => {
+    expect(detalles(() => validarConfiguracion({ ...CONFIG_PRUEBA, tipoAgente: 'kuaa', perfiles: { PA: { nombre: 'A', conocimiento: { paquete: { habilitado: true } } } } }))).toMatch(/perfil no puede definir/);
+  });
+  it('reserva el id de perfil «paquete» (cualquier capitalización) y las colecciones que terminan en --paquete', () => {
+    for (const id of ['PAQUETE', 'Paquete']) {
+      expect(detalles(() => validarConfiguracion({ ...CONFIG_PRUEBA, perfiles: { [id]: { nombre: 'X' } } }))).toMatch(/reservado/);
+    }
+    expect(detalles(() => validarConfiguracion({ ...CONFIG_PRUEBA, conocimiento: { ...CONFIG_PRUEBA.conocimiento, coleccion: 'kuaa--paquete' } }))).toMatch(/--paquete/);
+    expect(detalles(() => validarConfiguracion({ ...CONFIG_PRUEBA, perfiles: { PA: { nombre: 'A', conocimiento: { coleccion: 'otra--paquete' } } } }))).toMatch(/--paquete/);
+    expect(validarConfiguracion({ ...CONFIG_PRUEBA, conocimiento: { ...CONFIG_PRUEBA.conocimiento, coleccion: 'kuaa-paquete' } }).conocimiento.coleccion).toBe('kuaa-paquete');
+  });
+});

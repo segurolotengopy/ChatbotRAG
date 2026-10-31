@@ -46,7 +46,20 @@ function lista(items: readonly string[], vineta = '- '): string {
 
 /** Neutraliza delimitadores que alguien pudiera colar en un texto libre. */
 function rotular(texto: string): string {
-  return texto.replace(/═{3,}/g, '—').replace(/\r/g, '').trim();
+  // Se normaliza ANTES de comparar: NFKC lleva «＝», «Ｆ» de ancho completo y similares a su forma base, y los
+  // espacios Unicode y de ancho cero se reducen, para que un texto no esquive los patrones con ellos.
+  const normal = texto
+    .normalize('NFKC')
+    .replace(/[\u200B-\u200D\u2060\uFEFF]/gu, '')
+    .replace(/[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/gu, ' ');
+  return normal
+    .replace(/[═━─-╿=](?:[ \t]*[═━─-╿=]){1,}/gu, (m) => (/[═━─-╿]/u.test(m) || m.replace(/\s/g, '').length >= 3 ? '—' : m))
+    .replace(/FIN\s+DE\s+(?:RESPALDO|DATOS)(?:\s+DOCUMENTAL)?/giu, 'FIN DE TEXTO')
+    // Solo «INICIO DE» seguido de lo que abre un bloque real: «inicio de vigencia» no se toca.
+    .replace(/INICIO\s+DE\s+(?=RESPALDO|DATOS)/giu, 'INICIO ')
+    .replace(/^(\[\d+\]\s*Documento:)/gmu, '›$1')
+    .replace(/\r/g, '')
+    .trim();
 }
 
 export function armarPrompt(entrada: EntradaPrompt): string {
@@ -129,7 +142,7 @@ export function armarPrompt(entrada: EntradaPrompt): string {
   // 9. Respaldo documental
   if (fragmentos.length) {
     const cuerpo = fragmentos
-      .map((f, i) => `[${i + 1}] Documento: «${rotular(f.fuenteTitulo)}» (versión ${rotular(f.fuenteVersion)})\n${rotular(f.texto)}`)
+      .map((f, i) => `[${i + 1}] Documento: «${rotular(f.fuenteTitulo)}» (versión ${rotular(f.fuenteVersion)})${f.validacion ? ` [NO VALIDADO, paquete ${rotular(f.versionPaquete ?? 'desconocido')}]` : ''}\n${rotular(f.texto)}`)
       .join('\n\n');
     const uso = FRASE_USO_RESPALDO[config.conocimiento.usoDelRespaldo];
     // Con contexto de página la frase va antes de la de uso; el formato del respaldo no cambia.

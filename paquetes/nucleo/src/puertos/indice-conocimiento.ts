@@ -17,6 +17,13 @@ export interface Fragmento {
   fuenteVersion: string;
   orden: number;
   texto: string;
+  /**
+   * Marca de un fragmento cuyo contenido nadie validó. Solo la carga del perfil `pruebas` la pone; un índice
+   * persistente (la vía de producción) debe rechazar todo fragmento que la traiga.
+   */
+  validacion?: 'no_validado';
+  /** Versión X.Y.Z del paquete de conocimiento de origen; acompaña a `validacion`. */
+  versionPaquete?: string;
 }
 
 export interface FragmentoRecuperado extends Fragmento {
