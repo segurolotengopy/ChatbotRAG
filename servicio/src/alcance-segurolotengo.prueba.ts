@@ -157,15 +157,29 @@ const crudo: unknown = JSON.parse(readFileSync(RUTA, 'utf8'));
  */
 const VOSEO_O_TUTEO = /(?<![\p{L}])(?:vos|tu|tus|te|ti|podés|querés|necesitás|tenés|sabés|repetís|recibís|contame|decime|escribime|tené|fijate|acercarte|contarte|informarte|explicarte|acá)(?![\p{L}])/iu;
 
+/**
+ * Única excepción, acordada con SLT y Andres el 2026-10-30: mientras el cliente Kuaa
+ * no entre y este agente siga sirviendo la demo, la bienvenida general presenta a
+ * Kuaa en voseo y las respuestas siguen en «usted». Se compara el texto exacto: otra
+ * frase en voseo, o esta misma con un cambio, vuelve a fallar. Se borra junto con el
+ * agente `segurolotengo`.
+ */
+const SALUDO_KUAA_TRANSITORIO = 'Hola, soy Kuaa, el asistente virtual de SeguroLoTengo. Te ayudo a entender cómo funciona este sitio. ¿Qué querés saber?';
+
 describe('trato de usted con quien consulta', () => {
   it('el tratamiento configurado es usted', () => {
     expect(config.voz.tratamiento).toBe('usted');
   });
 
   it('ningún texto de la configuración está en voseo ni en tuteo', () => {
-    for (const c of cadenas(crudo)) {
+    for (const c of cadenas(crudo).filter((x) => x !== SALUDO_KUAA_TRANSITORIO)) {
       expect(c, 'un texto de la configuración usa voseo o tuteo').not.toMatch(VOSEO_O_TUTEO);
     }
+  });
+
+  it('la excepción del saludo de Kuaa vale solo para la bienvenida general', () => {
+    expect(config.mensajes.bienvenida).toBe(SALUDO_KUAA_TRANSITORIO);
+    expect(cadenas(crudo).filter((c) => c === SALUDO_KUAA_TRANSITORIO)).toHaveLength(1);
   });
 });
 
