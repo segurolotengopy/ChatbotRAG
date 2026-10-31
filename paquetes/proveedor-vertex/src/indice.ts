@@ -174,9 +174,7 @@ export class EmbebedorVertex implements Embebedor {
   async embeber(textos: string[]): Promise<number[][]> {
     if (textos.length === 0) return [];
     const salida: number[][] = [];
-    // El límite por petición es de 250 textos; se procesa en lotes conservadores.
-    for (let i = 0; i < textos.length; i += 100) {
-      const lote = textos.slice(i, i + 100);
+    for (const lote of agruparPorPresupuesto(textos)) {
       let r: { embeddings?: Array<{ values?: number[] }> };
       try {
         r = await this.cliente.embedContent({ model: this.modelo, contents: lote, config: { outputDimensionality: this.dimension } });
@@ -189,4 +187,32 @@ export class EmbebedorVertex implements Embebedor {
     }
     return salida;
   }
+}
+
+/** Textos por petición: el servicio admite hasta 250; se queda corto a propósito. */
+export const MAX_TEXTOS_POR_LOTE = 100;
+/**
+ * Caracteres por petición. El modelo rechaza una petición de más de 20 000 tokens en total (no por texto):
+ * el 2026-10-31 un lote de 100 fragmentos de ~900 caracteres midió 31 145 y la carga del paquete de Kuaa
+ * falló. Con 20 000 caracteres, incluso a 1,5 caracteres por token (peor caso, texto con números y
+ * símbolos) quedan ~13 300 tokens, bajo el tope. No garantiza el tope para un texto suelto más largo que
+ * el presupuesto: ese viaja solo y el servicio decide.
+ */
+export const MAX_CARACTERES_POR_LOTE = 20_000;
+
+export function agruparPorPresupuesto(textos: string[]): string[][] {
+  const lotes: string[][] = [];
+  let actual: string[] = [];
+  let caracteres = 0;
+  for (const t of textos) {
+    if (actual.length > 0 && (actual.length >= MAX_TEXTOS_POR_LOTE || caracteres + t.length > MAX_CARACTERES_POR_LOTE)) {
+      lotes.push(actual);
+      actual = [];
+      caracteres = 0;
+    }
+    actual.push(t);
+    caracteres += t.length;
+  }
+  if (actual.length > 0) lotes.push(actual);
+  return lotes;
 }
