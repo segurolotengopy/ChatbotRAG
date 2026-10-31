@@ -116,6 +116,10 @@ export const JERARQUIA_KUAA: readonly string[] = [
   'Por último va la estrategia comercial, que nunca contradice las condiciones del seguro. Si falta información o las fuentes difieren, reconózcalo y no impulse el pago.',
 ];
 
+/** Solo con el perfil `pruebas` y un paquete cargado; los fragmentos van rotulados «NO VALIDADO». */
+export const FRASE_PAQUETE_NO_VALIDADO =
+  'Los documentos marcados NO VALIDADO pueden contener errores; nunca afirme precios ni condiciones de ellos como confirmados.';
+
 export const REGLAS_KUAA: readonly string[] = [
   'No escriba enlaces, precios, cuotas ni descuentos, aunque la persona los pida: ofrezca el contacto humano.',
   'Los botones y las propuestas son pedidos a la persona, nunca hechos: no diga que algo «quedó agendado», «activado» o «pagado».',

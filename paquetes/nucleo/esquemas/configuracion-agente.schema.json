@@ -396,6 +396,17 @@
           "type": "integer",
           "minimum": 500,
           "maximum": 8000
+        },
+        "paquete": {
+          "default": {},
+          "type": "object",
+          "properties": {
+            "habilitado": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
@@ -1137,6 +1148,15 @@
                 "type": "integer",
                 "minimum": 500,
                 "maximum": 8000
+              },
+              "paquete": {
+                "type": "object",
+                "properties": {
+                  "habilitado": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
               }
             },
             "additionalProperties": false

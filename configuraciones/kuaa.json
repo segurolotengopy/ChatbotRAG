@@ -24,7 +24,7 @@
     "temasBloqueados": ["decidir si un caso particular está cubierto o es elegible", "precios, cuotas y descuentos que no figuren en el respaldo habilitado"],
     "accionesProhibidas": ["emitir pólizas", "cobrar", "confirmar pagos", "agendar seguimientos"]
   },
-  "conocimiento": { "modo": "rag", "exigirRespaldo": true, "fuentes": [] },
+  "conocimiento": { "modo": "rag", "exigirRespaldo": true, "fuentes": [], "paquete": { "habilitado": true } },
   "seguridad": {
     "bloquearEntrada": ["cedula", "tarjeta", "salud", "pep", "otp", "clave", "inyeccion"],
     "compuertasSalida": ["niega_ia", "promesa_indemnizacion", "decision_elegibilidad", "dato_confidencial", "marca_no_declarada", "afirma_cobro_real", "promete_traspaso"],

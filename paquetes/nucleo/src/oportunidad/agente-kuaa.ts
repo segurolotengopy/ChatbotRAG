@@ -26,6 +26,8 @@ import type { ConfiguracionEfectiva } from '../configuracion/esquema.js';
 import { estaOperativo } from '../configuracion/derivados.js';
 import { resolverConfiguracion } from '../configuracion/perfiles.js';
 import { coleccionDe } from '../conocimiento/cargar-corpus.js';
+import { coleccionPaquete } from '../conocimiento/cargar-paquete.js';
+import type { PerfilValidacion } from '../conocimiento/registros-habilitados.js';
 import { esCortesia } from '../compuertas/cortesia.js';
 import { evaluarEntrada } from '../compuertas/entrada.js';
 import { aplicarCompuertasSalida, extraerMarcas } from '../compuertas/salida.js';
@@ -55,7 +57,16 @@ export function claveMemoriaKuaa(clienteId: string, oportunidadId: string): stri
 export class AgenteKuaa {
   private readonly reloj: () => Date;
 
-  constructor(private readonly deps: DependenciasAgente) {
+  /**
+   * `perfilConocimiento` es el perfil del entorno; por omisión `produccion`. Con él, un fragmento marcado
+   * `no_validado` que llegara a la recuperación se DESCARTA antes de armar el prompt (defensa en profundidad:
+   * el cargador ya no debería haberlo indexado). Con `pruebas` y `versionPaquete`, además de la colección base se
+   * consulta la del paquete (`coleccionPaquete`) y se mezclan por puntaje.
+   */
+  constructor(
+    private readonly deps: DependenciasAgente,
+    private readonly opciones: { perfilConocimiento?: PerfilValidacion; versionPaquete?: string | null } = {},
+  ) {
     this.reloj = deps.reloj ?? (() => new Date());
   }
 
@@ -98,9 +109,32 @@ export class AgenteKuaa {
         avisos.push('indice_error');
         this.deps.bitacora.registrar({ ...base, tipo: 'error_modelo', codigo: 'indice' });
       }
+      if (this.opciones.perfilConocimiento === 'pruebas' && this.opciones.versionPaquete) {
+        try {
+          const delPaquete = await this.deps.indice.buscar(texto, { coleccion: coleccionPaquete(coleccionDe(this.deps.config, null)), topK: config.conocimiento.topK, umbral: config.conocimiento.umbral });
+          fragmentos = [...fragmentos, ...delPaquete].sort((a, b) => b.puntaje - a.puntaje).slice(0, config.conocimiento.topK);
+        } catch {
+          avisos.push('indice_error');
+          this.deps.bitacora.registrar({ ...base, tipo: 'error_modelo', codigo: 'indice' });
+        }
+      }
     }
 
-    const sistema = armarPromptKuaa(config, entrada, fragmentos, this.reloj());
+    let versionNoValidada: string | null = null;
+    if (this.opciones.perfilConocimiento !== 'pruebas') {
+      const habilitados = fragmentos.filter((f) => f.validacion === undefined && f.versionPaquete === undefined);
+      if (habilitados.length !== fragmentos.length) avisos.push('fragmento_no_validado_descartado');
+      fragmentos = habilitados;
+    } else {
+      const marcado = fragmentos.find((f) => f.validacion === 'no_validado');
+      if (marcado) {
+        versionNoValidada = marcado.versionPaquete ?? 'desconocida';
+        avisos.push(`respaldo_no_validado:${versionNoValidada}`);
+        this.deps.bitacora.registrar({ ...base, tipo: 'respuesta_no_validada', detalle: `paquete=${versionNoValidada}` });
+      }
+    }
+
+    const sistema = armarPromptKuaa(config, entrada, fragmentos, this.reloj(), { versionPaquete: this.opciones.perfilConocimiento === 'pruebas' ? (this.opciones.versionPaquete ?? null) : null });
     const tokens = { tokensEntrada: 0, tokensSalida: 0 };
     let textoModelo = '';
     let cortado = false;

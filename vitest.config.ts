@@ -11,6 +11,7 @@ export default defineConfig({
       '@chatbotrag/proveedor-vertex': `${raiz}paquetes/proveedor-vertex/src/indice.ts`,
       '@chatbotrag/proveedor-bedrock': `${raiz}paquetes/proveedor-bedrock/src/indice.ts`,
       '@chatbotrag/conocimiento-pgvector': `${raiz}paquetes/conocimiento-pgvector/src/indice.ts`,
+      '@chatbotrag/conocimiento-gcs': `${raiz}paquetes/conocimiento-gcs/src/indice.ts`,
       '@chatbotrag/canal-web': `${raiz}paquetes/canal-web/src/indice.ts`,
     },
   },

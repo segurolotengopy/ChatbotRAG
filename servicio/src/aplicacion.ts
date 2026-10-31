@@ -194,7 +194,7 @@ export async function crearAplicacion(opciones: OpcionesAplicacion): Promise<Fas
   });
 
   // RUTA PROVISIONAL de Kuaa. Misma autenticación, límites y CORS que las demás. Nunca repite en el
-  // error los valores recibidos; la respuesta lleva exactamente las claves de `SalidaOportunidad`.
+  // error los valores recibidos; la respuesta lleva las claves de `SalidaOportunidad` y, solo con perfil `pruebas` y paquete cargado, `validacion` y `version_paquete`.
   app.post('/v1/kuaa/mensaje', async (p, r) => {
     const acceso = await conCliente(p);
     if ('error' in acceso) return r.code(acceso.error).send({ ok: false, motivo: acceso.motivo });
@@ -205,6 +205,8 @@ export async function crearAplicacion(opciones: OpcionesAplicacion): Promise<Fas
     if (/^#simular:/i.test(entrada.data.mensaje.trim()) && acceso.armado.proveedor !== 'simulado') return r.code(400).send({ ok: false, motivo: 'TEXTO_INVALIDO' });
     try {
       const { salida } = await kuaa.responder(entrada.data, acceso.cliente.id);
+      // Solo con perfil `pruebas` y paquete cargado: campos opcionales del SOBRE, fuera de `SalidaOportunidad`.
+      if (acceso.armado.perfilConocimiento === 'pruebas' && acceso.armado.versionPaquete) return { ...salida, validacion: 'no_validado', version_paquete: acceso.armado.versionPaquete };
       return salida;
     } catch (e) {
       if (e instanceof ErrorPeticion) return r.code(e.codigo === 'TEXTO_LARGO' ? 413 : 400).send({ ok: false, motivo: e.codigo });

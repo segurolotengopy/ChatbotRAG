@@ -116,6 +116,7 @@ POST /v1/agentes/{agente}/conversaciones/{conversacionId}/mensajes  { perfilId, 
 | `@chatbotrag/proveedor-vertex` | Gemini + embeddings en Vertex AI | `@google/genai` |
 | `@chatbotrag/proveedor-bedrock` | Claude/Titan vía Converse API | `@aws-sdk/client-bedrock-runtime` |
 | `@chatbotrag/conocimiento-pgvector` | índice persistente en PostgreSQL + pgvector | `pg` |
+| `@chatbotrag/conocimiento-gcs` | lector del paquete de conocimiento de Kuaa desde un bucket privado (solo lectura, ADC) | `@google-cloud/storage` |
 | `@chatbotrag/canal-web` | widget embebible (TS puro) y contrato HTTP | — |
 | `servicio` | HTTP (Fastify) para Cloud Run; carga configuraciones y corpus | `fastify` |
 
@@ -282,6 +283,41 @@ tienen formas estrictas. `estados` y
 `resumen` son datos y nunca se interpolan en el prompt. Se declaran el enum de tipos de evento (sin
 endpoint) y el esquema de salida; `filtrarBotonesSalida` descarta `continuar_pago` si la solicitud
 no está completada.
+
+### Paquete de conocimiento no validado de Kuaa (solo staging)
+
+Para probar el paquete de contenido antes de que alguien lo valide, el servicio puede cargarlo marcado
+`no_validado`; **nunca en producción**. Reglas:
+
+- **Perfil por entorno.** `CHATBOTRAG_PERFIL_CONOCIMIENTO` ausente o vacío = `produccion`; `pruebas` lo activa;
+  cualquier otro valor no vacío («PRUEBAS», «staging») es un `ErrorEntorno` (un typo no pasa por válido). `pruebas`
+  exige `CHATBOTRAG_BUCKET_PAQUETE` y `CHATBOTRAG_VERSION_PAQUETE` (X.Y.Z); `produccion` los rechaza; y el perfil `pruebas` o el bucket
+  solo se admiten con `APP_ENV` (sin espacios ni mayúsculas) en {staging, development, test}: ausente, `prod*`,
+  `production` en cualquier grafía o un valor desconocido dan `ErrorEntorno` (NODE_ENV no distingue lo local).
+- **Solo agentes `kuaa`.** `conocimiento.paquete.habilitado` (booleano, solo en la base, nunca en un perfil)
+  lo exige el esquema; `armar-agentes` carga el paquete solo si el agente es `kuaa`, el perfil es `pruebas` y el
+  índice no es pgvector (con pgvector queda el evento `paquete_no_cargado` con código `PGVECTOR_NO_ADMITE`, sin
+  tocar el índice; `IndicePgvector.indexar` además rechaza todo fragmento con `validacion`).
+- **Origen.** `paquetes/conocimiento-gcs` lee `gs://<bucket>/<version>/manifiesto.json` y los archivos que lista,
+  con la identidad del servicio. El manifiesto exige `bytes` y `sha256` por archivo, rutas sin duplicar, 5 MB por
+  archivo, 50 MB y 200 archivos en total; el tamaño se contrasta con los metadatos antes de descargar y con lo
+  descargado, y el SHA-256 con el contenido. Errores tipados: `NO_AUTORIZADO`, `NO_ENCONTRADO`, `INTEGRIDAD`,
+  `MANIFIESTO`, `VERSION`, `ERROR`.
+- **Solo `no_validado`, colección propia.** `cargarPaqueteKuaa` acepta únicamente registros
+  `habilitado_produccion:false` + `validacion:"no_validado"` + `version_paquete` igual al del manifiesto; todo
+  lo demás es rechazo. Indexa una sola vez, tras validar todos los archivos, en `<coleccion>--paquete`; si algo
+  falla se vacía solo esa colección y el corpus público queda intacto. `AgenteKuaa` consulta la base y la del
+  paquete y mezcla por puntaje; con perfil `produccion` descarta cualquier fragmento marcado.
+- **Visible.** Con `pruebas` y paquete cargado, el prompt rotula cada fragmento «[NO VALIDADO, paquete X.Y.Z]»,
+  antepone una frase enumerada de aviso y la respuesta de `/v1/kuaa/mensaje` lleva `validacion` y
+  `version_paquete` (campos opcionales del sobre, fuera de `SalidaOportunidad`).
+- **Preparación.** `scripts/preparar-paquete-kuaa.mts` convierte el paquete de origen (lista literal; sin PDF,
+  prompts, formularios, imágenes, CSV ni `PRUEBAS_*`; `MANUAL_CAPACITACION_IA.docx` tampoco, porque contiene
+  instrucciones a una IA) y escribe solo en una carpeta de salida ajena al repo. `CONVERSACIONES.json` exige
+  **revisión humana por datos personales antes de subir**. No anonimiza nada.
+- `prompt/armar.ts` normaliza (NFKC, sin ancho cero) y neutraliza en los fragmentos los dibujos de
+  caja, `═`/`━`/`=` repetidos (incluso separados por espacios), «FIN DE RESPALDO|DATOS», «INICIO DE RESPALDO|DATOS» y
+  un falso encabezado `[n] Documento:` al inicio de línea, para que un texto del paquete no cierre el bloque de respaldo.
 
 ### Agente Kuaa y ruta provisional `POST /v1/kuaa/mensaje`
 
