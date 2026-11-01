@@ -14,7 +14,7 @@ import { RegistroHerramientas } from '../herramientas/registro.js';
 import { AgenteKuaa } from './agente-kuaa.js';
 import { ESTADOS_OPERATIVOS_DESCONOCIDOS, EntradaKuaa, RESUMEN_DESCONOCIDO } from './esquemas.js';
 import { normalizarEntradaKuaa } from './normalizar-entrada.js';
-import { afirmaHechoNoRespaldado, contieneEnlaceOPrecio, filtraPrompt, interpretarSalidaModelo, salidaFallback } from './salida-kuaa.js';
+import { afirmaHechoNoRespaldado, contieneEnlaceOPrecio, patronEnlaceOPrecio, filtraPrompt, interpretarSalidaModelo, salidaFallback } from './salida-kuaa.js';
 import { ErrorPeticion } from '../orquestador/agente.js';
 
 const RUTA = fileURLToPath(new URL('../../../../configuraciones/kuaa.json', import.meta.url));
@@ -85,6 +85,18 @@ describe('interpretarSalidaModelo', () => {
     ['texto enorme', salidaJson({ texto: 'a'.repeat(4001) })],
     ['objecion con código inválido', salidaJson({ objecion: { codigo: 'O99', estado: 'detectada' } })],
   ])('rechaza %s', (_n, texto) => expect(interpretarSalidaModelo(texto)).toBeNull());
+});
+
+describe('patronEnlaceOPrecio: nombra el patrón que dispara, no el texto', () => {
+  it.each([
+    ['Entrá a https://x.y/ ahora.', 'https'],
+    ['Escribinos a hola@kuaa.com', 'dominio'],
+    ['Llamá al 0981 123 456', 'telefono'],
+    ['Sale Gs. 150.000 por mes', 'moneda_antes'],
+    ['Más de 10.000 personas', 'miles'],
+    ['Cubre el 50% del gasto', 'porcentaje'],
+  ] as [string, string][])('«%s» → %s', (t, patron) => expect(patronEnlaceOPrecio(t)).toBe(patron));
+  it('devuelve null si nada dispara', () => expect(patronEnlaceOPrecio('Te cuento los 3 pasos del proceso.')).toBeNull());
 });
 
 describe('contieneEnlaceOPrecio', () => {
@@ -217,6 +229,14 @@ describe('AgenteKuaa', () => {
       const { agente } = await armar(() => salidaJson({ 'Clave Rara!': 1 }), true);
       const { avisos } = await resp(agente, entrada());
       expect(avisos.filter((a) => a.startsWith('causa_salida:'))).toEqual(['causa_salida:esquema:raiz']);
+    });
+    it('la bitácora registra el patrón de enlace_o_precio sin el texto del modelo', async () => {
+      const { agente, bitacora } = await armar(() => salidaJson({ texto: 'Escribí a TEXTO-CENTINELA@kuaa.com ahora.' }), true);
+      const { avisos } = await resp(agente, entrada());
+      expect(avisos).toContain('enlace_o_precio');
+      expect(avisos).toContain('patron_bloqueado:dominio');
+      expect(bitacora.eventos.find((e) => e.tipo === 'mensaje_atendido')?.avisos).toContain('patron_bloqueado:dominio');
+      expect(JSON.stringify(bitacora.eventos).toLowerCase()).not.toContain('centinela');
     });
     it('un error del proveedor también cae al error temporal', async () => {
       const { agente, config } = await armar(() => {
