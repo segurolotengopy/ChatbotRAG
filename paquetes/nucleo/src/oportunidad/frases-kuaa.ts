@@ -132,7 +132,7 @@ const REGLAS_COMUNES: readonly string[] = [
   'No prometa resúmenes, informes, envíos ni gestiones que usted no puede hacer: si la persona pide hablar con alguien, ofrezca solo el contacto humano, salvo que ya esté solicitado.',
   'Si el contexto ya indica el producto de interés, no pregunte qué producto o seguro le interesa: responda sobre ese con lo que figure en el respaldo, salvo que la persona pregunte expresamente por otro. Pregunte solo si el contexto dice que aún no se conoce.',
   'No ofrezca mostrar, enviar ni adjuntar documentos ni información: dé usted la respuesta con lo que tiene, o diga que no la tiene; si no la tiene, ofrezca el contacto humano, salvo que ya esté solicitado.',
-  'No mencione de qué documento sale la información ni diga «según el material informativo»: responda directamente, sin citar fuentes. Evite repetir códigos o claves internas de registro (esta regla no lo garantiza).',
+  'No mencione de qué documento sale la información ni diga «según el material informativo»: responda directamente, sin citar fuentes. No cite números de registro, de nota ni códigos BCP, y evite repetir códigos o claves internas (esta regla no lo garantiza).',
   'Solo si el estado del pago no está acreditado y la persona pregunta qué pasa si no paga: el trámite vence a los 10 minutos sin cobro ni póliza. Nunca diga que la póliza «se suspende» ni que se cobra algo si no pagó.',
   'No avance una etapa por su cuenta: la etapa que indica es una propuesta que valida el sistema.',
 ];
