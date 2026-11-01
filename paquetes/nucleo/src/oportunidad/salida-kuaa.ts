@@ -151,14 +151,16 @@ export function salidaSinCifras(etapa: EtapaVenta): SalidaOportunidad {
  * Retira referencias a códigos internos del paquete (una letra mayúscula y dos dígitos): los que van entre
  * paréntesis y los que siguen a «según», «ver» o «código». Un código suelto («vitamina B12») o pegado a un punto,
  * arroba o barra («x.A12.py») NO se toca, para no alterar texto legítimo ni esconder un dominio al detector.
- * Qué NO garantiza: códigos con otra forma o sin esas palabras; el texto puede quedar algo seco.
+ * Qué NO garantiza: códigos con otra forma o sin esas palabras; el texto puede quedar algo seco. Los
+ * `(?<![ \t])` hacen que cada tirada de espacios se examine una sola vez: sin ellos, una respuesta con miles de
+ * espacios seguidos costaba tiempo cuadrático (alerta `js/polynomial-redos` de CodeQL).
  */
 export function retirarCodigosInternos(texto: string): string {
   return texto
-    .replace(/[ \t]*\([A-Z]\d{2}(?:\s*[,;]\s*[A-Z]\d{2})*\)/g, '')
+    .replace(/(?<![ \t])[ \t]*\([A-Z]\d{2}(?:[ \t]*[,;][ \t]*[A-Z]\d{2})*\)/g, '')
     .replace(/(?<![.@/\w-])(?:[Ss]egún|[Vv]er|[Cc]ódigo)[ \t]+[A-Z]\d{2}(?![\w@/-])(?!\.\w)[ \t]*/g, '')
     .replace(/[ \t]{2,}/g, ' ')
-    .replace(/[ \t]+([.,;:])/g, '$1')
+    .replace(/(?<![ \t])[ \t]+([.,;:])/g, '$1')
     .trim();
 }
 

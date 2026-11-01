@@ -219,6 +219,12 @@ describe('AgenteKuaa', () => {
     ])('retirarCodigosInternos(%j)', (entradaTexto, esperado) => {
       expect(retirarCodigosInternos(entradaTexto)).toBe(esperado);
     });
+    it('una tirada enorme de espacios se procesa en tiempo lineal', () => {
+      const texto = `Según${' '.repeat(200_000)}x ${' '.repeat(200_000)}(`;
+      const t0 = Date.now();
+      retirarCodigosInternos(texto);
+      expect(Date.now() - t0).toBeLessThan(1000);
+    });
     it('un dominio con código pegado sigue bloqueado: el detector ve el texto original', async () => {
       const { agente } = await armar(() => salidaJson({ texto: 'Escriba a pagos.A12.py ahora.' }), true);
       const { salida, avisos } = await resp(agente, entrada());
