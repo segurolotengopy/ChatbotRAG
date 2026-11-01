@@ -50,7 +50,7 @@ export function presentarFuente(f: FragmentoRecuperado): FragmentoRecuperado {
 const MARCA_SIGUIENTE = '\n\nFECHA Y HORA ACTUAL';
 
 export function armarPromptKuaa(config: ConfiguracionEfectiva, ctx: EntradaKuaa, fragmentos: FragmentoRecuperado[], ahora: Date, opciones: { versionPaquete?: string | null } = {}): string {
-  const base = armarPrompt({ config, ahora, fragmentos: fragmentos.map(presentarFuente), orientacion: { facetas: {} }, canal: 'web' });
+  const base = armarPrompt({ config, ahora, fragmentos: fragmentos.map(presentarFuente), orientacion: { facetas: {} }, canal: 'web', citarFuentes: false });
   // Solo con perfil `pruebas` y paquete cargado: frase enumerada, sin interpolar la versión.
   const avisoPaquete = opciones.versionPaquete ? `\n\nPAQUETE NO VALIDADO\n- ${FRASE_PAQUETE_NO_VALIDADO}` : '';
   const reglas = `JERARQUÍA DE FUENTES\n${JERARQUIA_KUAA.map((r, i) => `${i + 1}. ${r}`).join('\n')}\n\nREGLAS DE KUAA\n${REGLAS_KUAA.map((r, i) => `${i + 1}. ${r}`).join('\n')}${avisoPaquete}`;

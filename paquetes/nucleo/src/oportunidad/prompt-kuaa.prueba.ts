@@ -129,6 +129,16 @@ describe('presentarFuente: el título interno de un archivo del paquete no llega
     expect(presentarFuente(frag('Condiciones del seguro oncológico')).fuenteTitulo).toBe('Condiciones del seguro oncológico');
     expect(presentarFuente(frag('Glosario')).fuenteTitulo).toBe('Glosario');
   });
+  it('el prompt manda usar el producto elegido, no ofrecer documentos ni citar la fuente', () => {
+    const prompt = armarPromptKuaa(config, entrada(), [], AHORA);
+    expect(prompt).toContain('no pregunte qué producto o seguro le interesa');
+    expect(prompt).toContain('No ofrezca mostrar, enviar ni adjuntar documentos');
+    expect(prompt).toContain('sin citar fuentes');
+    expect(prompt).toContain('Evite repetir códigos o claves internas de registro');
+    // El prompt de Kuaa no manda citar el documento: la regla base contradiría a la de Kuaa.
+    expect(prompt).not.toContain('mencione brevemente de qué documento sale');
+    expect(prompt).toContain('responda sobre ese con lo que figure en el respaldo, salvo que la persona pregunte expresamente por otro');
+  });
   it('el prompt completo no contiene el nombre interno', () => {
     const prompt = armarPromptKuaa(config, entrada(), [frag('faq/PREGUNTAS_RESPUESTAS', delPaquete)], AHORA);
     expect(prompt).not.toContain('PREGUNTAS_RESPUESTAS');
