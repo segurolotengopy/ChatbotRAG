@@ -12,6 +12,10 @@
  * informó `solicitud: completada`. La entrada se normaliza ANTES de las compuertas (invisibles, marcas
  * combinantes, homóglifos) y el modelo recibe el texto normalizado.
  *
+ * Contrato v0.4: con `plataforma` el modelo puede decir los importes, teléfonos y correos de ese bloque (y solo esos:
+ * el detector retira esas apariciones exactas antes de aplicar sus patrones). El bloque no se guarda en la memoria ni en la
+ * bitácora; de él solo queda su versión en un aviso.
+ *
  * La memoria es en proceso, por cliente y por oportunidad, y guarda el texto de la persona y el JSON
  * validado de la respuesta hasta `ttlConversacionSeg` (el contrato de SLT dice «sin estado»: es una
  * desviación declarada). Su clave lleva «:», que `ID_CONVERSACION` no acepta: las rutas generales no pueden
@@ -39,7 +43,7 @@ import type { FragmentoRecuperado } from '../puertos/indice-conocimiento.js';
 import { EntradaKuaa, SalidaOportunidad, filtrarBotonesSalida } from './esquemas.js';
 import { normalizarEntradaKuaa } from './normalizar-entrada.js';
 import { armarPromptKuaa } from './prompt-kuaa.js';
-import { afirmaHechoNoRespaldado, patronEnlaceOPrecio, analizarSalida, filtraPrompt, retirarCodigosInternos, salidaFallback, salidaSinCifras } from './salida-kuaa.js';
+import { afirmaHechoNoRespaldado, patronEnlaceOPrecio, permitidosDe, analizarSalida, filtraPrompt, retirarCodigosInternos, salidaFallback, salidaSinCifras } from './salida-kuaa.js';
 
 export interface ResultadoKuaa {
   salida: SalidaOportunidad;
@@ -134,6 +138,8 @@ export class AgenteKuaa {
       }
     }
 
+    // De la plataforma solo la versión llega a la bitácora (validada por regex); ni el bloque ni sus textos se guardan.
+    if (entrada.plataforma) avisos.push(`plataforma:${entrada.plataforma.version}`);
     const sistema = armarPromptKuaa(config, entrada, fragmentos, this.reloj(), { versionPaquete: this.opciones.perfilConocimiento === 'pruebas' ? (this.opciones.versionPaquete ?? null) : null });
     const tokens = { tokensEntrada: 0, tokensSalida: 0 };
     let textoModelo = '';
@@ -166,7 +172,8 @@ export class AgenteKuaa {
     if (textoSaneado !== textoBase) avisos.push('codigo_interno_retirado');
     if (textoSaneado === '') return cierre(fallback([...avisos, 'causa_salida:vacia_tras_sanear'], 'salida_invalida'));
     // El detector mira el texto del modelo tal cual y también el ya limpio: el retiro nunca debe esconderle nada.
-    const patron = patronEnlaceOPrecio(textoBase) ?? patronEnlaceOPrecio(textoSaneado);
+    const permitidos = permitidosDe(entrada.plataforma);
+    const patron = patronEnlaceOPrecio(textoBase, permitidos) ?? patronEnlaceOPrecio(textoSaneado, permitidos);
     if (patron) return cierre({ salida: salidaSinCifras(etapa), avisos: [...avisos, `patron_bloqueado:${patron}`, 'enlace_o_precio'] });
     const hecho = afirmaHechoNoRespaldado(textoSaneado, entrada.estados);
     if (hecho) return cierre(fallback(avisos, `hecho_no_respaldado:${hecho}`));

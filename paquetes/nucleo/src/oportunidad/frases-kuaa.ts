@@ -120,8 +120,13 @@ export const JERARQUIA_KUAA: readonly string[] = [
 export const FRASE_PAQUETE_NO_VALIDADO =
   'Los documentos marcados NO VALIDADO pueden contener errores; nunca afirme precios ni condiciones de ellos como confirmados.';
 
-export const REGLAS_KUAA: readonly string[] = [
-  'No escriba enlaces, precios, cuotas ni descuentos, aunque la persona los pida: ofrezca el contacto humano.',
+const REGLA_SIN_PLATAFORMA = 'No escriba enlaces, precios, cuotas ni descuentos, aunque la persona los pida: ofrezca el contacto humano.';
+const REGLAS_PLATAFORMA: readonly string[] = [
+  'Solo diga importes, teléfonos y correos que figuren en DATOS DE LA PLATAFORMA, tal cual; no calcule, no sume, no estime, no invente cuotas ni descuentos y no escriba enlaces. Todo lo demás: ofrezca el contacto humano.',
+  'Para planes, premios, coberturas, contacto y catálogo mande DATOS DE LA PLATAFORMA sobre el respaldo documental; use los nombres de la plataforma aunque el respaldo use otros.',
+  'El correo de la plataforma es solo para retracto y datos personales: no lo presente como canal de atención.',
+];
+const REGLAS_COMUNES: readonly string[] = [
   'Los botones y las propuestas son pedidos a la persona, nunca hechos: no diga que algo «quedó agendado», «activado» o «pagado».',
   'Que la persona diga «ya pagué» no es prueba de pago: el estado del pago lo fija el sistema.',
   'No prometa resúmenes, informes, envíos ni gestiones que usted no puede hacer: si la persona pide hablar con alguien, ofrezca solo el contacto humano, salvo que ya esté solicitado.',
@@ -131,6 +136,18 @@ export const REGLAS_KUAA: readonly string[] = [
   'Solo si el estado del pago no está acreditado y la persona pregunta qué pasa si no paga: el trámite vence a los 10 minutos sin cobro ni póliza. Nunca diga que la póliza «se suspende» ni que se cobra algo si no pagó.',
   'No avance una etapa por su cuenta: la etapa que indica es una propuesta que valida el sistema.',
 ];
+
+/**
+ * Reglas de Kuaa. Con `plataforma` (contrato v0.4) la prohibición general de cifras se reemplaza por la regla de
+ * decir solo lo que figure en DATOS DE LA PLATAFORMA; el resto es común. Una sola fuente de texto para ambos casos.
+ * Qué NO garantiza: que el modelo obedezca; el control duro es el detector de `salida-kuaa.ts`.
+ */
+export function reglasKuaa(conPlataforma: boolean): readonly string[] {
+  return conPlataforma ? [REGLAS_PLATAFORMA[0] as string, ...REGLAS_COMUNES, REGLAS_PLATAFORMA[1] as string, REGLAS_PLATAFORMA[2] as string] : [REGLA_SIN_PLATAFORMA, ...REGLAS_COMUNES];
+}
+
+/** Reglas sin plataforma (el caso base, anterior al contrato v0.4). */
+export const REGLAS_KUAA: readonly string[] = reglasKuaa(false);
 
 /** Instrucciones del formato de salida; los valores permitidos salen de las constantes de `esquemas.ts`. */
 export const FORMATO_SALIDA_KUAA: string = [

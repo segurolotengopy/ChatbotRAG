@@ -12,6 +12,8 @@
  *                                                            AGENTE_KUAA para un cliente de Kuaa)
  *                                                            (solo para clientes cuyo agente es `tipoAgente: kuaa`; el contrato
  *                                                            definitivo lo fija SLT y esta ruta puede cambiar)
+ *                                                            Contrato v0.4: el cuerpo admite un bloque opcional `plataforma` (catálogo,
+ *                                                            planes y contacto de SLT); el esquema es estricto y la ruta no lo registra)
  *
  * AUTENTICACIÓN: `Authorization: Bearer <clave>`. Se compara el SHA-256 de la
  * clave contra los clientes configurados, en tiempo constante. El agente que

@@ -109,6 +109,20 @@ describe('POST /v1/kuaa/mensaje', () => {
     expect(r.json()).toMatchObject({ etapa_propuesta: 'E02', botones: ['ver_planes'] });
   });
 
+  it('acepta el bloque plataforma del contrato v0.4 y rechaza uno con claves extra', async () => {
+    const plataforma = {
+      version: 'v0.4',
+      catalogo: [{ producto: 'VIDA_ONCOLOGICO', nombre: 'Vida Oncologico', estado: 'disponible' }],
+      planes: [],
+      contacto: { whatsapp_e164: '+595991478468' },
+    };
+    siguiente = salidaJson();
+    expect((await enviar(kuaa, cuerpo({ plataforma }))).statusCode).toBe(200);
+    const r = await enviar(kuaa, cuerpo({ plataforma: { ...plataforma, extra: 1 } }));
+    expect(r.statusCode).toBe(400);
+    expect(r.json()).toEqual({ ok: false, motivo: 'PETICION_INVALIDA' });
+  });
+
   it('descarta continuar_pago sin solicitud completada y lo conserva con completada', async () => {
     siguiente = salidaJson({ texto: '¿Seguimos?', botones: ['continuar_pago', 'ver_planes'] });
     expect((await enviar(kuaa, cuerpo())).json().botones).toEqual(['ver_planes']);

@@ -325,6 +325,18 @@ Para probar el paquete de contenido antes de que alguien lo valide, el servicio 
 (`configuraciones/kuaa.json`: voseo, 0 fuentes de conocimiento, criterio de salud y PEP `declaracion`,
 sin `recomienda_plan`). `oportunidad/agente-kuaa.ts` es un recorrido aparte de `Agente.responder`:
 
+**Contrato v0.4: bloque opcional `plataforma`.** El cuerpo de `POST /v1/kuaa/mensaje` admite `plataforma`
+(`oportunidad/esquemas.ts`, estricto): `version`, `catalogo` (hasta 4 productos con nombre y estado
+`disponible`/`proximamente`), `planes` (hasta 3, sin repetir `plan`; premio anual, capital por fallecimiento,
+indemnización por cáncer, renta hospitalaria por día y máximo de días, gastos médicos por accidente, en Gs enteros) y
+`contacto` (`whatsapp_e164`, `canal`, `correo_derechos`). Los nombres solo admiten letras, números, espacio y `+ . -`.
+Sin el bloque, nada cambia: el prompt es el de siempre y el detector bloquea toda cifra, enlace o teléfono. Con él, el
+prompt agrega «DATOS DE LA PLATAFORMA» armado con plantillas fijas (importes con punto de miles, teléfono agrupado) y
+unas reglas que mandan a decir solo esos datos; `salida-kuaa.ts` retira del texto las apariciones EXACTAS de esos
+importes, teléfonos y correos (con límites de dígitos y de dominio) antes de aplicar los patrones, así que cualquier
+otra cifra sigue bloqueada. El bloque no se guarda en la memoria ni en la bitácora (solo el aviso `plataforma:<version>`).
+No garantiza que los datos sean correctos (los fija SLT) ni que el modelo los use en el contexto adecuado.
+
 1. **Entrada.** Normaliza localmente (NFKC, sin caracteres de formato, marcas combinantes ni rellenos,
    homóglifos cirílicos y griegos plegados) ANTES de las compuertas y de enviar al modelo; el modelo recibe
    el texto normalizado. Un mensaje más largo que `maxCaracteresEntrada` responde 413 `TEXTO_LARGO` (con
