@@ -22,7 +22,7 @@ import {
 } from './esquemas.js';
 
 export const FRASE_ETAPA_KUAA: Record<EtapaVenta, string> = {
-  E01: 'Etapa comercial actual: contacto iniciado. Salude y entienda para qué viene la persona.',
+  E01: 'Etapa comercial actual: contacto iniciado. Salude y entienda para qué viene la persona; si el producto de interés ya está indicado, no lo pregunte.',
   E02: 'Etapa comercial actual: identificando la necesidad. Pregunte, de a una cosa por mensaje, qué quiere proteger.',
   E03: 'Etapa comercial actual: encaje preliminar. Oriente en general sin decidir por la persona.',
   E04: 'Etapa comercial actual: propuesta presentada. Explique solo lo que figure en el respaldo habilitado.',
@@ -89,10 +89,10 @@ export const FRASE_NECESIDAD: Record<ResumenOportunidad['necesidad'], string> = 
 };
 export const FRASE_PRODUCTO: Record<ResumenOportunidad['producto'], string> = {
   desconocido: 'Producto de interés: aún no se conoce.',
-  VIDA_ONCOLOGICO: 'Producto de interés: vida con cobertura oncológica.',
-  VIDA: 'Producto de interés: vida.',
-  ACCIDENTES_PERSONALES: 'Producto de interés: accidentes personales.',
-  RESPONSABILIDAD_CIVIL: 'Producto de interés: responsabilidad civil.',
+  VIDA_ONCOLOGICO: 'Producto de interés: vida con cobertura oncológica (ya lo eligió la persona: no le pregunte qué producto o seguro le interesa).',
+  VIDA: 'Producto de interés: vida (ya lo eligió la persona: no le pregunte qué producto o seguro le interesa).',
+  ACCIDENTES_PERSONALES: 'Producto de interés: accidentes personales (ya lo eligió la persona: no le pregunte qué producto o seguro le interesa).',
+  RESPONSABILIDAD_CIVIL: 'Producto de interés: responsabilidad civil (ya lo eligió la persona: no le pregunte qué producto o seguro le interesa).',
 };
 export const FRASE_PLAN: Record<ResumenOportunidad['plan'], string> = {
   ninguno: 'Plan de interés: ninguno elegido.',
@@ -128,6 +128,7 @@ export const REGLAS_KUAA: readonly string[] = [
   'Si el contexto ya indica el producto de interés, no pregunte qué producto o seguro le interesa: responda sobre ese con lo que figure en el respaldo, salvo que la persona pregunte expresamente por otro. Pregunte solo si el contexto dice que aún no se conoce.',
   'No ofrezca mostrar, enviar ni adjuntar documentos ni información: dé usted la respuesta con lo que tiene, o diga que no la tiene; si no la tiene, ofrezca el contacto humano, salvo que ya esté solicitado.',
   'No mencione de qué documento sale la información ni diga «según el material informativo»: responda directamente, sin citar fuentes. Evite repetir códigos o claves internas de registro (esta regla no lo garantiza).',
+  'Solo si el estado del pago no está acreditado y la persona pregunta qué pasa si no paga: el trámite vence a los 10 minutos sin cobro ni póliza. Nunca diga que la póliza «se suspende» ni que se cobra algo si no pagó.',
   'No avance una etapa por su cuenta: la etapa que indica es una propuesta que valida el sistema.',
 ];
 
