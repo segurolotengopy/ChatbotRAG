@@ -93,7 +93,7 @@ describe('armarPromptKuaa', () => {
       'Atención humana: ya solicitada. No la prometa de nuevo.',
       'Permiso de seguimiento: vigente por WhatsApp. Solo puede proponerlo; no lo ejecuta.',
       'Necesidad declarada: atención médica.',
-      'Producto de interés: vida con cobertura oncológica.',
+      'Producto de interés: vida con cobertura oncológica (ya lo eligió la persona: no le pregunte qué producto o seguro le interesa).',
       'Plan de interés: el plan intermedio de la familia de planes.',
       'Objeción: en aclaración con la persona.',
     ])
@@ -135,6 +135,7 @@ describe('presentarFuente: el título interno de un archivo del paquete no llega
     expect(prompt).toContain('No ofrezca mostrar, enviar ni adjuntar documentos');
     expect(prompt).toContain('sin citar fuentes');
     expect(prompt).toContain('Evite repetir códigos o claves internas de registro');
+    expect(prompt).toContain('el trámite vence a los 10 minutos sin cobro ni póliza');
     // El prompt de Kuaa no manda citar el documento: la regla base contradiría a la de Kuaa.
     expect(prompt).not.toContain('mencione brevemente de qué documento sale');
     expect(prompt).toContain('responda sobre ese con lo que figure en el respaldo, salvo que la persona pregunte expresamente por otro');

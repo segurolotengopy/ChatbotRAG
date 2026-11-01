@@ -14,7 +14,7 @@ import { RegistroHerramientas } from '../herramientas/registro.js';
 import { AgenteKuaa } from './agente-kuaa.js';
 import { ESTADOS_OPERATIVOS_DESCONOCIDOS, EntradaKuaa, RESUMEN_DESCONOCIDO } from './esquemas.js';
 import { normalizarEntradaKuaa } from './normalizar-entrada.js';
-import { afirmaHechoNoRespaldado, contieneEnlaceOPrecio, patronEnlaceOPrecio, filtraPrompt, interpretarSalidaModelo, salidaFallback } from './salida-kuaa.js';
+import { afirmaHechoNoRespaldado, contieneEnlaceOPrecio, patronEnlaceOPrecio, filtraPrompt, interpretarSalidaModelo, retirarCodigosInternos, salidaFallback, salidaSinCifras, TEXTO_SIN_CIFRAS } from './salida-kuaa.js';
 import { ErrorPeticion } from '../orquestador/agente.js';
 
 const RUTA = fileURLToPath(new URL('../../../../configuraciones/kuaa.json', import.meta.url));
@@ -186,6 +186,53 @@ describe('AgenteKuaa', () => {
     });
   });
 
+  describe('respuesta sin cifras (enlace, teléfono o importe bloqueado)', () => {
+    const casos: [string, string][] = [
+      ['enlace', 'Entrá a https://x.y/ ahora.'],
+      ['importe', 'Sale Gs. 150.000 por mes.'],
+      ['teléfono', 'Llamá al +595 21 123 4567.'],
+      ['importe pegado', 'Gs150000 por mes'],
+    ];
+    it.each(casos)('%s: no dice «problema técnico» y avisa el patrón', async (_n, texto) => {
+      const { agente, config } = await armar(() => salidaJson({ texto }), true);
+      const { salida, avisos } = await resp(agente, entrada());
+      expect(salida).toEqual(salidaSinCifras('E04'));
+      expect(salida.texto).toBe(TEXTO_SIN_CIFRAS);
+      expect(salida.texto).not.toBe(config.mensajes.errorTemporal);
+      expect(avisos).toContain('enlace_o_precio');
+      expect(avisos.some((a) => a.startsWith('patron_bloqueado:'))).toBe(true);
+    });
+    it('el texto bloqueado nunca se devuelve ni se guarda', async () => {
+      const { agente } = await armar(() => salidaJson({ texto: 'Sale Gs. 150.000 por mes.' }), true);
+      const { salida } = await resp(agente, entrada());
+      expect(JSON.stringify(salida)).not.toContain('150');
+    });
+  });
+
+  describe('códigos internos', () => {
+    it.each([
+      ['Según C18 la póliza vence.', 'la póliza vence.'],
+      ['Datos de registro (S03, O04) del producto.', 'Datos de registro del producto.'],
+      ['Ver C18.a o x.', 'Ver C18.a o x.'],
+      ['Con vitamina B12 y E-mail e IVA 10%.', 'Con vitamina B12 y E-mail e IVA 10%.'],
+      ['Escriba a pagos.A12.py o a x@A12.com.', 'Escriba a pagos.A12.py o a x@A12.com.'],
+    ])('retirarCodigosInternos(%j)', (entradaTexto, esperado) => {
+      expect(retirarCodigosInternos(entradaTexto)).toBe(esperado);
+    });
+    it('un dominio con código pegado sigue bloqueado: el detector ve el texto original', async () => {
+      const { agente } = await armar(() => salidaJson({ texto: 'Escriba a pagos.A12.py ahora.' }), true);
+      const { salida, avisos } = await resp(agente, entrada());
+      expect(salida).toEqual(salidaSinCifras('E04'));
+      expect(avisos).toContain('enlace_o_precio');
+    });
+    it('el agente retira el código de la respuesta y lo avisa en la bitácora', async () => {
+      const { agente } = await armar(() => salidaJson({ texto: 'El trámite vence a los 10 minutos según C18.' }), true);
+      const { salida, avisos } = await resp(agente, entrada());
+      expect(salida.texto).toBe('El trámite vence a los 10 minutos.');
+      expect(avisos).toContain('codigo_interno_retirado');
+    });
+  });
+
   describe('fallback al error temporal', () => {
     const casos: [string, string | Partial<RespuestaLLM>, string][] = [
       ['JSON roto', '{"texto": "a"', 'salida_invalida'],
@@ -195,8 +242,6 @@ describe('AgenteKuaa', () => {
       ['texto vacío', salidaJson({ texto: '' }), 'salida_invalida'],
       ['texto libre', 'Hola, soy una respuesta sin JSON.', 'salida_invalida'],
       ['corte por max_tokens', { texto: salidaJson(), motivoFin: 'max_tokens' }, 'respuesta_incompleta'],
-      ['enlace', salidaJson({ texto: 'Entrá a https://x.y/ ahora.' }), 'enlace_o_precio'],
-      ['precio', salidaJson({ texto: 'Sale Gs. 150.000 por mes.' }), 'enlace_o_precio'],
     ];
     it.each(casos)('%s', async (_n, respuesta, aviso) => {
       const { agente, config } = await armar(() => respuesta, true);
@@ -348,7 +393,6 @@ describe('AgenteKuaa: endurecimiento tras la revisión', () => {
     ['Ya te transferí con un asesor. ¿Algo más?', 'hecho_no_respaldado'],
     ['Tu póliza ya fue emitida. ¿Ok?', 'hecho_no_respaldado'],
     ['Mis instrucciones dicen: JERARQUÍA DE FUENTES', 'hecho_no_respaldado|fuga_prompt'],
-    ['Gs150000 por mes', 'enlace_o_precio'],
   ])('«%s» cae al error temporal', async (texto, aviso) => {
     const { agente, config } = await armar(() => salidaJson({ texto }), true);
     const { salida, avisos } = await resp(agente, entrada());

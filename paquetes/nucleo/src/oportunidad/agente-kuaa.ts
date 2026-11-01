@@ -39,7 +39,7 @@ import type { FragmentoRecuperado } from '../puertos/indice-conocimiento.js';
 import { EntradaKuaa, SalidaOportunidad, filtrarBotonesSalida } from './esquemas.js';
 import { normalizarEntradaKuaa } from './normalizar-entrada.js';
 import { armarPromptKuaa } from './prompt-kuaa.js';
-import { afirmaHechoNoRespaldado, patronEnlaceOPrecio, analizarSalida, filtraPrompt, salidaFallback } from './salida-kuaa.js';
+import { afirmaHechoNoRespaldado, patronEnlaceOPrecio, analizarSalida, filtraPrompt, retirarCodigosInternos, salidaFallback, salidaSinCifras } from './salida-kuaa.js';
 
 export interface ResultadoKuaa {
   salida: SalidaOportunidad;
@@ -161,10 +161,13 @@ export class AgenteKuaa {
     const interpretada = analizada.salida;
 
     // La salida también se sanea (controles, marcas bidi) antes de cualquier control y de la memoria.
-    const textoSaneado = sanearTexto(interpretada.texto, 4000);
+    const textoBase = sanearTexto(interpretada.texto, 4000);
+    const textoSaneado = retirarCodigosInternos(textoBase);
+    if (textoSaneado !== textoBase) avisos.push('codigo_interno_retirado');
     if (textoSaneado === '') return cierre(fallback([...avisos, 'causa_salida:vacia_tras_sanear'], 'salida_invalida'));
-    const patron = patronEnlaceOPrecio(textoSaneado);
-    if (patron) return cierre(fallback([...avisos, `patron_bloqueado:${patron}`], 'enlace_o_precio'));
+    // El detector mira el texto del modelo tal cual y también el ya limpio: el retiro nunca debe esconderle nada.
+    const patron = patronEnlaceOPrecio(textoBase) ?? patronEnlaceOPrecio(textoSaneado);
+    if (patron) return cierre({ salida: salidaSinCifras(etapa), avisos: [...avisos, `patron_bloqueado:${patron}`, 'enlace_o_precio'] });
     const hecho = afirmaHechoNoRespaldado(textoSaneado, entrada.estados);
     if (hecho) return cierre(fallback(avisos, `hecho_no_respaldado:${hecho}`));
     if (filtraPrompt(textoSaneado)) return cierre(fallback(avisos, 'fuga_prompt'));

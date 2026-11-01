@@ -136,6 +136,32 @@ export function filtraPrompt(texto: string): boolean {
   return /mis\s+instrucciones\s+dicen|jerarquia\s+de\s+fuentes|reglas\s+de\s+kuaa/.test(paraDetectar(limpio));
 }
 
+/**
+ * Respuesta cuando el detector bloquea enlaces, teléfonos o importes: antes era el «problema técnico», que no
+ * explicaba nada y hacía repetir la pregunta. Frase fija y neutra (sin segunda persona, para valer con voseo, tuteo
+ * o usted). Qué NO garantiza: que la persona reciba el dato; solo que no se le diga que hubo una falla.
+ */
+export const TEXTO_SIN_CIFRAS = 'Los precios, montos, teléfonos y enlaces no los puedo dar por este medio. Una persona del equipo puede ayudar con eso.';
+
+export function salidaSinCifras(etapa: EtapaVenta): SalidaOportunidad {
+  return { texto: TEXTO_SIN_CIFRAS, etapa_propuesta: etapa, objecion: null, botones: [], propuestas: [] };
+}
+
+/**
+ * Retira referencias a códigos internos del paquete (una letra mayúscula y dos dígitos): los que van entre
+ * paréntesis y los que siguen a «según», «ver» o «código». Un código suelto («vitamina B12») o pegado a un punto,
+ * arroba o barra («x.A12.py») NO se toca, para no alterar texto legítimo ni esconder un dominio al detector.
+ * Qué NO garantiza: códigos con otra forma o sin esas palabras; el texto puede quedar algo seco.
+ */
+export function retirarCodigosInternos(texto: string): string {
+  return texto
+    .replace(/[ \t]*\([A-Z]\d{2}(?:\s*[,;]\s*[A-Z]\d{2})*\)/g, '')
+    .replace(/(?<![.@/\w-])(?:[Ss]egún|[Vv]er|[Cc]ódigo)[ \t]+[A-Z]\d{2}(?![\w@/-])(?!\.\w)[ \t]*/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/[ \t]+([.,;:])/g, '$1')
+    .trim();
+}
+
 export function salidaFallback(config: ConfiguracionEfectiva, etapa: EtapaVenta): SalidaOportunidad {
   return { texto: config.mensajes.errorTemporal, etapa_propuesta: etapa, objecion: null, botones: [], propuestas: [] };
 }
