@@ -206,3 +206,16 @@ describe('delimitadores: variantes que esquivan la neutralización simple', () =
     expect(respaldo(limpio)).toContain(limpio);
   });
 });
+
+describe('regla de citar el documento', () => {
+  const armar = (citarFuentes?: boolean): string =>
+    armarPrompt({ config: validarConfiguracion(CONFIG_PRUEBA), ahora: new Date('2026-10-12T14:00:00Z'), fragmentos: [fragmento], orientacion: { facetas: {} }, canal: 'web', ...(citarFuentes === undefined ? {} : { citarFuentes }) });
+  it('por omisión manda citar el documento por su título', () => {
+    expect(armar()).toContain('mencione brevemente de qué documento sale');
+  });
+  it('con citarFuentes: false la regla desaparece y las demás se conservan', () => {
+    const p = armar(false);
+    expect(p).not.toContain('mencione brevemente de qué documento sale');
+    expect(p).toContain('NUNCA INVENTE NINGÚN DATO');
+  });
+});

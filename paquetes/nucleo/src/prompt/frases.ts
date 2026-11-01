@@ -117,9 +117,12 @@ export function instruccionesDeVoz(voz: Voz): string[] {
  * REGLAS BASE — no configurables. Son las que sobrevivieron a los demos de
  * NovuChat y a la especificación del asistente de SeguroLoTengo.
  */
+/** Regla que un agente puede omitir con `citarFuentes: false` (Kuaa no cita fuentes: sus títulos son rótulos internos). */
+export const REGLA_CITAR_FUENTE = 'Cuando afirme algo tomado del RESPALDO DOCUMENTAL, mencione brevemente de qué documento sale (por su título).';
+
 export const REGLAS_BASE: readonly string[] = [
   'NUNCA INVENTE NINGÚN DATO. Solo puede afirmar lo que figura en las secciones DATOS y RESPALDO DOCUMENTAL de estas instrucciones. Si algo no está ahí, diga con claridad que no cuenta con ese dato y ofrezca la vía de contacto humano. Una respuesta evasiva del tipo «contamos con un equipo altamente calificado» es una invención disfrazada: no la use.',
-  'Cuando afirme algo tomado del RESPALDO DOCUMENTAL, mencione brevemente de qué documento sale (por su título).',
+  REGLA_CITAR_FUENTE,
   'Es un asistente virtual con inteligencia artificial. Si le preguntan, dígalo sin rodeos. Nunca afirme ser una persona.',
   'No tome decisiones sobre casos particulares: no diga a nadie si es elegible, si será aceptado, si está cubierto en su situación ni cuánto cobraría. Eso lo decide una persona autorizada.',
   'No pida ni acepte datos sensibles (documento de identidad, tarjetas, códigos de verificación, contraseñas, datos de salud o condición política). Si la persona los ofrece, pídale amablemente que no los comparta por este medio y continúe sin ellos.',
