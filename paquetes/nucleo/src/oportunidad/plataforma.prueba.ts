@@ -162,6 +162,29 @@ describe('detector con permitidos', () => {
   it.each(['390.0001', '1.390.000', '390.000.000', '3900000', '390.000,50'])('«%s» no pasa por contener un importe permitido', (n) => {
     expect(patronEnlaceOPrecio(`Son ${n} Gs.`, perm)).not.toBeNull();
   });
+  it.each([
+    'Son 390.000 millones de Gs.',
+    'Son 20.000.000 mil guaraníes.',
+    'Son 100.000 millones.',
+    'Es un 390.000 %.',
+    'Son 390000 USD.',
+    'Son US$ 390.000.',
+    'Son 390.000 dólares.',
+    'Son $ 390.000.',
+    'Son 390.000 lucas.',
+  ])('«%s»: un importe permitido con multiplicador o moneda ajena se bloquea', (texto) => {
+    expect(patronEnlaceOPrecio(texto, perm)).not.toBeNull();
+  });
+  it.each(['(0981)390000', '0981-390000', '0981/390.000', '0981 390.000', '390.000 000', '390.000 5'])(
+    '«%s» no pasa: el importe permitido va unido a otra cifra',
+    (n) => {
+      expect(patronEnlaceOPrecio(`Llame al ${n} Gs.`, perm)).not.toBeNull();
+    },
+  );
+  it('un importe permitido entre comas, con «Gs» o con punto final sigue pasando', () => {
+    expect(patronEnlaceOPrecio('Cuesta 390.000 Gs.', perm)).toBeNull();
+    expect(patronEnlaceOPrecio('Planes: 390.000 Gs, 20.000.000 Gs y 100.000 Gs.', perm)).toBeNull();
+  });
   it('un teléfono permitido pasa (E.164, agrupado, pegado) y otro se bloquea', () => {
     expect(patronEnlaceOPrecio('Escriba al +595 991 478 468.', perm)).toBeNull();
     expect(patronEnlaceOPrecio('Escriba al +595991478468.', perm)).toBeNull();

@@ -83,6 +83,9 @@ const PATRONES_ENLACE_O_PRECIO: readonly (readonly [string, RegExp])[] = [
   ['numero_largo', /\d{5,}/],
   ['mil_millon', /\d+\s*(?:mil\b|millon|millones)/],
   ['porcentaje', /\d+\s*%/],
+  // El marcador «§» lo deja `quitarPermitidos` donde había un importe permitido: un multiplicador o una moneda ajena
+  // junto a él cambia la cifra («390.000 millones», «US$ 390.000») y no está respaldado.
+  ['importe_permitido_alterado', /§\s*(?:mil\b|millon|millones|%|usd\b|u\$s|dolar|lucas)|(?:usd|u\$s|us\$|\$)\.?\s*§/],
   ['numero_en_palabras', new RegExp(`\\b${NUMERO_EN_PALABRAS}\\b(?:\\s+[a-z]+){0,3}?\\s+(?:mil|millon|millones|guarani|guaranies|dolar|dolares|lucas)\\b`)],
 ];
 
@@ -119,18 +122,19 @@ const escaparRe = (t: string): string => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'
  * patrones no las vean. Los límites impiden que un permitido pase como parte de algo mayor: un importe no puede
  * ir pegado a otro dígito ni seguido de «.dd» o «,dd» («390.0001», «1.390.000», «390.000.000» siguen bloqueados);
  * un teléfono no puede ir pegado a un dígito; un correo no puede seguir en un dominio más largo ni venir de una
- * parte local más larga. Cada aparición se sustituye por un espacio para no unir lo que queda a ambos lados.
+ * parte local más larga. Cada aparición se sustituye por «§», no por un espacio: así lo que la rodea (un multiplicador, una moneda ajena, otro dígito
+ * tras un separador cualquiera) sigue visible y los patrones pueden bloquearlo.
  */
 function quitarPermitidos(t: string, p: Permitidos): string {
   let r = t;
   const formas: string[] = [];
   for (const n of p.importes) formas.push(formatearGs(n), String(n));
-  for (const f of formas) r = r.replace(new RegExp(`(?<!\\d[.,\\s]?)${escaparRe(f)}(?![.,]?\\d)`, 'g'), ' ');
+  for (const f of formas) r = r.replace(new RegExp(`(?<!\\d[^\\p{L}]?)${escaparRe(f)}(?![.,\\s]?\\d)`, 'gu'), '§');
   for (const tel of p.telefonos) {
-    for (const f of [tel, formatearTelefono(tel)]) r = r.replace(new RegExp(`${escaparRe(f)}(?!\\d)`, 'g'), ' ');
+    for (const f of [tel, formatearTelefono(tel)]) r = r.replace(new RegExp(`${escaparRe(f)}(?!\\d)`, 'g'), '§');
   }
   for (const c of p.correos) {
-    r = r.replace(new RegExp(`(?<![a-z0-9._%+-])${escaparRe(c.toLowerCase())}(?![a-z0-9_-]|\\.[a-z0-9])`, 'g'), ' ');
+    r = r.replace(new RegExp(`(?<![a-z0-9._%+-])${escaparRe(c.toLowerCase())}(?![a-z0-9_-]|\\.[a-z0-9])`, 'g'), '§');
   }
   return r;
 }
