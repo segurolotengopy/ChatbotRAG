@@ -12,7 +12,7 @@
  */
 import type { ConfiguracionEfectiva } from '../configuracion/esquema.js';
 import { normalizarEntradaKuaa } from './normalizar-entrada.js';
-import { SalidaOportunidad, type EstadosOperativos, type EtapaVenta, type Plataforma } from './esquemas.js';
+import { BotonSalida, PropuestaSalida, SalidaOportunidad, type EstadosOperativos, type EtapaVenta, type Plataforma } from './esquemas.js';
 import { formatearGs, formatearTelefono } from './formato-plataforma.js';
 
 const RE_BLOQUE = /^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```$/i;
@@ -20,7 +20,7 @@ const RE_BLOQUE = /^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```$/i;
 /** Por qué una salida del modelo no sirvió. Solo códigos y nombres de campo del esquema: jamás texto del modelo. */
 export type CausaSalidaInvalida = 'sin_objeto' | 'json_roto' | `esquema:${string}`;
 
-export function analizarSalida(texto: string): { salida: SalidaOportunidad } | { causa: CausaSalidaInvalida } {
+export function analizarSalida(texto: string): { salida: SalidaOportunidad; descartados: number } | { causa: CausaSalidaInvalida } {
   let cuerpo = texto.trim();
   const bloque = RE_BLOQUE.exec(cuerpo);
   if (bloque?.[1] !== undefined) cuerpo = bloque[1].trim();
@@ -31,8 +31,21 @@ export function analizarSalida(texto: string): { salida: SalidaOportunidad } | {
   } catch {
     return { causa: 'json_roto' };
   }
+  // Un botón o una propuesta fuera del enumerado no vale ni se ejecuta: se descarta en vez de fallar toda la respuesta
+  // con «problema técnico» (la batería de SLT lo vio con «tengo 64 años, ¿puedo?»). Solo se cuenta, jamás se guarda.
+  let descartados = 0;
+  if (typeof valor === 'object' && valor !== null) {
+    const o = valor as Record<string, unknown>;
+    for (const [clave, permitido] of [['botones', BotonSalida.options], ['propuestas', PropuestaSalida.options]] as const) {
+      const lista = o[clave];
+      if (!Array.isArray(lista)) continue;
+      const validos = lista.filter((x) => typeof x === 'string' && (permitido as readonly string[]).includes(x));
+      descartados += lista.length - validos.length;
+      o[clave] = validos;
+    }
+  }
   const r = SalidaOportunidad.safeParse(valor);
-  if (r.success) return { salida: r.data };
+  if (r.success) return { salida: r.data, descartados };
   // Del primer problema solo viaja la ruta si sus partes son claves simples o índices; lo demás es dato del modelo.
   const ruta = (r.error.issues[0]?.path ?? []).map((p) => (typeof p === 'number' || (typeof p === 'string' && /^[a-z_]{1,30}$/.test(p)) ? String(p) : '?')).join('.');
   return { causa: `esquema:${ruta === '' ? 'raiz' : ruta}` };
@@ -199,8 +212,22 @@ export function filtraPrompt(texto: string): boolean {
  */
 export const TEXTO_SIN_CIFRAS = 'Los precios, montos, teléfonos y enlaces no los puedo dar por este medio. Una persona del equipo puede ayudar con eso.';
 
-export function salidaSinCifras(etapa: EtapaVenta): SalidaOportunidad {
-  return { texto: TEXTO_SIN_CIFRAS, etapa_propuesta: etapa, objecion: null, botones: [], propuestas: [] };
+export function salidaSinCifras(etapa: EtapaVenta, whatsappE164?: string): SalidaOportunidad {
+  const texto = whatsappE164 === undefined ? TEXTO_SIN_CIFRAS : `Ese dato no lo puedo dar por este medio. Podés escribir al WhatsApp ${formatearTelefono(whatsappE164)} y una persona del equipo te ayuda.`;
+  return { texto, etapa_propuesta: etapa, objecion: null, botones: [], propuestas: [] };
+}
+
+/**
+ * Quita las frases en que el asistente promete entregar algo que no puede hacer («te preparo un resumen», «te envío
+ * el detalle»). Devuelve el texto sin ellas; vacío si no quedaba otra cosa. Qué NO garantiza: promesas con otra forma.
+ */
+export function quitarPromesasDeEntrega(texto: string): string {
+  const PROMESA = /\b(?:te|le)\s+(?:preparo|armo|envio|mando|paso|genero)\b[^.!?]{0,40}\b(?:resumen|informe|documento|detalle|comprobante|cotizacion|propuesta)|\b(?:preparo|armo|genero)\s+(?:un|el)\s+(?:resumen|informe|detalle)/;
+  return texto
+    .split(/(?<=[.!?])\s+/)
+    .filter((frase) => !PROMESA.test(paraDetectar(frase)))
+    .join(' ')
+    .trim();
 }
 
 /**

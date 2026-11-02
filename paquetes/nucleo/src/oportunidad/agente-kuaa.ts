@@ -43,7 +43,7 @@ import type { FragmentoRecuperado } from '../puertos/indice-conocimiento.js';
 import { EntradaKuaa, SalidaOportunidad, filtrarBotonesSalida } from './esquemas.js';
 import { normalizarEntradaKuaa } from './normalizar-entrada.js';
 import { armarPromptKuaa } from './prompt-kuaa.js';
-import { afirmaHechoNoRespaldado, afirmaTratamientoTributario, salidaTributaria, patronEnlaceOPrecio, permitidosDe, analizarSalida, filtraPrompt, retirarCodigosInternos, salidaFallback, salidaSinCifras } from './salida-kuaa.js';
+import { afirmaHechoNoRespaldado, afirmaTratamientoTributario, quitarPromesasDeEntrega, salidaTributaria, patronEnlaceOPrecio, permitidosDe, analizarSalida, filtraPrompt, retirarCodigosInternos, salidaFallback, salidaSinCifras } from './salida-kuaa.js';
 
 export interface ResultadoKuaa {
   salida: SalidaOportunidad;
@@ -165,16 +165,19 @@ export class AgenteKuaa {
     const analizada = analizarSalida(textoModelo);
     if ('causa' in analizada) return cierre(fallback([...avisos, `causa_salida:${analizada.causa}`], 'salida_invalida'));
     const interpretada = analizada.salida;
+    if (analizada.descartados > 0) avisos.push('valores_descartados');
 
     // La salida también se sanea (controles, marcas bidi) antes de cualquier control y de la memoria.
-    const textoBase = sanearTexto(interpretada.texto, 4000);
+    const sinPromesas = quitarPromesasDeEntrega(interpretada.texto);
+    if (sinPromesas !== interpretada.texto.trim()) avisos.push('promesa_entrega_retirada');
+    const textoBase = sanearTexto(sinPromesas === '' ? interpretada.texto : sinPromesas, 4000);
     const textoSaneado = retirarCodigosInternos(textoBase);
     if (textoSaneado !== textoBase) avisos.push('codigo_interno_retirado');
     if (textoSaneado === '') return cierre(fallback([...avisos, 'causa_salida:vacia_tras_sanear'], 'salida_invalida'));
     // El detector mira el texto del modelo tal cual y también el ya limpio: el retiro nunca debe esconderle nada.
     const permitidos = permitidosDe(entrada.plataforma);
     const patron = patronEnlaceOPrecio(textoBase, permitidos) ?? patronEnlaceOPrecio(textoSaneado, permitidos);
-    if (patron) return cierre({ salida: salidaSinCifras(etapa), avisos: [...avisos, `patron_bloqueado:${patron}`, 'enlace_o_precio'] });
+    if (patron) return cierre({ salida: salidaSinCifras(etapa, entrada.plataforma?.contacto.whatsapp_e164), avisos: [...avisos, `patron_bloqueado:${patron}`, 'enlace_o_precio'] });
     if (afirmaTratamientoTributario(textoBase) || afirmaTratamientoTributario(textoSaneado)) {
       return cierre({ salida: salidaTributaria(etapa), avisos: [...avisos, 'tributario_bloqueado'] });
     }

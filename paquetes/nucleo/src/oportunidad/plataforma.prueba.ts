@@ -17,7 +17,7 @@ import { AgenteKuaa } from './agente-kuaa.js';
 import { ESTADOS_OPERATIVOS_DESCONOCIDOS, EntradaKuaa, Plataforma, RESUMEN_DESCONOCIDO } from './esquemas.js';
 import { REGLAS_KUAA, reglasKuaa } from './frases-kuaa.js';
 import { armarPromptKuaa } from './prompt-kuaa.js';
-import { afirmaTratamientoTributario, patronEnlaceOPrecio, permitidosDe, salidaSinCifras, salidaTributaria, type Permitidos } from './salida-kuaa.js';
+import { afirmaTratamientoTributario, analizarSalida, patronEnlaceOPrecio, quitarPromesasDeEntrega, permitidosDe, salidaSinCifras, salidaTributaria, type Permitidos } from './salida-kuaa.js';
 
 const RUTA = fileURLToPath(new URL('../../../../configuraciones/kuaa.json', import.meta.url));
 const JSON_KUAA = readFileSync(RUTA, 'utf8');
@@ -258,6 +258,42 @@ describe('tratamiento tributario (C14 pendiente)', () => {
   });
 });
 
+describe('fallas de la batería de SLT', () => {
+  it('un botón o propuesta fuera del enumerado se descarta y no tumba la respuesta', () => {
+    const json = JSON.stringify({ texto: 'Sí, podés.', etapa_propuesta: 'E04', objecion: null, botones: ['ver_planes', 'inventado'], propuestas: ['propuesta_inventada'] });
+    const a = analizarSalida(json);
+    expect('salida' in a && a.salida.botones).toEqual(['ver_planes']);
+    expect('salida' in a && a.salida.propuestas).toEqual([]);
+    expect('descartados' in a && a.descartados).toBe(2);
+  });
+  it('un texto inválido sigue siendo inválido aunque se descarte lo demás', () => {
+    const a = analizarSalida(JSON.stringify({ texto: '', etapa_propuesta: 'E04', objecion: null, botones: [], propuestas: [] }));
+    expect('causa' in a).toBe(true);
+  });
+  it('la frase sin cifras lleva el WhatsApp de la plataforma cuando existe', () => {
+    expect(salidaSinCifras('E04', '+595991478468').texto).toContain('+595 991 478 468');
+    expect(salidaSinCifras('E04').texto).toBe(salidaSinCifras('E04', undefined).texto);
+  });
+  it.each(['Te preparo un resumen de tu consulta.', 'Preparo un resumen y te lo paso.', 'Te envío el detalle por acá.', 'Te armo un informe.'])('«%s» se retira', (t) => {
+    expect(quitarPromesasDeEntrega(`Podés escribir al WhatsApp. ${t}`)).toBe('Podés escribir al WhatsApp.');
+  });
+  it('una respuesta sin promesas queda igual', () => {
+    expect(quitarPromesasDeEntrega('El seguro cubre al titular.')).toBe('El seguro cubre al titular.');
+  });
+  it('el agente retira la promesa de resumen y lo avisa sin texto', async () => {
+    const { agente } = await armar('Podés escribir al WhatsApp. Te preparo un resumen de tu consulta.');
+    const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+    expect(r.salida.texto).toBe('Podés escribir al WhatsApp.');
+    expect(r.avisos).toContain('promesa_entrega_retirada');
+  });
+  it('el prompt lleva las reglas de titular, solicitud y saludo', () => {
+    const reglas = REGLAS_KUAA.join(' ');
+    expect(reglas).toContain('solo a la persona titular');
+    expect(reglas).toContain('botón del sitio');
+    expect(reglas).toContain('no repita «¡Hola!»');
+  });
+});
+
 describe('agente con plataforma', () => {
   it('con plataforma, el modelo puede decir «390.000» y la respuesta pasa', async () => {
     const { agente } = await armar('El plan cuesta 390.000 Gs al año.');
@@ -269,7 +305,7 @@ describe('agente con plataforma', () => {
   it('«450.000» se bloquea con la frase sin cifras y el aviso patron_bloqueado', async () => {
     const { agente } = await armar('El plan cuesta 450.000 Gs al año.');
     const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
-    expect(r.salida).toEqual(salidaSinCifras('E04'));
+    expect(r.salida).toEqual(salidaSinCifras('E04', '+595991478468'));
     expect(r.avisos.some((a) => a.startsWith('patron_bloqueado:'))).toBe(true);
   });
   it('sin plataforma «390.000» se bloquea', async () => {
