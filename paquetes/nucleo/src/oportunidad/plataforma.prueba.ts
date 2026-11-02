@@ -17,7 +17,7 @@ import { AgenteKuaa } from './agente-kuaa.js';
 import { ESTADOS_OPERATIVOS_DESCONOCIDOS, EntradaKuaa, Plataforma, RESUMEN_DESCONOCIDO } from './esquemas.js';
 import { REGLAS_KUAA, reglasKuaa } from './frases-kuaa.js';
 import { armarPromptKuaa } from './prompt-kuaa.js';
-import { afirmaTratamientoTributario, analizarSalida, patronEnlaceOPrecio, quitarPromesasDeEntrega, permitidosDe, salidaSinCifras, salidaTributaria, type Permitidos } from './salida-kuaa.js';
+import { afirmaTratamientoTributario, analizarSalida, patronEnlaceOPrecio, quitarPromesasDeEntrega, retirarNumerosDeRegistro, permitidosDe, salidaSinCifras, salidaTributaria, type Permitidos } from './salida-kuaa.js';
 
 const RUTA = fileURLToPath(new URL('../../../../configuraciones/kuaa.json', import.meta.url));
 const JSON_KUAA = readFileSync(RUTA, 'utf8');
@@ -285,6 +285,29 @@ describe('fallas de la batería de SLT', () => {
     const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
     expect(r.salida.texto).toBe('Podés escribir al WhatsApp.');
     expect(r.avisos).toContain('promesa_entrega_retirada');
+  });
+  it('una salida sin propuestas ni botones, o con ellos nulos, se acepta como vacía (R06 y R09 de la batería)', () => {
+    for (const parcial of [{}, { propuestas: null }, { botones: null, propuestas: null }]) {
+      const a = analizarSalida(JSON.stringify({ texto: 'Hola.', etapa_propuesta: 'E04', objecion: null, ...parcial }));
+      expect('salida' in a).toBe(true);
+      if ('salida' in a) {
+        expect(a.salida.propuestas).toEqual([]);
+        expect(a.salida.botones).toEqual([]);
+      }
+    }
+  });
+  it.each(['¿Querés ver quién asegura este producto y su documentación?', '¿Te muestro la información institucional y la del producto?'])('la oferta «%s» se retira', (t) => {
+    expect(quitarPromesasDeEntrega(`El seguro cubre al titular. ${t}`)).toBe('El seguro cubre al titular.');
+  });
+  it('el número de matrícula BCP se retira y el resto de la frase queda', () => {
+    expect(retirarNumerosDeRegistro('SeguroLoTengo es el canal digital de Interseguros S.A., corredor de seguros matrícula BCP N.o 118. La aseguradora se identifica por producto.')).toBe('SeguroLoTengo es el canal digital de Interseguros S.A., corredor de seguros. La aseguradora se identifica por producto.');
+    expect(retirarNumerosDeRegistro('El seguro cubre al titular.')).toBe('El seguro cubre al titular.');
+  });
+  it('el agente retira la matrícula y lo avisa sin texto', async () => {
+    const { agente } = await armar('Interseguros S.A. es corredor de seguros, matrícula BCP N.o 118.');
+    const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+    expect(r.salida.texto).toBe('Interseguros S.A. es corredor de seguros.');
+    expect(r.avisos).toContain('registro_retirado');
   });
   it('el prompt lleva las reglas de titular, solicitud y saludo', () => {
     const reglas = REGLAS_KUAA.join(' ');
