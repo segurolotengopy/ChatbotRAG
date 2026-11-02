@@ -62,6 +62,9 @@ printf '${o.codigo ?? 200}'
           argvCurl: existsSync(join(base, 'argv.txt')) ? readFileSync(join(base, 'argv.txt'), 'utf8') : '',
         }),
       );
+      // El script puede terminar (y cerrar su entrada) antes de leerla, como cuando rechaza los argumentos: sin este
+      // manejador, el EPIPE resultante quedaba como error sin atender y fallaba toda la suite de forma intermitente.
+      hijo.stdin?.on('error', () => undefined);
       hijo.stdin?.end(entrada);
     }, 150);
   });
