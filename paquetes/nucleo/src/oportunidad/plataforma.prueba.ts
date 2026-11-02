@@ -309,6 +309,26 @@ describe('fallas de la batería de SLT', () => {
     expect(r.salida.texto).toBe('Interseguros S.A. es corredor de seguros.');
     expect(r.avisos).toContain('registro_retirado');
   });
+  it('la matrícula con «con» delante no deja la frase a medias', () => {
+    expect(retirarNumerosDeRegistro('Interseguros S.A. es corredor de seguros con matrícula BCP N.o 118. La aseguradora cambia según el producto.')).toBe('Interseguros S.A. es corredor de seguros. La aseguradora cambia según el producto.');
+  });
+  it('un dominio en una frase se quita y se conserva el resto de la respuesta', async () => {
+    const { agente } = await armar('SeguroLoTengo es el canal digital de Interseguros para contratar seguros. Visitá segurolotengo.com.py para más datos.');
+    const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+    expect(r.salida.texto).toBe('SeguroLoTengo es el canal digital de Interseguros para contratar seguros.');
+    expect(r.avisos).toContain('frase_con_dominio_retirada');
+  });
+  it('un dominio en la única frase sigue bloqueando la respuesta', async () => {
+    const { agente } = await armar('Visitá segurolotengo.com.py para más datos.');
+    const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+    expect(r.avisos).toContain('patron_bloqueado:dominio');
+  });
+  it('una frase que afirma el pago acreditado se quita y se conserva el resto', async () => {
+    const { agente } = await armar('El plazo para el envío de la póliza es de 24 horas desde la acreditación del pago. Tu pago fue acreditado correctamente.');
+    const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+    expect(r.salida.texto).toBe('El plazo para el envío de la póliza es de 24 horas desde la acreditación del pago.');
+    expect(r.avisos).toContain('frase_con_hecho_retirada');
+  });
   it('el prompt lleva las reglas de titular, solicitud y saludo', () => {
     const reglas = REGLAS_KUAA.join(' ');
     expect(reglas).toContain('solo a la persona titular');

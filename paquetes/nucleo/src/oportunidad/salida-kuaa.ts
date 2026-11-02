@@ -34,8 +34,17 @@ export function analizarSalida(texto: string): { salida: SalidaOportunidad; desc
   // Un botón o una propuesta fuera del enumerado no vale ni se ejecuta: se descarta en vez de fallar toda la respuesta
   // con «problema técnico» (la batería de SLT lo vio con «tengo 64 años, ¿puedo?»). Solo se cuenta, jamás se guarda.
   let descartados = 0;
-  if (typeof valor === 'object' && valor !== null) {
+  if (typeof valor === 'object' && valor !== null && !Array.isArray(valor)) {
     const o = valor as Record<string, unknown>;
+    // Un campo desconocido en la raíz (el modelo agrega «razonamiento» o «notas») no puede tumbar la respuesta
+    // (`esquema:raiz` en la batería de SLT): se descarta y se cuenta. Una `objecion` ausente es «sin objeción».
+    for (const clave of Object.keys(o)) {
+      if (!['texto', 'etapa_propuesta', 'objecion', 'botones', 'propuestas'].includes(clave)) {
+        delete o[clave];
+        descartados += 1;
+      }
+    }
+    if (o['objecion'] === undefined) o['objecion'] = null;
     for (const [clave, permitido] of [['botones', BotonSalida.options], ['propuestas', PropuestaSalida.options]] as const) {
       const lista = o[clave];
       // Un campo ausente o nulo equivale a «sin botones/propuestas»: el modelo suele omitirlo cuando no propone nada, y
@@ -237,13 +246,26 @@ export function quitarPromesasDeEntrega(texto: string): string {
 }
 
 /**
+ * Quita las frases para las que `debeQuitarse` es verdadero (se compara cada frase sola). Sirve para sacar una
+ * frase con un enlace o un hecho no respaldado y conservar el resto de la respuesta en vez de reemplazarla entera por un
+ * texto genérico. Devuelve vacío si no quedaba nada. Qué NO garantiza: el resto se vuelve a revisar por quien llama.
+ */
+export function quitarFrases(texto: string, debeQuitarse: (frase: string) => boolean): string {
+  return texto
+    .split(/(?<=[.!?])\s+/)
+    .filter((frase) => !debeQuitarse(frase))
+    .join(' ')
+    .trim();
+}
+
+/**
  * Quita el número de matrícula o registro del corredor («matrícula BCP N.o 118»): el dato no está aprobado para
  * citarse hasta que Legal lo confirme (contradicciones del paquete). Deja el resto de la frase. Qué NO garantiza:
  * otros números de registro con otra forma.
  */
 export function retirarNumerosDeRegistro(texto: string): string {
   return texto
-    .replace(/,?\s{0,3}matr[ií]cula\s{1,3}(?:bcp\s{1,3})?(?:n\.?\s{0,3}[o°º]\.?\s{0,3})?\d{1,6}/giu, '')
+    .replace(/(?:,|\s{1,3}(?:con|de|bajo))?\s{0,3}matr[ií]cula\s{1,3}(?:bcp\s{1,3})?(?:n\.?\s{0,3}[o°º]\.?\s{0,3})?\d{1,6}/giu, '')
     .replace(/,?\s{0,3}\bBCP\s{1,3}n\.?\s{0,3}[o°º]\.?\s{0,3}\d{1,6}/giu, '')
     .replace(/ {1,3}([.,;!?])/g, '$1')
     .trim();
