@@ -17,7 +17,7 @@ import { AgenteKuaa } from './agente-kuaa.js';
 import { ESTADOS_OPERATIVOS_DESCONOCIDOS, EntradaKuaa, Plataforma, RESUMEN_DESCONOCIDO } from './esquemas.js';
 import { REGLAS_KUAA, reglasKuaa } from './frases-kuaa.js';
 import { armarPromptKuaa } from './prompt-kuaa.js';
-import { patronEnlaceOPrecio, permitidosDe, salidaSinCifras, type Permitidos } from './salida-kuaa.js';
+import { afirmaTratamientoTributario, patronEnlaceOPrecio, permitidosDe, salidaSinCifras, salidaTributaria, type Permitidos } from './salida-kuaa.js';
 
 const RUTA = fileURLToPath(new URL('../../../../configuraciones/kuaa.json', import.meta.url));
 const JSON_KUAA = readFileSync(RUTA, 'utf8');
@@ -227,6 +227,36 @@ async function armar(texto: string) {
   const agente = new AgenteKuaa({ config, proveedor, indice, memoria, herramientas: new RegistroHerramientas(null), bitacora });
   return { agente, proveedor, bitacora };
 }
+
+describe('tratamiento tributario (C14 pendiente)', () => {
+  it.each(['Más IVA.', 'El premio es sin IVA incluido.', 'No es IVA incluido.', 'Más IVA incluido.', 'El seguro está exento.', 'Los impuestos están incluidos.', 'Hay un desglose de prima neta.', 'La alícuota es otra.', 'El IVA es del diez por ciento.', 'El IVA incluido es de otro monto, con IVA aparte.'])(
+    '«%s» se detecta',
+    (texto) => {
+      expect(afirmaTratamientoTributario(texto)).toBe(true);
+    },
+  );
+  it.each(['El premio total anual es de 390.000 Gs, con IVA incluido.', 'Premio total anual · IVA incluido', 'Puedo informar el premio total publicado; para el tratamiento tributario y la factura te orientamos con Interseguros.', 'La cobertura incluye la renta diaria.', 'Es un seguro de vida.'])(
+    '«%s» no se detecta',
+    (texto) => {
+      expect(afirmaTratamientoTributario(texto)).toBe(false);
+    },
+  );
+  it('el agente reemplaza «IVA incluido» por la frase provisional y lo avisa sin texto', async () => {
+    const { agente } = await armar('El plan cuesta 390.000 Gs al año, más IVA.');
+    const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+    expect(r.salida).toEqual(salidaTributaria('E04'));
+    expect(r.avisos).toContain('tributario_bloqueado');
+  });
+  it('el agente deja pasar «con IVA incluido», como las pantallas de SLT', async () => {
+    const { agente } = await armar('El plan cuesta 390.000 Gs al año, con IVA incluido.');
+    const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+    expect(r.salida.texto).toBe('El plan cuesta 390.000 Gs al año, con IVA incluido.');
+    expect(r.avisos).not.toContain('tributario_bloqueado');
+  });
+  it('el prompt lleva la regla del IVA', () => {
+    expect(REGLAS_KUAA.join(' ')).toContain('con IVA incluido');
+  });
+});
 
 describe('agente con plataforma', () => {
   it('con plataforma, el modelo puede decir «390.000» y la respuesta pasa', async () => {

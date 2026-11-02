@@ -204,6 +204,29 @@ export function salidaSinCifras(etapa: EtapaVenta): SalidaOportunidad {
 }
 
 /**
+ * El tratamiento tributario del premio (IVA, impuestos, exención) está pendiente de Contabilidad, Legal y la
+ * aseguradora (contradicción C14 del paquete): Kuaa solo informa el premio total publicado. Frase provisional de
+ * Rodrigo, para cuando se pregunta por el tratamiento más allá de «IVA incluido»; sin segunda persona de verbo, para valer con voseo, tuteo o usted.
+ */
+export const TEXTO_TRIBUTARIO = 'Puedo informar el premio total publicado; para el tratamiento tributario y la factura te orientamos con Interseguros.';
+
+/**
+ * Detecta afirmaciones tributarias que no están respaldadas: «más IVA», «sin IVA», exento, gravado, impuestos,
+ * desglose, prima neta, alícuota o «por ciento». La ÚNICA frase permitida es «IVA incluido» (con o sin «con»),
+ * que es lo que las pantallas de SLT ya muestran al lado del premio total; el desglose sigue pendiente
+ * (contradicción C14). Una negación antes («sin», «no», «más») la vuelve a bloquear. Qué NO garantiza: paráfrasis
+ * sin esas palabras («ya trae todo»).
+ */
+export function afirmaTratamientoTributario(texto: string): boolean {
+  const t = paraDetectar(texto).replace(/(?<!\b(?:sin|no|mas)\s{1,3}(?:(?:es|esta|viene|va|con)\s{1,3})?)\b(?:con\s+)?iva\s+incluido\b/g, ' ');
+  return /\biva\b|\bimpuestos?\b|\bexent[oa]s?\b|\bgravad[oa]s?\b|\bimponible|\bdesglose|\bprima\s+neta|\balicuota|\bpor\s+ciento/.test(t);
+}
+
+export function salidaTributaria(etapa: EtapaVenta): SalidaOportunidad {
+  return { texto: TEXTO_TRIBUTARIO, etapa_propuesta: etapa, objecion: null, botones: [], propuestas: [] };
+}
+
+/**
  * Retira referencias a códigos internos del paquete (una letra mayúscula y dos dígitos): los que van entre
  * paréntesis y los que siguen a «según», «ver» o «código». Un código suelto («vitamina B12») o pegado a un punto,
  * arroba o barra («x.A12.py») NO se toca, para no alterar texto legítimo ni esconder un dominio al detector.
