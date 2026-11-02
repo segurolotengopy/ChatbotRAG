@@ -134,6 +134,63 @@ export const RESUMEN_DESCONOCIDO: ResumenOportunidad = {
   objecion_estado: 'ninguna',
 };
 
+/**
+ * Contrato v0.4: datos de la plataforma de SLT (catálogo, planes con sus importes y contacto). Es un bloque
+ * OPCIONAL: sin él, Kuaa se comporta como antes (no dice cifras). Con él, el sistema fija lo que Kuaa puede decir:
+ * el prompt lo arma por plantillas (importes formateados por código) y el detector de la salida deja pasar SOLO
+ * esas cifras, teléfonos y correos exactos. Por eso los textos libres (`nombre`, `canal`) admiten únicamente letras,
+ * números, espacio y «+ . -»: sin comillas, saltos de línea ni signos que sirvan para inyectar instrucciones.
+ *
+ * Qué NO garantiza: que los datos sean correctos (los fija SLT) ni que un nombre admitido no resulte ofensivo o
+ * engañoso; solo acota su forma.
+ */
+const TEXTO_PLATAFORMA = (max: number) => z.string().regex(new RegExp(`^[\\p{L}\\p{N} +.\\-]{1,${max}}$`, 'u'));
+const IMPORTE_GS = z.number().int().min(0).max(1_000_000_000);
+
+export const PlanPlataforma = z
+  .object({
+    producto: z.literal('VIDA_ONCOLOGICO'),
+    plan: z.enum(['CONFIO', 'CONFIO_PLUS', 'CONFIO_TOTAL']),
+    nombre: TEXTO_PLATAFORMA(40),
+    premio_anual_gs: IMPORTE_GS,
+    capital_fallecimiento_gs: IMPORTE_GS,
+    indemnizacion_cancer_gs: IMPORTE_GS,
+    renta_hospitalaria_dia_gs: IMPORTE_GS,
+    renta_dias_max: IMPORTE_GS,
+    gastos_medicos_accidente_gs: IMPORTE_GS,
+  })
+  .strict();
+export type PlanPlataforma = z.infer<typeof PlanPlataforma>;
+
+export const Plataforma = z
+  .object({
+    version: z.string().regex(/^[a-z0-9._-]{1,32}$/),
+    catalogo: z
+      .array(
+        z
+          .object({
+            producto: Producto.exclude(['desconocido']),
+            nombre: TEXTO_PLATAFORMA(60),
+            estado: z.enum(['disponible', 'proximamente']),
+          })
+          .strict(),
+      )
+      .max(4),
+    planes: z
+      .array(PlanPlataforma)
+      .max(3)
+      .refine((planes) => new Set(planes.map((p) => p.plan)).size === planes.length, { message: 'plan repetido' }),
+    contacto: z
+      .object({
+        whatsapp_e164: z.string().regex(/^\+[0-9]{8,15}$/).optional(),
+        canal: TEXTO_PLATAFORMA(60).optional(),
+        correo_derechos: z.string().max(80).regex(/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/).optional(),
+      })
+      .strict(),
+  })
+  .strict();
+export type Plataforma = z.infer<typeof Plataforma>;
+
 /** Contexto de entrada. `pagina` es el id de pantalla que ya recibe el servicio. Sin datos personales. */
 export const ContextoOportunidad = z
   .object({
@@ -147,6 +204,8 @@ export const ContextoOportunidad = z
     tarifa_version: z.string().regex(/^[a-z0-9._-]{1,64}$/).nullable(),
     pagina: z.string().regex(ID_PAGINA).nullable(),
     resumen: ResumenOportunidad,
+    /** Contrato v0.4, opcional: datos de la plataforma de SLT. Sin él, Kuaa no dice cifras. */
+    plataforma: Plataforma.optional(),
   })
   .strict();
 export type ContextoOportunidad = z.infer<typeof ContextoOportunidad>;

@@ -12,7 +12,8 @@
 import type { ConfiguracionEfectiva } from '../configuracion/esquema.js';
 import { armarPrompt } from '../prompt/armar.js';
 import type { FragmentoRecuperado } from '../puertos/indice-conocimiento.js';
-import type { EntradaKuaa } from './esquemas.js';
+import type { EntradaKuaa, Plataforma } from './esquemas.js';
+import { formatearGs, formatearTelefono } from './formato-plataforma.js';
 import {
   FORMATO_SALIDA_KUAA,
   FRASE_ESTADO_ACEPTACION,
@@ -29,7 +30,7 @@ import {
   FRASE_PRODUCTO,
   FRASE_PAQUETE_NO_VALIDADO,
   JERARQUIA_KUAA,
-  REGLAS_KUAA,
+  reglasKuaa,
   type ClavePermiso,
 } from './frases-kuaa.js';
 
@@ -49,11 +50,32 @@ export function presentarFuente(f: FragmentoRecuperado): FragmentoRecuperado {
 
 const MARCA_SIGUIENTE = '\n\nFECHA Y HORA ACTUAL';
 
+const NOMBRE_ESTADO_CATALOGO = { disponible: 'disponible', proximamente: 'próximamente' } as const;
+
+/**
+ * Sección de datos de la plataforma. Todo sale de plantillas fijas: los importes se formatean por código y los
+ * únicos textos libres (nombres, canal) ya pasaron por el esquema, que solo admite letras, números, espacio y «+ . -».
+ * Qué NO garantiza: que el modelo repita los datos tal cual; lo controla el detector de la salida.
+ */
+export function seccionPlataforma(p: Plataforma): string {
+  const lineas: string[] = [];
+  if (p.catalogo.length > 0) lineas.push(`Catálogo: ${p.catalogo.map((c) => `«${c.nombre}» (${NOMBRE_ESTADO_CATALOGO[c.estado]})`).join('; ')}.`);
+  for (const pl of p.planes) {
+    lineas.push(
+      `Plan «${pl.nombre}»: premio anual (IVA incluido) ${formatearGs(pl.premio_anual_gs)} Gs; capital por fallecimiento ${formatearGs(pl.capital_fallecimiento_gs)} Gs; indemnización por cáncer ${formatearGs(pl.indemnizacion_cancer_gs)} Gs; renta hospitalaria por día ${formatearGs(pl.renta_hospitalaria_dia_gs)} Gs, con máximo de ${pl.renta_dias_max} días; gastos médicos por accidente ${formatearGs(pl.gastos_medicos_accidente_gs)} Gs.`,
+    );
+  }
+  if (p.contacto.whatsapp_e164 !== undefined) lineas.push(`WhatsApp de atención: ${formatearTelefono(p.contacto.whatsapp_e164)}.`);
+  if (p.contacto.canal !== undefined) lineas.push(`Canal de atención: «${p.contacto.canal}».`);
+  if (p.contacto.correo_derechos !== undefined) lineas.push(`Correo ${p.contacto.correo_derechos}: solo para retracto y derechos sobre datos personales; no es un canal de atención general.`);
+  return `DATOS DE LA PLATAFORMA (los fija el sistema; mandan sobre el respaldo documental para planes, premios, coberturas, contacto y catálogo)\n${lineas.map((l) => `- ${l}`).join('\n')}`;
+}
+
 export function armarPromptKuaa(config: ConfiguracionEfectiva, ctx: EntradaKuaa, fragmentos: FragmentoRecuperado[], ahora: Date, opciones: { versionPaquete?: string | null } = {}): string {
   const base = armarPrompt({ config, ahora, fragmentos: fragmentos.map(presentarFuente), orientacion: { facetas: {} }, canal: 'web', citarFuentes: false });
   // Solo con perfil `pruebas` y paquete cargado: frase enumerada, sin interpolar la versión.
   const avisoPaquete = opciones.versionPaquete ? `\n\nPAQUETE NO VALIDADO\n- ${FRASE_PAQUETE_NO_VALIDADO}` : '';
-  const reglas = `JERARQUÍA DE FUENTES\n${JERARQUIA_KUAA.map((r, i) => `${i + 1}. ${r}`).join('\n')}\n\nREGLAS DE KUAA\n${REGLAS_KUAA.map((r, i) => `${i + 1}. ${r}`).join('\n')}${avisoPaquete}`;
+  const reglas = `JERARQUÍA DE FUENTES\n${JERARQUIA_KUAA.map((r, i) => `${i + 1}. ${r}`).join('\n')}\n\nREGLAS DE KUAA\n${reglasKuaa(ctx.plataforma !== undefined).map((r, i) => `${i + 1}. ${r}`).join('\n')}${avisoPaquete}`;
   // `armarPrompt` siempre emite la sección de fecha y hora justo después de REGLAS.
   const i = base.indexOf(MARCA_SIGUIENTE);
   const conReglas = i < 0 ? `${base}\n\n${reglas}` : `${base.slice(0, i)}\n\n${reglas}${base.slice(i)}`;
@@ -73,5 +95,6 @@ export function armarPromptKuaa(config: ConfiguracionEfectiva, ctx: EntradaKuaa,
     FRASE_PLAN[ctx.resumen.plan],
     FRASE_OBJECION_ESTADO[ctx.resumen.objecion_estado],
   ];
-  return `${conReglas}\n\nCONTEXTO DE LA OPORTUNIDAD (lo fija el sistema; no lo discuta con la persona)\n${contexto.map((f) => `- ${f}`).join('\n')}\n\n${FORMATO_SALIDA_KUAA}`;
+  const datosPlataforma = ctx.plataforma ? `\n\n${seccionPlataforma(ctx.plataforma)}` : '';
+  return `${conReglas}\n\nCONTEXTO DE LA OPORTUNIDAD (lo fija el sistema; no lo discuta con la persona)\n${contexto.map((f) => `- ${f}`).join('\n')}${datosPlataforma}\n\n${FORMATO_SALIDA_KUAA}`;
 }

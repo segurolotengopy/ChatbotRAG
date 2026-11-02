@@ -12,7 +12,8 @@
  */
 import type { ConfiguracionEfectiva } from '../configuracion/esquema.js';
 import { normalizarEntradaKuaa } from './normalizar-entrada.js';
-import { SalidaOportunidad, type EstadosOperativos, type EtapaVenta } from './esquemas.js';
+import { SalidaOportunidad, type EstadosOperativos, type EtapaVenta, type Plataforma } from './esquemas.js';
+import { formatearGs, formatearTelefono } from './formato-plataforma.js';
 
 const RE_BLOQUE = /^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```$/i;
 
@@ -82,23 +83,78 @@ const PATRONES_ENLACE_O_PRECIO: readonly (readonly [string, RegExp])[] = [
   ['numero_largo', /\d{5,}/],
   ['mil_millon', /\d+\s*(?:mil\b|millon|millones)/],
   ['porcentaje', /\d+\s*%/],
+  // El marcador «§» lo deja `quitarPermitidos` donde había un importe permitido: un multiplicador o una moneda ajena
+  // junto a él cambia la cifra («390.000 millones», «US$ 390.000») y no está respaldado.
+  ['importe_permitido_alterado', /§\s*(?:mil\b|millon|millones|%|usd\b|u\$s|dolar|lucas)|(?:usd|u\$s|us\$|\$)\.?\s*§/],
   ['numero_en_palabras', new RegExp(`\\b${NUMERO_EN_PALABRAS}\\b(?:\\s+[a-z]+){0,3}?\\s+(?:mil|millon|millones|guarani|guaranies|dolar|dolares|lucas)\\b`)],
 ];
 
 /**
+ * Lo que la plataforma de SLT autoriza a decir (contrato v0.4): importes, teléfonos (E.164) y correos exactos.
+ * Todo lo demás sigue bloqueado por los patrones.
+ */
+export interface Permitidos {
+  importes: number[];
+  telefonos: string[];
+  correos: string[];
+}
+
+/** Importes bajo 1000 no disparan ningún patrón y quitarlos solo ensuciaría el texto. */
+const IMPORTE_MINIMO_PERMITIDO = 1000;
+
+/**
+ * Deriva los permitidos del bloque `plataforma`; sin bloque devuelve `undefined` (nada permitido). Qué NO garantiza:
+ * que el modelo use cada dato en el contexto correcto (por ejemplo, un premio como si fuera una indemnización).
+ */
+export function permitidosDe(plataforma: Plataforma | undefined): Permitidos | undefined {
+  if (!plataforma) return undefined;
+  const importes = plataforma.planes
+    .flatMap((p) => [p.premio_anual_gs, p.capital_fallecimiento_gs, p.indemnizacion_cancer_gs, p.renta_hospitalaria_dia_gs, p.gastos_medicos_accidente_gs])
+    .filter((n) => n >= IMPORTE_MINIMO_PERMITIDO);
+  const { whatsapp_e164: tel, correo_derechos: correo } = plataforma.contacto;
+  return { importes: [...new Set(importes)], telefonos: tel === undefined ? [] : [tel], correos: correo === undefined ? [] : [correo] };
+}
+
+const escaparRe = (t: string): string => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Quita del texto (ya normalizado por `paraDetectar`) las apariciones EXACTAS de lo permitido, para que los
+ * patrones no las vean. Los límites impiden que un permitido pase como parte de algo mayor: un importe no puede
+ * ir pegado a otro dígito ni seguido de «.dd» o «,dd» («390.0001», «1.390.000», «390.000.000» siguen bloqueados);
+ * un teléfono no puede ir pegado a un dígito; un correo no puede seguir en un dominio más largo ni venir de una
+ * parte local más larga. Cada aparición se sustituye por «§», no por un espacio: así lo que la rodea (un multiplicador, una moneda ajena, otro dígito
+ * tras un separador cualquiera) sigue visible y los patrones pueden bloquearlo.
+ */
+function quitarPermitidos(t: string, p: Permitidos): string {
+  let r = t;
+  const formas: string[] = [];
+  for (const n of p.importes) formas.push(formatearGs(n), String(n));
+  for (const f of formas) r = r.replace(new RegExp(`(?<!\\d[^\\p{L}]?)${escaparRe(f)}(?![.,\\s]?\\d)`, 'gu'), '§');
+  for (const tel of p.telefonos) {
+    for (const f of [tel, formatearTelefono(tel)]) r = r.replace(new RegExp(`${escaparRe(f)}(?!\\d)`, 'g'), '§');
+  }
+  for (const c of p.correos) {
+    r = r.replace(new RegExp(`(?<![a-z0-9._%+-])${escaparRe(c.toLowerCase())}(?![a-z0-9_-]|\\.[a-z0-9])`, 'g'), '§');
+  }
+  return r;
+}
+
+/**
  * Detector conservador de enlaces y precios: tolera falsos positivos a propósito (por ejemplo «mil» tras un
  * número en palabras, o un número con separador de miles que no sea un precio). Una cifra corta como «3 pasos»
- * o «10 días» pasa. Devuelve el nombre del primer patrón que dispara, o null: el nombre permite distinguir un
- * falso positivo de un enlace real en la bitácora sin guardar texto.
+ * o «10 días» pasa. Devuelve el nombre del primer patrón que dispara, o null: el nombre permite distinguir
+ * un falso positivo de un enlace real en la bitácora sin guardar texto. Con `permitidos`, antes de aplicar los
+ * patrones se retiran las apariciones exactas de esos importes, teléfonos y correos; cualquier otra cosa sigue bloqueada.
  */
-export function patronEnlaceOPrecio(texto: string): string | null {
-  const t = paraDetectar(texto);
+export function patronEnlaceOPrecio(texto: string, permitidos?: Permitidos): string | null {
+  const base = paraDetectar(texto);
+  const t = permitidos ? quitarPermitidos(base, permitidos) : base;
   return PATRONES_ENLACE_O_PRECIO.find(([, re]) => re.test(t))?.[0] ?? null;
 }
 
 /** Envoltorio booleano de `patronEnlaceOPrecio`; conserva la API anterior. */
-export function contieneEnlaceOPrecio(texto: string): boolean {
-  return patronEnlaceOPrecio(texto) !== null;
+export function contieneEnlaceOPrecio(texto: string, permitidos?: Permitidos): boolean {
+  return patronEnlaceOPrecio(texto, permitidos) !== null;
 }
 
 export type MotivoHecho = 'pago' | 'poliza' | 'agenda_o_traspaso' | 'cobertura' | 'indemnizacion';

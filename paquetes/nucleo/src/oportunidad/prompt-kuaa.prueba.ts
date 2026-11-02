@@ -134,7 +134,7 @@ describe('presentarFuente: el título interno de un archivo del paquete no llega
     expect(prompt).toContain('no pregunte qué producto o seguro le interesa');
     expect(prompt).toContain('No ofrezca mostrar, enviar ni adjuntar documentos');
     expect(prompt).toContain('sin citar fuentes');
-    expect(prompt).toContain('Evite repetir códigos o claves internas de registro');
+    expect(prompt).toContain('No cite números de registro, de nota ni códigos BCP');
     expect(prompt).toContain('el trámite vence a los 10 minutos sin cobro ni póliza');
     // El prompt de Kuaa no manda citar el documento: la regla base contradiría a la de Kuaa.
     expect(prompt).not.toContain('mencione brevemente de qué documento sale');
