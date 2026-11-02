@@ -134,7 +134,7 @@ const REGLAS_COMUNES: readonly string[] = [
   'No ofrezca mostrar, enviar ni adjuntar documentos ni información: dé usted la respuesta con lo que tiene, o diga que no la tiene; si no la tiene, ofrezca el contacto humano, salvo que ya esté solicitado.',
   'No mencione de qué documento sale la información ni diga «según el material informativo»: responda directamente, sin citar fuentes. No cite números de registro, de nota ni códigos BCP, y evite repetir códigos o claves internas (esta regla no lo garantiza).',
   'Solo si el estado del pago no está acreditado y la persona pregunta qué pasa si no paga: el trámite vence a los 10 minutos sin cobro ni póliza. Nunca diga que la póliza «se suspende» ni que se cobra algo si no pagó.',
-  'Sobre el IVA, los impuestos, la factura o el tratamiento tributario del premio no afirme nada: diga solo el premio total publicado y que para eso la persona se oriente con Interseguros.',
+  'Sobre el IVA: solo puede decir que el premio total anual es con IVA incluido, como muestra la pantalla. No dé desglose, prima neta, alícuota, exención ni cifras de impuestos; para la factura o el tratamiento tributario, oriente con Interseguros.',
   'No avance una etapa por su cuenta: la etapa que indica es una propuesta que valida el sistema.',
 ];
 

@@ -229,26 +229,32 @@ async function armar(texto: string) {
 }
 
 describe('tratamiento tributario (C14 pendiente)', () => {
-  it.each(['El premio es de 390.000 con IVA incluido.', 'Más IVA.', 'El seguro está exento.', 'Los impuestos están incluidos.', 'Es el premio sin I.V.A. (iva)', 'El monto imponible es otro.'])(
+  it.each(['Más IVA.', 'El premio es sin IVA incluido.', 'No es IVA incluido.', 'Más IVA incluido.', 'El seguro está exento.', 'Los impuestos están incluidos.', 'Hay un desglose de prima neta.', 'La alícuota es otra.', 'El IVA es del diez por ciento.', 'El IVA incluido es de otro monto, con IVA aparte.'])(
     '«%s» se detecta',
     (texto) => {
       expect(afirmaTratamientoTributario(texto)).toBe(true);
     },
   );
-  it.each(['Puedo informar el premio total publicado; para el tratamiento tributario y la factura te orientamos con Interseguros.', 'La cobertura incluye la renta diaria.', 'Es un seguro de vida.'])(
+  it.each(['El premio total anual es de 390.000 Gs, con IVA incluido.', 'Premio total anual · IVA incluido', 'Puedo informar el premio total publicado; para el tratamiento tributario y la factura te orientamos con Interseguros.', 'La cobertura incluye la renta diaria.', 'Es un seguro de vida.'])(
     '«%s» no se detecta',
     (texto) => {
       expect(afirmaTratamientoTributario(texto)).toBe(false);
     },
   );
   it('el agente reemplaza «IVA incluido» por la frase provisional y lo avisa sin texto', async () => {
-    const { agente } = await armar('El plan cuesta 390.000 Gs al año, con IVA incluido.');
+    const { agente } = await armar('El plan cuesta 390.000 Gs al año, más IVA.');
     const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
     expect(r.salida).toEqual(salidaTributaria('E04'));
     expect(r.avisos).toContain('tributario_bloqueado');
   });
-  it('el prompt lleva la regla de no afirmar nada sobre IVA', () => {
-    expect(REGLAS_KUAA.join(' ')).toContain('no afirme nada');
+  it('el agente deja pasar «con IVA incluido», como las pantallas de SLT', async () => {
+    const { agente } = await armar('El plan cuesta 390.000 Gs al año, con IVA incluido.');
+    const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+    expect(r.salida.texto).toBe('El plan cuesta 390.000 Gs al año, con IVA incluido.');
+    expect(r.avisos).not.toContain('tributario_bloqueado');
+  });
+  it('el prompt lleva la regla del IVA', () => {
+    expect(REGLAS_KUAA.join(' ')).toContain('con IVA incluido');
   });
 });
 
