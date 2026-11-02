@@ -4,8 +4,16 @@
  * Rutas:
  *   GET    /salud                                          — sin autenticación; sin datos sensibles
  *   GET    /v1/agente                                      — perfiles y bienvenida del agente del cliente
- *   POST   /v1/conversaciones/:conversacionId/mensajes     — { perfilId?, texto, canal? }
+ *   POST   /v1/conversaciones/:conversacionId/mensajes     — { perfilId?, pagina?, texto, canal? }
  *   DELETE /v1/conversaciones/:conversacionId              — olvidar la conversación
+ *   POST   /v1/kuaa/mensaje                                — PROVISIONAL: contexto de oportunidad + `mensaje` → salida estructurada
+ *                                                            (200 sin clave `ok`: solo las claves de SalidaOportunidad; los errores sí
+ *                                                            llevan `ok: false`. Las rutas /v1/conversaciones/* responden 404
+ *                                                            AGENTE_KUAA para un cliente de Kuaa)
+ *                                                            (solo para clientes cuyo agente es `tipoAgente: kuaa`; el contrato
+ *                                                            definitivo lo fija SLT y esta ruta puede cambiar)
+ *                                                            Contrato v0.4: el cuerpo admite un bloque opcional `plataforma` (catálogo,
+ *                                                            planes y contacto de SLT); el esquema es estricto y la ruta no lo registra)
  *
  * AUTENTICACIÓN: `Authorization: Bearer <clave>`. Se compara el SHA-256 de la
  * clave contra los clientes configurados, en tiempo constante. El agente que
@@ -22,7 +30,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
-import { ErrorPeticion, esIdConversacionValido, listarPerfiles, resolverConfiguracion } from '@chatbotrag/nucleo';
+import { EntradaKuaa, ErrorPeticion, esIdConversacionValido, listarPerfiles, resolverConfiguracion } from '@chatbotrag/nucleo';
 import type { AgenteArmado } from './armar-agentes.js';
 import type { Cliente, Entorno } from './entorno.js';
 
@@ -30,6 +38,7 @@ export const VERSION_SERVICIO = '0.1.0';
 
 interface CuerpoMensaje {
   perfilId?: string | null;
+  pagina?: unknown;
   texto?: unknown;
   canal?: unknown;
 }
@@ -161,6 +170,7 @@ export async function crearAplicacion(opciones: OpcionesAplicacion): Promise<Fas
   app.post<{ Params: { conversacionId: string }; Body: CuerpoMensaje }>('/v1/conversaciones/:conversacionId/mensajes', async (p, r) => {
     const acceso = await conCliente(p);
     if ('error' in acceso) return r.code(acceso.error).send({ ok: false, motivo: acceso.motivo });
+    if (acceso.armado.agenteKuaa) return r.code(404).send({ ok: false, motivo: 'AGENTE_KUAA' });
     const { conversacionId } = p.params;
     if (!esIdConversacionValido(conversacionId)) return r.code(400).send({ ok: false, motivo: 'CONVERSACION_INVALIDA' });
     const cuerpo = (p.body ?? {}) as CuerpoMensaje;
@@ -168,9 +178,12 @@ export async function crearAplicacion(opciones: OpcionesAplicacion): Promise<Fas
     if (/^#simular:/i.test(cuerpo.texto.trim()) && acceso.armado.proveedor !== 'simulado') return r.code(400).send({ ok: false, motivo: 'TEXTO_INVALIDO' });
     const canal = typeof cuerpo.canal === 'string' && /^[a-z]{2,20}$/.test(cuerpo.canal) ? cuerpo.canal : 'web';
     const perfilId = typeof cuerpo.perfilId === 'string' && cuerpo.perfilId.length <= 60 ? cuerpo.perfilId : null;
+    // `pagina`: ausente o null → sin contexto; cadena → tal cual; cualquier otro tipo → '' (el núcleo
+    // lo trata como desconocido y avisa). Nunca es un error HTTP ni se registra.
+    const pagina = cuerpo.pagina === undefined || cuerpo.pagina === null ? null : typeof cuerpo.pagina === 'string' ? cuerpo.pagina : '';
 
     try {
-      const respuesta = await acceso.armado.agente.responder({ conversacionId, perfilId, texto: cuerpo.texto, canal });
+      const respuesta = await acceso.armado.agente.responder({ conversacionId, perfilId, pagina, texto: cuerpo.texto, canal });
       return { ok: true, ...respuesta };
     } catch (e) {
       if (e instanceof ErrorPeticion) {
@@ -182,9 +195,32 @@ export async function crearAplicacion(opciones: OpcionesAplicacion): Promise<Fas
     }
   });
 
+  // RUTA PROVISIONAL de Kuaa. Misma autenticación, límites y CORS que las demás. Nunca repite en el
+  // error los valores recibidos; la respuesta lleva las claves de `SalidaOportunidad` y, solo con perfil `pruebas` y paquete cargado, `validacion` y `version_paquete`.
+  app.post('/v1/kuaa/mensaje', async (p, r) => {
+    const acceso = await conCliente(p);
+    if ('error' in acceso) return r.code(acceso.error).send({ ok: false, motivo: acceso.motivo });
+    const kuaa = acceso.armado.agenteKuaa;
+    if (!kuaa) return r.code(404).send({ ok: false, motivo: 'AGENTE_NO_KUAA' });
+    const entrada = EntradaKuaa.safeParse(p.body);
+    if (!entrada.success) return r.code(400).send({ ok: false, motivo: 'PETICION_INVALIDA' });
+    if (/^#simular:/i.test(entrada.data.mensaje.trim()) && acceso.armado.proveedor !== 'simulado') return r.code(400).send({ ok: false, motivo: 'TEXTO_INVALIDO' });
+    try {
+      const { salida } = await kuaa.responder(entrada.data, acceso.cliente.id);
+      // Solo con perfil `pruebas` y paquete cargado: campos opcionales del SOBRE, fuera de `SalidaOportunidad`.
+      if (acceso.armado.perfilConocimiento === 'pruebas' && acceso.armado.versionPaquete) return { ...salida, validacion: 'no_validado', version_paquete: acceso.armado.versionPaquete };
+      return salida;
+    } catch (e) {
+      if (e instanceof ErrorPeticion) return r.code(e.codigo === 'TEXTO_LARGO' ? 413 : 400).send({ ok: false, motivo: e.codigo });
+      p.log.error({ err: e instanceof Error ? e.message : String(e) }, 'error no controlado en kuaa');
+      return r.code(500).send({ ok: false, motivo: 'ERROR_INTERNO' });
+    }
+  });
+
   app.delete<{ Params: { conversacionId: string } }>('/v1/conversaciones/:conversacionId', async (p, r) => {
     const acceso = await conCliente(p);
     if ('error' in acceso) return r.code(acceso.error).send({ ok: false, motivo: acceso.motivo });
+    if (acceso.armado.agenteKuaa) return r.code(404).send({ ok: false, motivo: 'AGENTE_KUAA' });
     if (!esIdConversacionValido(p.params.conversacionId)) return r.code(400).send({ ok: false, motivo: 'CONVERSACION_INVALIDA' });
     await acceso.armado.memoria.olvidar(p.params.conversacionId);
     return r.code(204).send();

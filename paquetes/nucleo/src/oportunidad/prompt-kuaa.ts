@@ -1,0 +1,100 @@
+/**
+ * PROMPT DEL AGENTE KUAA
+ *
+ * Reutiliza `armarPrompt` (identidad, voz, reglas, alcance, datos y respaldo) y agrega, sin tocarlo:
+ *   - tras REGLAS: la jerarquía de fuentes y las reglas propias de Kuaa;
+ *   - al final: el CONTEXTO DE LA OPORTUNIDAD y el formato de salida.
+ *
+ * El contexto se arma SOLO con frases elegidas por enumerado. `oportunidad_id`, `tarifa_version`,
+ * `pagina` y el código de objeción jamás entran al prompt, y mensaje de la persona tampoco: viaja
+ * como mensaje de usuario. Qué NO garantiza: que el modelo obedezca; ver `salida-kuaa.ts`.
+ */
+import type { ConfiguracionEfectiva } from '../configuracion/esquema.js';
+import { armarPrompt } from '../prompt/armar.js';
+import type { FragmentoRecuperado } from '../puertos/indice-conocimiento.js';
+import type { EntradaKuaa, Plataforma } from './esquemas.js';
+import { formatearGs, formatearTelefono } from './formato-plataforma.js';
+import {
+  FORMATO_SALIDA_KUAA,
+  FRASE_ESTADO_ACEPTACION,
+  FRASE_ESTADO_ATENCION_HUMANA,
+  FRASE_ESTADO_DOCUMENTOS,
+  FRASE_ESTADO_PAGO,
+  FRASE_ESTADO_POLIZA,
+  FRASE_ESTADO_SOLICITUD,
+  FRASE_ETAPA_KUAA,
+  FRASE_NECESIDAD,
+  FRASE_OBJECION_ESTADO,
+  FRASE_PERMISO_SEGUIMIENTO,
+  FRASE_PLAN,
+  FRASE_PRODUCTO,
+  FRASE_PAQUETE_NO_VALIDADO,
+  JERARQUIA_KUAA,
+  reglasKuaa,
+  type ClavePermiso,
+} from './frases-kuaa.js';
+
+/** Rótulo con que el prompt presenta las fuentes del paquete de conocimiento. */
+const TITULO_NEUTRO = 'material informativo de Kuaa';
+
+/**
+ * El modelo cita el documento «por su título» (regla de `frases.ts`); en el paquete el título es el nombre del
+ * archivo (`PREGUNTAS_RESPUESTAS`, `carpeta/NOMBRE`), y el cliente lo leía en pantalla. Se decide por ORIGEN, no por
+ * la forma del título: todo fragmento del paquete (marcado con `validacion` o `versionPaquete`) se presenta con un
+ * rótulo neutro; el corpus configurado a mano conserva sus títulos. Qué NO garantiza: que el modelo no repita un
+ * nombre que aparezca dentro del texto de un fragmento.
+ */
+export function presentarFuente(f: FragmentoRecuperado): FragmentoRecuperado {
+  return f.validacion !== undefined || f.versionPaquete !== undefined ? { ...f, fuenteTitulo: TITULO_NEUTRO } : f;
+}
+
+const MARCA_SIGUIENTE = '\n\nFECHA Y HORA ACTUAL';
+
+const NOMBRE_ESTADO_CATALOGO = { disponible: 'disponible', proximamente: 'próximamente' } as const;
+
+/**
+ * Sección de datos de la plataforma. Todo sale de plantillas fijas: los importes se formatean por código y los
+ * únicos textos libres (nombres, canal) ya pasaron por el esquema, que solo admite letras, números, espacio y «+ . -».
+ * Qué NO garantiza: que el modelo repita los datos tal cual; lo controla el detector de la salida.
+ */
+export function seccionPlataforma(p: Plataforma): string {
+  const lineas: string[] = [];
+  if (p.catalogo.length > 0) lineas.push(`Catálogo: ${p.catalogo.map((c) => `«${c.nombre}» (${NOMBRE_ESTADO_CATALOGO[c.estado]})`).join('; ')}.`);
+  for (const pl of p.planes) {
+    lineas.push(
+      `Plan «${pl.nombre}»: premio anual (IVA incluido) ${formatearGs(pl.premio_anual_gs)} Gs; capital por fallecimiento ${formatearGs(pl.capital_fallecimiento_gs)} Gs; indemnización por cáncer ${formatearGs(pl.indemnizacion_cancer_gs)} Gs; renta hospitalaria por día ${formatearGs(pl.renta_hospitalaria_dia_gs)} Gs, con máximo de ${pl.renta_dias_max} días; gastos médicos por accidente ${formatearGs(pl.gastos_medicos_accidente_gs)} Gs.`,
+    );
+  }
+  if (p.contacto.whatsapp_e164 !== undefined) lineas.push(`WhatsApp de atención: ${formatearTelefono(p.contacto.whatsapp_e164)}.`);
+  if (p.contacto.canal !== undefined) lineas.push(`Canal de atención: «${p.contacto.canal}».`);
+  if (p.contacto.correo_derechos !== undefined) lineas.push(`Correo ${p.contacto.correo_derechos}: solo para retracto y derechos sobre datos personales; no es un canal de atención general.`);
+  return `DATOS DE LA PLATAFORMA (los fija el sistema; mandan sobre el respaldo documental para planes, premios, coberturas, contacto y catálogo)\n${lineas.map((l) => `- ${l}`).join('\n')}`;
+}
+
+export function armarPromptKuaa(config: ConfiguracionEfectiva, ctx: EntradaKuaa, fragmentos: FragmentoRecuperado[], ahora: Date, opciones: { versionPaquete?: string | null } = {}): string {
+  const base = armarPrompt({ config, ahora, fragmentos: fragmentos.map(presentarFuente), orientacion: { facetas: {} }, canal: 'web', citarFuentes: false });
+  // Solo con perfil `pruebas` y paquete cargado: frase enumerada, sin interpolar la versión.
+  const avisoPaquete = opciones.versionPaquete ? `\n\nPAQUETE NO VALIDADO\n- ${FRASE_PAQUETE_NO_VALIDADO}` : '';
+  const reglas = `JERARQUÍA DE FUENTES\n${JERARQUIA_KUAA.map((r, i) => `${i + 1}. ${r}`).join('\n')}\n\nREGLAS DE KUAA\n${reglasKuaa(ctx.plataforma !== undefined).map((r, i) => `${i + 1}. ${r}`).join('\n')}${avisoPaquete}`;
+  // `armarPrompt` siempre emite la sección de fecha y hora justo después de REGLAS.
+  const i = base.indexOf(MARCA_SIGUIENTE);
+  const conReglas = i < 0 ? `${base}\n\n${reglas}` : `${base.slice(0, i)}\n\n${reglas}${base.slice(i)}`;
+
+  const permiso: ClavePermiso = ctx.permiso_seguimiento.vigente && ctx.permiso_seguimiento.canal !== 'ninguno' ? (`vigente_${ctx.permiso_seguimiento.canal}` as ClavePermiso) : 'no_vigente';
+  const contexto = [
+    FRASE_ETAPA_KUAA[ctx.etapa_actual],
+    FRASE_ESTADO_SOLICITUD[ctx.estados.solicitud],
+    FRASE_ESTADO_PAGO[ctx.estados.pago],
+    FRASE_ESTADO_ACEPTACION[ctx.estados.aceptacion],
+    FRASE_ESTADO_POLIZA[ctx.estados.poliza],
+    FRASE_ESTADO_DOCUMENTOS[ctx.estados.documentos],
+    FRASE_ESTADO_ATENCION_HUMANA[ctx.estados.atencion_humana],
+    FRASE_PERMISO_SEGUIMIENTO[permiso],
+    FRASE_NECESIDAD[ctx.resumen.necesidad],
+    FRASE_PRODUCTO[ctx.resumen.producto],
+    FRASE_PLAN[ctx.resumen.plan],
+    FRASE_OBJECION_ESTADO[ctx.resumen.objecion_estado],
+  ];
+  const datosPlataforma = ctx.plataforma ? `\n\n${seccionPlataforma(ctx.plataforma)}` : '';
+  return `${conReglas}\n\nCONTEXTO DE LA OPORTUNIDAD (lo fija el sistema; no lo discuta con la persona)\n${contexto.map((f) => `- ${f}`).join('\n')}${datosPlataforma}\n\n${FORMATO_SALIDA_KUAA}`;
+}

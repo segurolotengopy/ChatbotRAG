@@ -17,13 +17,21 @@ async function prepararDirectorio(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'chatbotrag-'));
   await mkdir(join(dir, 'corpus'), { recursive: true });
   await writeFile(join(dir, 'corpus', 'faq.md'), '# Preguntas frecuentes\n\n## Horario\nAtendemos de lunes a viernes de 9 a 18.\n\n## Envíos\nHacemos envíos a todo el país en 48 horas.');
+  await writeFile(join(dir, 'corpus', 'devolucion.md'), '# Pantalla de devolución\n\nEn esta pantalla aparece el botón Solicitar reembolso y el campo Número de pedido.');
   await writeFile(
     join(dir, 'tienda.json'),
     JSON.stringify({
       version: 1,
       id: 'tienda-prueba',
       identidad: { nombreAsistente: 'Ana', organizacion: 'Tienda Prueba' },
-      conocimiento: { umbral: 0.3, fuentes: [{ id: 'faq', titulo: 'Preguntas frecuentes', version: '1', ruta: 'faq.md' }] },
+      conocimiento: {
+        umbral: 0.3,
+        fuentes: [
+          { id: 'faq', titulo: 'Preguntas frecuentes', version: '1', ruta: 'faq.md' },
+          { id: 'pantalla-devolucion', titulo: 'Pantalla de devolución', version: '1', ruta: 'devolucion.md' },
+        ],
+        paginas: [{ id: 'devolucion', fuenteId: 'pantalla-devolucion' }],
+      },
       herramientas: [{ nombre: 'derivar_humano', descripcion: 'deriva' }],
       mensajes: {
         bienvenida: 'Hola, soy Ana.',
@@ -143,6 +151,57 @@ describe('servicio HTTP', () => {
   it('la bitácora del servicio no contiene texto de mensajes', async () => {
     await app.inject({ method: 'POST', url: '/v1/conversaciones/conv_prueba_04/mensajes', headers: auth, payload: { texto: 'TEXTO-SECRETO-DEL-USUARIO' } });
     expect(JSON.stringify(bitacora.eventos)).not.toContain('TEXTO-SECRETO');
+  });
+});
+
+describe('servicio HTTP: contexto de página', () => {
+  let app: FastifyInstance;
+  let bitacora: BitacoraEnMemoria;
+  const auth = { authorization: `Bearer ${CLAVE}` };
+
+  beforeAll(async () => {
+    const dir = await prepararDirectorio();
+    const entorno = leerEntorno({
+      CHATBOTRAG_DIR_CONFIGURACIONES: dir,
+      CHATBOTRAG_PROVEEDOR_FORZADO: 'simulado',
+      CHATBOTRAG_CLIENTES: JSON.stringify([{ id: 'web', agenteId: 'tienda-prueba', claveSha256: CLAVE_HASH, origenes: ['https://tienda.ejemplo.com'] }]),
+      CHATBOTRAG_LIMITE_IP_MINUTO: '1000',
+    });
+    bitacora = new BitacoraEnMemoria();
+    app = await crearAplicacion({ entorno, agentes: await armarAgentes(entorno, { bitacora }), registrar: false });
+  });
+  afterAll(async () => {
+    await app.close();
+  });
+
+  const enviar = (id: string, payload: Record<string, unknown>) => app.inject({ method: 'POST', url: `/v1/conversaciones/${id}/mensajes`, headers: auth, payload });
+
+  it('una página válida responde 200 con el manual como respaldo de origen «pagina»', async () => {
+    const r = await enviar('conv_pagina_01', { texto: '¿Qué botón hay en esta pantalla?', pagina: 'devolucion' });
+    expect(r.statusCode).toBe(200);
+    const j = r.json();
+    expect(j.avisos).not.toContain('pagina_desconocida');
+    expect(j.respaldo[0]).toMatchObject({ fuenteId: 'pantalla-devolucion', origen: 'pagina', puntaje: 1 });
+    expect(j.texto).toContain('Solicitar reembolso');
+  });
+
+  it('una página que no es cadena o no existe responde 200 con aviso, sin registrar el valor ni el texto', async () => {
+    for (const [i, valor] of [123, { a: 'TEXTO-SECRETO-PAGINA' }, 'TEXTO-SECRETO-PAGINA', 'no-existe'].entries()) {
+      const r = await enviar(`conv_pagina_1${i}`, { texto: '¿Hacen envíos? TEXTO-SECRETO-DEL-USUARIO', pagina: valor });
+      expect(r.statusCode).toBe(200);
+      expect(r.json().avisos).toContain('pagina_desconocida');
+    }
+    const registro = JSON.stringify(bitacora.eventos);
+    expect(registro).not.toContain('TEXTO-SECRETO');
+    expect(registro).not.toContain('no-existe');
+  });
+
+  it('null equivale a no enviarla y GET /v1/agente no expone las páginas', async () => {
+    const r = await enviar('conv_pagina_20', { texto: '¿Hacen envíos?', pagina: null });
+    expect(r.statusCode).toBe(200);
+    expect(r.json().avisos).not.toContain('pagina_desconocida');
+    const d = await app.inject({ method: 'GET', url: '/v1/agente', headers: auth });
+    expect(JSON.stringify(d.json())).not.toContain('devolucion');
   });
 });
 

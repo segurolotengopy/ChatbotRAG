@@ -142,6 +142,14 @@ export class IndiceEnMemoria implements IndiceConocimiento {
     });
   }
 
+  async fragmentosDeFuente(coleccion: string, fuenteId: string, limite: number): Promise<Fragmento[]> {
+    return (this.colecciones.get(coleccion) ?? [])
+      .map((e) => e.fragmento)
+      .filter((f) => f.fuenteId === fuenteId)
+      .sort((a, b) => a.orden - b.orden)
+      .slice(0, Math.max(0, limite));
+  }
+
   async contar(coleccion: string): Promise<number> {
     return this.colecciones.get(coleccion)?.length ?? 0;
   }

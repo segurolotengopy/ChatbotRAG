@@ -76,7 +76,7 @@ Secciones:
   "mensajes":    { bienvenida, errorTemporal, fueraDeAlcance, sinRespaldo, derivacion,
                    entradaBloqueada, suspendido, cierre },
   "modelo":      { proveedor:"vertex|bedrock|simulado", nombre, temperatura, maxTokensSalida,
-                   maxIteraciones, ventanaMemoria },
+                   maxIteraciones, ventanaMemoria, razonamiento:"automatico|desactivado" },
   "perfiles":    { "<perfilId>": { …cualquier sección salvo version/id/modelo… } }  // p. ej. por tipo de seguro
 }
 ```
@@ -116,6 +116,7 @@ POST /v1/agentes/{agente}/conversaciones/{conversacionId}/mensajes  { perfilId, 
 | `@chatbotrag/proveedor-vertex` | Gemini + embeddings en Vertex AI | `@google/genai` |
 | `@chatbotrag/proveedor-bedrock` | Claude/Titan vía Converse API | `@aws-sdk/client-bedrock-runtime` |
 | `@chatbotrag/conocimiento-pgvector` | índice persistente en PostgreSQL + pgvector | `pg` |
+| `@chatbotrag/conocimiento-gcs` | lector del paquete de conocimiento de Kuaa desde un bucket privado (solo lectura, ADC) | `@google-cloud/storage` |
 | `@chatbotrag/canal-web` | widget embebible (TS puro) y contrato HTTP | — |
 | `servicio` | HTTP (Fastify) para Cloud Run; carga configuraciones y corpus | `fastify` |
 
@@ -134,7 +135,10 @@ ni Amazon.
 - **Salida**: (a) niega ser IA → se reescribe; (b) promesa de indemnización/decisión
   de elegibilidad/aprobación → se reemplaza por `mensajes.fueraDeAlcance` + derivación;
   (c) `terminosConfidenciales` presentes → se reemplaza; (d) marcas `[X]` no declaradas
-  → se eliminan.
+  → se eliminan; (e) PAN (13–19 dígitos con Luhn), CVV y OTP con su palabra de contexto
+  se redactan como «(dato eliminado)» sin reemplazar la respuesta; corre siempre. No cubre
+  dígitos en palabras, homóglifos, un PAN partido en varios mensajes, vencimientos ni datos
+  de resultados de herramientas.
 - **Respaldo**: con `exigirRespaldo: true`, si no hay fragmentos por encima del umbral
   y la pregunta no es de cortesía ni de orientación, la respuesta es `mensajes.sinRespaldo`.
 - **Bitácora**: hash de la conversación, perfil, latencia, tokens, compuertas
@@ -164,6 +168,216 @@ para los modelos que no son «Frontier» ni «Advanced AI» puede guardar hasta 
 revisar los prompts que sus clasificadores marquen como sospechosos (los clientes con
 Acuerdo Maestro están exentos); la caché implícita guarda hasta 24 horas. No está
 verificado bajo qué contrato opera la cuenta ni la retención de los embeddings.
+
+### Razonamiento y respuestas cortadas
+
+`modelo.razonamiento` (`automatico` por omisión, `desactivado`) se pasa al proveedor. Vertex
+envía `thinkingBudget: 0` con `desactivado`; Bedrock lo ignora. Origen: en la batería de
+staging del 24-oct-2026 dos respuestas terminaron en `MAX_TOKENS` con 37 y 64 tokens visibles
+de 1.024, porque el razonamiento de Gemini 2.5 se descuenta del mismo presupuesto de salida
+(y se cobra como salida; `tokensSalida` ahora lo suma). Gemini 2.5 Pro no admite apagarlo: la
+carga rechaza `desactivado` si el nombre del modelo contiene `pro` como palabra («El modelo
+gemini-2.5-pro no admite razonamiento desactivado»). En Gemini 3 el parámetro está obsoleto.
+Si aun así una respuesta termina en `max_tokens` sin llamar a herramientas, NO se entrega, ni
+recortada (cortar en la «última oración» podía dejar una afirmación sin su salvedad o cortar en
+«Gs.» o «1.»): sale `mensajes.errorTemporal` más la derivación al canal, con los avisos
+`max_tokens` y `respuesta_incompleta`. El motivo de derivación es `respuesta_cortada` solo si no
+hay otro (el de la herramienta o el de una compuerta manda). Si el modelo derivó con la
+herramienta y luego no dijo nada, se entrega `mensajes.derivacion` con el aviso
+`vacia_con_derivacion`. No hay reintento (repetiría toda la entrada). Una respuesta vacía sin
+derivación sigue siendo error temporal con `respuesta_vacia`.
+
+### Compuerta `recomienda_plan`
+
+Reemplaza por `fueraDeAlcance` más `derivacion` la respuesta que recomienda un plan. Origen:
+PAG-plan-011 de la batería del 24-oct-2026, donde el manual de /plan lleva la etiqueta «PLAN
+RECOMENDADO» y el modelo la repitió como recomendación propia. Dos detectores sobre texto
+normalizado (sin tildes, sin caracteres de formato Unicode como U+200B): (1) frases con el
+sustantivo `plan` («el plan recomendado es…», «le recomiendo el plan…», «le conviene el plan…»,
+«el mejor plan…»); (2) un nombre de `seguridad.nombresDePlanes` a seis palabras o menos de un verbo
+de recomendación, en cualquier orden («le recomiendo VIVE TOTAL», «yo elegiría VIVE»). Los
+nombres son dato, obligatorios y no vacíos si la compuerta está activa, con límites de palabra
+(«viven» no es «vive»); «vive» en minúscula cuenta como el nombre, así que «si usted vive en…»
+junto a un verbo de recomendación se reemplaza (falla hacia lo seguro). Las instrucciones
+legítimas («elija el plan y pulse Continuar», «la mejor opción es consultar a un asesor», «le
+recomiendo el PDF de condiciones») pasan. Citar la etiqueta («lleva la etiqueta «PLAN
+RECOMENDADO»») también pasa: decisión por defecto, a confirmar por el propietario. No cubre otras
+redacciones sin un nombre cerca («lo más indicado sería…»), nombres no declarados ni un plan
+aludido sin nombre. No puede convivir con la herramienta `recomendar_opcion` (la carga lo
+rechaza). Pendiente ajeno: el caso PAG-plan-002 de SeguroLoTengo espera que se nombre «VIVE
+TOTAL» ante una pregunta casi idéntica a la de PAG-plan-011 y la compuerta lo reemplaza.
+
+### Marcas literales
+
+`seguridad.marcasLiterales` lista marcas entre corchetes que son TEXTO de los manuales (por
+ejemplo `PENDIENTE_DE_DEFINICION_LEGAL`) y no marcas de control: se conservan intactas, sin
+aviso. Origen: PAG-retracto-007 respondió «el plazo está ""» porque la compuerta borraba
+`[PENDIENTE DE DEFINICIÓN LEGAL]`. La coincidencia es exacta con la clave normalizada (sin
+tildes, mayúsculas, espacios como `_`) y no puede repetirse en `marcasPermitidas`. Las demás
+marcas siguen borrándose; no garantiza que el modelo cite la marca.
+
+### Criterio de salud y PEP
+
+`seguridad.criterioSaludPep` (`primera_persona` por omisión, `declaracion`, `sin_sujeto`) decide cuándo bloquea
+la compuerta de entrada `salud` y `pep`. Con `declaracion` solo queda libre una consulta de
+formulario: el mensaje EMPIEZA con «si» condicional (sin tilde; «Sí marco…» es una afirmación y se
+comprueba sobre el texto con tildes) seguido de «marco/respondo/pongo/…» (no «declaro» ni «indico»,
+que son performativos) y «que (sí) soy PEP» o «que tengo una enfermedad», es una pregunta (lleva «?»
+o empieza con «¿») y, quitado el marco, queda una pregunta de procedimiento de lista cerrada
+(«¿qué pasa?», «¿qué tengo que hacer?»), no vacía y sin vocabulario de salud ni de PEP. Origen:
+PAG-actividad-007 («Si marco que sí soy PEP, ¿qué pasa?»), el único error de los 10 bloqueos de
+entrada de la batería. Fuera del marco bloquea lo mismo que `primera_persona`: la prueba
+(`entrada-declaracion.prueba.ts`) usa una lista cerrada e independiente de frases adversarias y
+los casos de `entrada-por-dato.prueba.ts`; es una muestra, no una demostración para todo texto.
+Sobre los 174 mensajes de la batería la única diferencia entre ambos criterios es PAG-actividad-007.
+No cambia cédula, tarjeta, código, clave ni inyección. Quien escribe «SI» en mayúsculas sin tilde
+pasa como condicional si el resto es una pregunta de procedimiento.
+
+**Límite preexistente en `primera_persona` y `declaracion`.** La regla de `esPreguntaGeneral` deja
+pasar una declaración de salud o de PEP escrita como pregunta, sin primera persona verbal clara:
+«me detectaron un tumor ¿me cubren?», «Fui PEP hasta el año pasado, ¿me afecta?», «Era ministro,
+¿puedo contratar?». Las pruebas fijan ese comportamiento para que un cambio sea deliberado. El
+criterio `sin_sujeto` (siguiente sección) lo cierra en gran parte.
+
+### Criterio `sin_sujeto` para salud y PEP
+
+`seguridad.criterioSaludPep` (`primera_persona` por omisión | `declaracion` | `sin_sujeto`; este último admite también el marco de formulario de `declaracion`) decide cómo trata la compuerta de entrada el vocabulario de salud y de PEP. Origen: hallazgo HIGH sobre la regla #7. `esPreguntaGeneral` deja pasar todo texto con «?», de modo que una declaración escrita como pregunta («me detectaron un tumor, ¿me cubren?», «fui PEP hasta el año pasado, ¿me afecta?») llegaba al modelo y a la memoria.
+
+Con `sin_sujeto`, el vocabulario de salud o de PEP bloquea siempre, salvo que el mensaje sea una pregunta de producto sin sujeto personal (`compuertas/sujeto-personal.ts`). Esa excepción exige, a la vez: pregunta (lleva «?» o empieza con «¿»); 200 caracteres o menos y una sola oración; apertura con una palabra de una lista cerrada (interrogativo, artículo o verbo del producto en tercera persona); ningún marcador personal (pronombres, verbos en primera persona, parientes, terceros); ninguna ancla de tiempo; y que además la apruebe la regla de siempre. Excepción estrecha: «¿Me cubre el cáncer…?» pasa (equivale a «¿cubre cáncer?»). Dentro de `sin_sujeto` también se quitan los caracteres invisibles, se detecta «P E P» con separadores y se neutralizan las frases de pago con «operación».
+
+Monotonía: `sin_sujeto` bloquea todo lo que bloquea `primera_persona` y nunca bloquea menos; la prueba `entrada-sin-sujeto.prueba.ts` lo verifica con la ruta vieja como oráculo. Las demás categorías y el `modo` de `vocabularioEntrada` no cambian. Si el PR de `declaracion` (`esConsultaDeFormulario`) se integra, `sin_sujeto` debe componer con él (`criterio !== 'primera_persona'`).
+
+Impacto medido sobre 543 entradas (174 de la batería por pantalla y 369 de la batería del demo): cambian 5, todas de PASA a BLOQUEA; ninguna de BLOQUEA a PASA.
+
+| Caso | Mensaje | Lectura |
+|---|---|---|
+| SEN-030 | «¿Mi enfermedad está cubierta por el seguro?» | Correcto (era una fuga) |
+| PAG-revision-manual-004 | «¿Fue por mi enfermedad o por ser PEP?» | Correcto |
+| DER-015 | «Si me diagnostican cáncer el mes que viene, ¿me pagan?» | Falso positivo por especificación (hipótesis personal) |
+| MED-002 | «¿Qué medicamento me conviene tomar para la presión alta?» | Aceptable: es consejo médico y lleva dato implícito |
+| GUA-005 | «Pe seguro ojapo piko cobertura cáncer rehe?» | Falso positivo en guaraní |
+
+Qué NO garantiza: reduce, no elimina. Bloquea las declaraciones de salud o PEP que usan el vocabulario conocido, aunque vengan como pregunta; no detecta datos personales escritos sin ese vocabulario ni sin marcas de persona (sinónimos como «biopsia» o «diálisis», diagnósticos impersonales, guaraní o portugués sin vocabulario en español, homóglifos de otros alfabetos, datos repartidos en varios turnos). Falso positivo conocido: «¿Funcionario público de alto rango cuenta como PEP?».
+
+Revisión posterior (revisor de código y seguridad): la excepción también rechaza la cláusula subordinada sobre la condición (`que` no interrogativo, `aunque`, `porque`, `mientras`, `cuando` fuera de la apertura y `si` seguido de un verbo en primera persona), los enclíticos («cubrirme», «tratarme»), `acabo` y las anclas de tiempo («hoy», «semana pasada», días de la semana). Los invisibles y combinantes (\p{Mn}, \p{Me}, \p{Cf} y rellenos Hangul o braille) se quitan antes del vocabulario, y la sigla PEP admite hasta tres separadores no alfanuméricos. Solo se neutralizan «Recibimos tu operación» (sin complemento médico), «operación de pago», «operación bancaria» y «número, código o comprobante de operación».
+
+Límites que quedan abiertos y se documentan, no se corrigen aquí: terceros con nombre propio sin cláusula relativa («¿La señora Gómez con diabetes puede contratar?»), sinónimos fuera del vocabulario («diálisis», «biopsia»), «¿Cubre el cáncer de mamá?» (se admite «de mamá» para no bloquear «cáncer de mama»), homóglifos y letras separadas. Compromiso: PR de ampliación del vocabulario de salud en 30 días. Además, un perfil puede volver a `primera_persona` con su propia sección `seguridad` (como con las demás claves de seguridad), así que el cierre del hallazgo depende de la configuración vigente y no del código solo.
+
+### Carga a Kuaa: registros habilitados y oportunidad de venta
+
+`conocimiento/registros-habilitados.ts` (`separarRegistrosHabilitados`) deja pasar a Kuaa solo
+los registros con `habilitado_produccion === true` (booleano exacto); `estado_validacion` y
+`aprobacion` no habilitan. Falla cerrado («true», 1, «si», null o ausencia no habilitan) y
+devuelve de los rechazados solo índice y motivo. No valida la veracidad del contenido ni la
+revisión humana. `scripts/validar-paquete-kuaa.mts` imprime únicamente conteos
+(`--exigir-habilitados` sale con 1 si no hay ninguno); `--perfil=pruebas` acepta además los `false` con `validacion: "no_validado"` y `version_paquete` X.Y.Z, que salen con `estado: 'no_validado'` y se cuentan aparte, nunca como habilitados (el perfil `produccion`, por omisión, no los admite ni en el tipo); un registro `true` que además trae `validacion: "no_validado"` es contradictorio y se rechaza en ambos perfiles (`registro_contradictorio`); acepta raíz arreglo, `{registros: [...]}` u
+objeto único y falla con cualquier otra. La bandera se lee solo como valor de datos propio (un
+getter, un Proxy o un objeto no plano no habilitan) y, si el JSON repite la clave, gana la última.
+
+`oportunidad/esquemas.ts` define, con Zod estricto y enumerados, la etapa comercial E01..E12,
+los estados operativos (solicitud, pago, aceptación, póliza, documentos, atención humana), el
+estado de objeción, el permiso de seguimiento y el `ContextoOportunidad` mínimo, sin datos
+personales. `estadosTrasPropuestaDeEtapa` devuelve una copia sin cambios: una etapa propuesta por el modelo
+nunca es evidencia, y en ChatbotRAG no existe ninguna transición operativa (los estados los fija
+SLT en cada petición). Contrato F2 v0.3 de SLT: el permiso de seguimiento es
+`{vigente, canal}` (sin `evidencia_id`), el contexto lleva `pagina` (con `ID_PAGINA`) y un `resumen` de
+enumerados cerrados (necesidad, producto, plan, `objecion_codigo` O01..O32 o `ninguna`,
+`objecion_estado` o `ninguna`; cualquier otro valor se rechaza); `oportunidad_id` y `tarifa_version`
+tienen formas estrictas. `estados` y
+`resumen` son datos y nunca se interpolan en el prompt. Se declaran el enum de tipos de evento (sin
+endpoint) y el esquema de salida; `filtrarBotonesSalida` descarta `continuar_pago` si la solicitud
+no está completada.
+
+### Paquete de conocimiento no validado de Kuaa (solo staging)
+
+Para probar el paquete de contenido antes de que alguien lo valide, el servicio puede cargarlo marcado
+`no_validado`; **nunca en producción**. Reglas:
+
+- **Perfil por entorno.** `CHATBOTRAG_PERFIL_CONOCIMIENTO` ausente o vacío = `produccion`; `pruebas` lo activa;
+  cualquier otro valor no vacío («PRUEBAS», «staging») es un `ErrorEntorno` (un typo no pasa por válido). `pruebas`
+  exige `CHATBOTRAG_BUCKET_PAQUETE` y `CHATBOTRAG_VERSION_PAQUETE` (X.Y.Z); `produccion` los rechaza; y el perfil `pruebas` o el bucket
+  solo se admiten con `APP_ENV` (sin espacios ni mayúsculas) en {staging, development, test}: ausente, `prod*`,
+  `production` en cualquier grafía o un valor desconocido dan `ErrorEntorno` (NODE_ENV no distingue lo local).
+- **Solo agentes `kuaa`.** `conocimiento.paquete.habilitado` (booleano, solo en la base, nunca en un perfil)
+  lo exige el esquema; `armar-agentes` carga el paquete solo si el agente es `kuaa`, el perfil es `pruebas` y el
+  índice no es pgvector (con pgvector queda el evento `paquete_no_cargado` con código `PGVECTOR_NO_ADMITE`, sin
+  tocar el índice; `IndicePgvector.indexar` además rechaza todo fragmento con `validacion`).
+- **Origen.** `paquetes/conocimiento-gcs` lee `gs://<bucket>/<version>/manifiesto.json` y los archivos que lista,
+  con la identidad del servicio. El manifiesto exige `bytes` y `sha256` por archivo, rutas sin duplicar, 5 MB por
+  archivo, 50 MB y 200 archivos en total; el tamaño se contrasta con los metadatos antes de descargar y con lo
+  descargado, y el SHA-256 con el contenido. Errores tipados: `NO_AUTORIZADO`, `NO_ENCONTRADO`, `INTEGRIDAD`,
+  `MANIFIESTO`, `VERSION`, `ERROR`.
+- **Solo `no_validado`, colección propia.** `cargarPaqueteKuaa` acepta únicamente registros
+  `habilitado_produccion:false` + `validacion:"no_validado"` + `version_paquete` igual al del manifiesto; todo
+  lo demás es rechazo. Indexa una sola vez, tras validar todos los archivos, en `<coleccion>--paquete`; si algo
+  falla se vacía solo esa colección y el corpus público queda intacto. `AgenteKuaa` consulta la base y la del
+  paquete y mezcla por puntaje; con perfil `produccion` descarta cualquier fragmento marcado.
+- **Visible.** Con `pruebas` y paquete cargado, el prompt rotula cada fragmento «[NO VALIDADO, paquete X.Y.Z]»,
+  antepone una frase enumerada de aviso y la respuesta de `/v1/kuaa/mensaje` lleva `validacion` y
+  `version_paquete` (campos opcionales del sobre, fuera de `SalidaOportunidad`).
+- **Preparación.** `scripts/preparar-paquete-kuaa.mts` convierte el paquete de origen (lista literal; sin PDF,
+  prompts, formularios, imágenes, CSV ni `PRUEBAS_*`; `MANUAL_CAPACITACION_IA.docx` tampoco, porque contiene
+  instrucciones a una IA) y escribe solo en una carpeta de salida ajena al repo. `CONVERSACIONES.json` exige
+  **revisión humana por datos personales antes de subir**. No anonimiza nada.
+- `prompt/armar.ts` normaliza (NFKC, sin ancho cero) y neutraliza en los fragmentos los dibujos de
+  caja, `═`/`━`/`=` repetidos (incluso separados por espacios), «FIN DE RESPALDO|DATOS», «INICIO DE RESPALDO|DATOS» y
+  un falso encabezado `[n] Documento:` al inicio de línea, para que un texto del paquete no cierre el bloque de respaldo.
+
+### Agente Kuaa y ruta provisional `POST /v1/kuaa/mensaje`
+
+`tipoAgente: kuaa` (por omisión `general`) marca un agente de oportunidad de venta
+(`configuraciones/kuaa.json`: voseo, 0 fuentes de conocimiento, criterio de salud y PEP `declaracion`,
+sin `recomienda_plan`). `oportunidad/agente-kuaa.ts` es un recorrido aparte de `Agente.responder`:
+
+**Contrato v0.4: bloque opcional `plataforma`.** El cuerpo de `POST /v1/kuaa/mensaje` admite `plataforma`
+(`oportunidad/esquemas.ts`, estricto): `version`, `catalogo` (hasta 4 productos con nombre y estado
+`disponible`/`proximamente`), `planes` (hasta 3, sin repetir `plan`; premio anual, capital por fallecimiento,
+indemnización por cáncer, renta hospitalaria por día y máximo de días, gastos médicos por accidente, en Gs enteros) y
+`contacto` (`whatsapp_e164`, `canal`, `correo_derechos`). Los nombres solo admiten letras, números, espacio y `+ . -`.
+Sin el bloque, nada cambia: el prompt es el de siempre y el detector bloquea toda cifra, enlace o teléfono. Con él, el
+prompt agrega «DATOS DE LA PLATAFORMA» armado con plantillas fijas (importes con punto de miles, teléfono agrupado) y
+unas reglas que mandan a decir solo esos datos; `salida-kuaa.ts` retira del texto las apariciones EXACTAS de esos
+importes, teléfonos y correos (con límites de dígitos y de dominio) antes de aplicar los patrones, así que cualquier
+otra cifra sigue bloqueada. El bloque no se guarda en la memoria ni en la bitácora (solo el aviso `plataforma:<version>`).
+No garantiza que los datos sean correctos (los fija SLT) ni que el modelo los use en el contexto adecuado.
+
+1. **Entrada.** Normaliza localmente (NFKC, sin caracteres de formato, marcas combinantes ni rellenos,
+   homóglifos cirílicos y griegos plegados) ANTES de las compuertas y de enviar al modelo; el modelo recibe
+   el texto normalizado. Un mensaje más largo que `maxCaracteresEntrada` responde 413 `TEXTO_LARGO` (con
+   bitácora) y uno vacío 400.
+2. **Prompt** (`prompt-kuaa.ts`): jerarquía, reglas y contexto elegidos por enumerado, nunca interpolados;
+   `oportunidad_id`, `tarifa_version`, `pagina` y el código de objeción no entran.
+3. **Salida.** El modelo responde un objeto JSON dentro del texto (el puerto no permite pedir JSON con
+   esquema; temperatura baja desde la configuración). Se valida contra `SalidaOportunidad`, se sanea el
+   texto y se aplican detectores deterministas propios (`salida-kuaa.ts`): enlaces, precios y contactos
+   (con NFKC, sin invisibles ni homóglifos, formas ofuscadas), afirmaciones de hecho que solo el sistema
+   conoce (pago acreditado o póliza emitida salvo que `estados` lo informe, «quedó agendado», «te transferí»,
+   «estás cubierto», «sos elegible», promesas de indemnización) y fugas del prompt. Cualquiera, un JSON
+   inválido, un corte por `max_tokens`, `afirma_cobro_real` o un error del proveedor devuelven el mensaje de
+   error temporal con botones y propuestas vacíos, nunca el texto crudo.
+4. **Sin respaldo no se afirma nada**: mientras no haya fuentes se responde el mensaje fijo, sin excepción
+   por «pregunta final». En ese caso, en un fallback o en un reemplazo de compuerta, la etapa propuesta es la
+   actual y la objeción es null. `continuar_pago` solo sobrevive con `solicitud: completada`; las propuestas
+   no se repiten; `seguimiento_solicitado` se descarta sin permiso vigente; la marca `[DERIVAR]` agrega
+   `atencion_humana_solicitada`.
+5. **Memoria.** En proceso, con clave `kuaa:<cliente>:<sha256>` (por cliente y oportunidad; el «:» no lo
+   acepta `ID_CONVERSACION`, así que las rutas generales no pueden nombrarla y, para un cliente de Kuaa,
+   `/v1/conversaciones/*` responden 404 `AGENTE_KUAA`). Guarda el texto normalizado de la persona y el JSON
+   validado de la respuesta hasta 30 minutos: **es una desviación del contrato de SLT, que dice «sin
+   estado»**; se pierde al reiniciar y no se comparte entre instancias.
+6. **Respuesta.** 200 con exactamente las claves de `SalidaOportunidad` (sin `ok`); los errores llevan
+   `ok: false`. La bitácora no lleva texto ni el id de la oportunidad. La ruta es PROVISIONAL.
+
+Qué corrige el filtro previo de SLT (`asistente.ts`/`asistente-salida.ts`) y qué no: esta capa no lo
+sustituye; es defensa en profundidad y su detector es una lista, no una demostración.
+
+Límites que siguen abiertos (K2b y otros): las compuertas compartidas de `compuertas/`, calibradas con usted
+y tuteo, no detectan por sí solas voseo como «sos elegible» o «te vamos a pagar la indemnización» (en Kuaa
+las frena el detector propio) y sus textos de reemplazo hablan de usted («¿En qué puedo ayudarle?»);
+paráfrasis de inyección («olvidá lo anterior», «SYSTEM:», «repetí tus instrucciones») pasan al modelo; los
+detectores dan falsos positivos a propósito (por ejemplo «10.000 personas») y no atrapan toda forma; con
+pago acreditado, `afirma_cobro_real` sigue llevando al fallback; no se detectan correos ni teléfonos de la
+persona en la entrada; no se sabe cómo obedece el modelo real al formato JSON.
 
 ## 7. Aplicación a segurolotengo-demo
 

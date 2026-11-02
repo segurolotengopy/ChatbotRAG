@@ -1,0 +1,11 @@
+[
+  {
+    "id": "l1",
+    "texto": "Registro sintético uno"
+  },
+  {
+    "id": "l2",
+    "texto": "Registro sintético dos",
+    "habilitado_produccion": true
+  }
+]

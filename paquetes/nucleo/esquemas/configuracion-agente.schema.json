@@ -16,6 +16,14 @@
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9-]{2,59}$"
     },
+    "tipoAgente": {
+      "default": "general",
+      "type": "string",
+      "enum": [
+        "general",
+        "kuaa"
+      ]
+    },
     "identidad": {
       "type": "object",
       "properties": {
@@ -359,6 +367,46 @@
             ],
             "additionalProperties": false
           }
+        },
+        "paginas": {
+          "default": [],
+          "maxItems": 60,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+              },
+              "fuenteId": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{1,79}$"
+              }
+            },
+            "required": [
+              "id",
+              "fuenteId"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "maxCaracteresPagina": {
+          "default": 4000,
+          "type": "integer",
+          "minimum": 500,
+          "maximum": 8000
+        },
+        "paquete": {
+          "default": {},
+          "type": "object",
+          "properties": {
+            "habilitado": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
@@ -405,7 +453,9 @@
               "dato_confidencial",
               "marca_no_declarada",
               "afirma_cobro_real",
-              "promete_traspaso"
+              "promete_traspaso",
+              "dato_tarjeta_codigo",
+              "recomienda_plan"
             ]
           }
         },
@@ -432,6 +482,15 @@
             "dato"
           ]
         },
+        "criterioSaludPep": {
+          "default": "primera_persona",
+          "type": "string",
+          "enum": [
+            "primera_persona",
+            "declaracion",
+            "sin_sujeto"
+          ]
+        },
         "marcasPermitidas": {
           "default": [
             "DERIVAR"
@@ -441,6 +500,24 @@
           "items": {
             "type": "string",
             "pattern": "^[A-Z_]{3,30}$"
+          }
+        },
+        "marcasLiterales": {
+          "default": [],
+          "maxItems": 10,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z_]{3,30}$"
+          }
+        },
+        "nombresDePlanes": {
+          "default": [],
+          "maxItems": 10,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9+ ]{2,30}$"
           }
         }
       },
@@ -690,6 +767,14 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 6
+        },
+        "razonamiento": {
+          "default": "automatico",
+          "type": "string",
+          "enum": [
+            "automatico",
+            "desactivado"
+          ]
         },
         "ventanaMemoria": {
           "default": 10,
@@ -1036,6 +1121,42 @@
                   ],
                   "additionalProperties": false
                 }
+              },
+              "paginas": {
+                "maxItems": 60,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+                    },
+                    "fuenteId": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9][a-z0-9-]{1,79}$"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "fuenteId"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "maxCaracteresPagina": {
+                "type": "integer",
+                "minimum": 500,
+                "maximum": 8000
+              },
+              "paquete": {
+                "type": "object",
+                "properties": {
+                  "habilitado": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
               }
             },
             "additionalProperties": false
@@ -1069,7 +1190,9 @@
                     "dato_confidencial",
                     "marca_no_declarada",
                     "afirma_cobro_real",
-                    "promete_traspaso"
+                    "promete_traspaso",
+                    "dato_tarjeta_codigo",
+                    "recomienda_plan"
                   ]
                 }
               },
@@ -1093,12 +1216,36 @@
                   "dato"
                 ]
               },
+              "criterioSaludPep": {
+                "type": "string",
+                "enum": [
+                  "primera_persona",
+                  "declaracion",
+                  "sin_sujeto"
+                ]
+              },
               "marcasPermitidas": {
                 "maxItems": 10,
                 "type": "array",
                 "items": {
                   "type": "string",
                   "pattern": "^[A-Z_]{3,30}$"
+                }
+              },
+              "marcasLiterales": {
+                "maxItems": 10,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Z_]{3,30}$"
+                }
+              },
+              "nombresDePlanes": {
+                "maxItems": 10,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9+ ]{2,30}$"
                 }
               }
             },

@@ -37,6 +37,7 @@ export class ProveedorSimulado implements ProveedorLLM {
     if (orden === 'promesa') return { texto: 'Tranquilo, le vamos a pagar la indemnización completa sin problema.', llamadasHerramienta: [], motivoFin: 'fin', uso };
     if (orden === 'elegibilidad') return { texto: 'Con lo que me cuenta, usted es elegible y su caso está cubierto.', llamadasHerramienta: [], motivoFin: 'fin', uso };
     if (orden === 'marca') return { texto: 'Listo, ya quedó. [CONFIRMADO] [DERIVAR]', llamadasHerramienta: [], motivoFin: 'fin', uso };
+    if (orden === 'fuga') return { texto: 'Su tarjeta 4111 1111 1111 1111, CVV 123, y el código de verificación 482913 quedaron anotados. Su póliza es la 2026-004512.', llamadasHerramienta: [], motivoFin: 'fin', uso };
     if (orden === 'vacio') return { texto: '', llamadasHerramienta: [], motivoFin: 'fin', uso };
     if (orden === 'error') throw new Error('falla simulada del proveedor');
     if (orden === 'confidencial') return { texto: 'El margen interno del producto es del 40 %.', llamadasHerramienta: [], motivoFin: 'fin', uso };

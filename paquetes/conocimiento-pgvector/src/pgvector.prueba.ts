@@ -24,6 +24,15 @@ describe('IndicePgvector', () => {
     expect(consultas[0]!.valores![7]).toBeNull();
   });
 
+  it('rechaza los fragmentos con marca de validación y no toca la base', async () => {
+    const { db, consultas } = dbFalsa();
+    const i = new IndicePgvector(db);
+    const base = { id: 'a', coleccion: 'c', fuenteId: 'f', fuenteTitulo: 'T', fuenteVersion: '1', orden: 0, texto: 'hola' };
+    await expect(i.indexar([base, { ...base, id: 'b', validacion: 'no_validado', versionPaquete: '1.0.0' }])).rejects.toThrow(/no admite fragmentos/);
+    await expect(i.indexar([{ ...base, versionPaquete: '1.0.0' }])).rejects.toThrow(/no admite fragmentos/);
+    expect(consultas).toHaveLength(0);
+  });
+
   it('busca por texto completo y normaliza el puntaje', async () => {
     const { db, consultas } = dbFalsa([
       { id: 'a', coleccion: 'c', fuente_id: 'f', fuente_titulo: 'T', fuente_version: '1', orden: 0, texto: 'x', lexico: 0.6, vectorial: null },
@@ -42,6 +51,20 @@ describe('IndicePgvector', () => {
     expect(r[0]!.puntaje).toBeCloseTo(0.74, 2);
     expect(consultas[0]!.valores![3]).toBe('[1,0]');
     expect(consultas[0]!.sql).toMatch(/<=>/);
+  });
+
+  it('trae los fragmentos de una fuente ordenados por orden, con SQL parametrizado', async () => {
+    const { db, consultas } = dbFalsa([
+      { id: 'a', coleccion: 'c', fuente_id: 'f', fuente_titulo: 'T', fuente_version: '1', orden: 0, texto: 'x' },
+      { id: 'b', coleccion: 'c', fuente_id: 'f', fuente_titulo: 'T', fuente_version: '1', orden: 1, texto: 'y' },
+    ]);
+    const r = await new IndicePgvector(db).fragmentosDeFuente('c', 'f', 20);
+    expect(r).toEqual([
+      { id: 'a', coleccion: 'c', fuenteId: 'f', fuenteTitulo: 'T', fuenteVersion: '1', orden: 0, texto: 'x' },
+      { id: 'b', coleccion: 'c', fuenteId: 'f', fuenteTitulo: 'T', fuenteVersion: '1', orden: 1, texto: 'y' },
+    ]);
+    expect(consultas[0]!.sql).toMatch(/WHERE coleccion = \$1 AND fuente_id = \$2\s+ORDER BY orden\s+LIMIT \$3/);
+    expect(consultas[0]!.valores).toEqual(['c', 'f', 20]);
   });
 
   it('cuenta y vacía por colección', async () => {

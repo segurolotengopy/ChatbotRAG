@@ -1,0 +1,9 @@
+{
+  "registros": [
+    {
+      "id": "r1",
+      "pregunta": "¿Qué es esto?",
+      "respuesta": "Un dato sintético."
+    }
+  ]
+}

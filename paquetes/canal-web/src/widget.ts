@@ -4,12 +4,15 @@
  *   <script src="https://…/chatbotrag-widget.js"
  *           data-url="https://mi-sitio.com/api/asistente"   (ruta intermedia del sitio)
  *           data-perfil="VIDA_ONCOLOGICO"                      (opcional)
+ *           data-pagina="plan"                                 (opcional: pantalla actual)
  *           data-color="#e2660f" data-titulo="Terra"></script>
  *
  * Habla con una RUTA INTERMEDIA del sitio (que autentica contra el servicio), no
  * con el servicio directamente: así la clave del cliente nunca viaja al navegador.
  * La ruta debe exponer POST {url}/mensajes con { conversacionId, perfilId, texto }
- * y devolver la `RespuestaMensaje` del contrato.
+ * y devolver la `RespuestaMensaje` del contrato. Con `data-pagina` (o `window.ChatbotRAG.fijarPagina(id)`
+ * en sitios de una sola página) cada mensaje lleva `pagina`: el servicio la valida contra su
+ * configuración; el widget no la interpreta.
  *
  * Accesibilidad: botón ≥ 44 px, `role="dialog"`, cierre con Escape, foco al abrir,
  * respeta `prefers-reduced-motion`. Sin cookies ni almacenamiento persistente: el
@@ -25,6 +28,7 @@ import { nuevoIdConversacion } from './contrato.js';
 interface OpcionesWidget {
   url: string;
   perfilId: string | null;
+  pagina: string | null;
   color: string;
   titulo: string;
   bienvenida: string;
@@ -57,6 +61,7 @@ function leerOpciones(script: HTMLScriptElement): OpcionesWidget {
   return {
     url: d['url'].replace(/\/$/, ''),
     perfilId: d['perfil'] || null,
+    pagina: d['pagina'] || null,
     color: d['color'] || '#2b5a9e',
     titulo: d['titulo'] || 'Asistente virtual',
     bienvenida: d['bienvenida'] || 'Hola, soy un asistente virtual con inteligencia artificial. ¿En qué puedo ayudarle?',
@@ -81,6 +86,17 @@ export function montarWidget(script: HTMLScriptElement, documento: Document = do
   let panel: HTMLDivElement | null = null;
   let conversacionId = nuevoIdConversacion('web');
   let enviando = false;
+  let pagina: string | null = o.pagina;
+  // Para sitios SPA: el sitio avisa el cambio de pantalla. Vacío o null quita el contexto.
+  // No se pisa un `ChatbotRAG` existente: se le agrega `fijarPagina`. Con más de una instancia del
+  // widget en la misma página, `fijarPagina` actúa sobre la ÚLTIMA montada.
+  const global = globalThis as { ChatbotRAG?: Record<string, unknown> };
+  global.ChatbotRAG = {
+    ...global.ChatbotRAG,
+    fijarPagina: (id: string | null) => {
+      pagina = id ? id : null;
+    },
+  };
 
   const agregar = (lista: HTMLElement, texto: string, clase: 'u' | 'a', fuentes: string[] = []) => {
     const div = documento.createElement('div');
@@ -156,7 +172,7 @@ export function montarWidget(script: HTMLScriptElement, documento: Document = do
         const r = await fetch(`${o.url}/mensajes`, {
           method: 'POST',
           headers: { 'content-type': 'application/json', accept: 'application/json' },
-          body: JSON.stringify({ conversacionId, perfilId: o.perfilId, texto }),
+          body: JSON.stringify({ conversacionId, perfilId: o.perfilId, ...(pagina ? { pagina } : {}), texto }),
         });
         const json = (await r.json()) as RespuestaMensaje | { ok: false; motivo: string };
         if (!r.ok || !json.ok) {

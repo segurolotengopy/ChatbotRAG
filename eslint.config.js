@@ -10,6 +10,7 @@ const SDKS_DE_NUBE = [
   { name: '@google-cloud/vertexai', message: 'Los SDK de nube viven en paquetes/proveedor-*.' },
   { name: '@aws-sdk/client-bedrock-runtime', message: 'Los SDK de nube viven en paquetes/proveedor-*.' },
   { name: 'pg', message: 'El acceso a PostgreSQL vive en paquetes/conocimiento-pgvector.' },
+  { name: '@google-cloud/storage', message: 'El acceso a Cloud Storage vive en paquetes/conocimiento-gcs.' },
 ];
 
 export default tseslint.config(
@@ -18,7 +19,7 @@ export default tseslint.config(
   { files: ['**/*.mjs', '**/*.js'], languageOptions: { globals: { console: 'readonly', process: 'readonly' } } },
   ...tseslint.configs.recommended,
   {
-    files: ['**/*.ts'],
+    files: ['**/*.ts', '**/*.mts'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/consistent-type-imports': 'error',

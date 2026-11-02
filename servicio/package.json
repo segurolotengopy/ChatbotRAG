@@ -13,6 +13,7 @@
     "iniciar": "node dist/principal.js"
   },
   "dependencies": {
+    "@chatbotrag/conocimiento-gcs": "workspace:*",
     "@chatbotrag/conocimiento-pgvector": "workspace:*",
     "@chatbotrag/nucleo": "workspace:*",
     "@chatbotrag/proveedor-bedrock": "workspace:*",

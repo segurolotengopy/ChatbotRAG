@@ -8,6 +8,8 @@ export interface RespaldoDocumental {
   titulo: string;
   version: string;
   puntaje: number;
+  /** `pagina`: manual de la pantalla indicada (puntaje 1, inyectado); `busqueda`: resultado de la búsqueda. Ausente en servicios anteriores. */
+  origen?: 'pagina' | 'busqueda';
 }
 
 export interface RespuestaMensaje {
@@ -45,6 +47,8 @@ export interface DescripcionAgente {
 
 export interface PeticionMensaje {
   perfilId?: string | null;
+  /** Id de la pantalla en que está la persona (contexto de página). Opcional: un id desconocido se ignora con el aviso `pagina_desconocida`. */
+  pagina?: string | null;
   texto: string;
   canal?: string;
 }

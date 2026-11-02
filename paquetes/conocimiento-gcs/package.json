@@ -1,0 +1,26 @@
+{
+  "name": "@chatbotrag/conocimiento-gcs",
+  "version": "0.1.0",
+  "description": "Lector del paquete de conocimiento de Kuaa desde un bucket privado de Google Cloud Storage (identidad del servicio, ADC, solo lectura).",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/indice.js",
+  "types": "./dist/indice.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/indice.d.ts",
+      "import": "./dist/indice.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "construir": "tsc -b tsconfig.json",
+    "tipos": "tsc -b tsconfig.json"
+  },
+  "dependencies": {
+    "@chatbotrag/nucleo": "workspace:*",
+    "@google-cloud/storage": "^8.4.0"
+  }
+}

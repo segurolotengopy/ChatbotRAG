@@ -33,6 +33,10 @@ export class IndicePgvector implements IndiceConocimiento {
 
   async indexar(fragmentos: Fragmento[]): Promise<void> {
     if (fragmentos.length === 0) return;
+    // Pgvector es la vía de producción: un fragmento no validado jamás se persiste ahí.
+    if (fragmentos.some((f) => f.validacion !== undefined || f.versionPaquete !== undefined)) {
+      throw new Error('IndicePgvector no admite fragmentos con marca de validación (conocimiento no validado)');
+    }
     const vectores = this.embebedor ? await this.embebedor.embeber(fragmentos.map((f) => f.texto)) : null;
     for (let i = 0; i < fragmentos.length; i++) {
       const f = fragmentos[i]!;
@@ -70,6 +74,18 @@ export class IndicePgvector implements IndiceConocimiento {
       .filter((f) => f.puntaje >= opciones.umbral)
       .sort((a, b) => b.puntaje - a.puntaje)
       .slice(0, opciones.topK);
+  }
+
+  async fragmentosDeFuente(coleccion: string, fuenteId: string, limite: number): Promise<Fragmento[]> {
+    const filas = await this.db.query<{ id: string; coleccion: string; fuente_id: string; fuente_titulo: string; fuente_version: string; orden: number; texto: string }>(
+      `SELECT id, coleccion, fuente_id, fuente_titulo, fuente_version, orden, texto
+         FROM fragmentos
+        WHERE coleccion = $1 AND fuente_id = $2
+        ORDER BY orden
+        LIMIT $3`,
+      [coleccion, fuenteId, limite],
+    );
+    return filas.rows.map((r) => ({ id: r.id, coleccion: r.coleccion, fuenteId: r.fuente_id, fuenteTitulo: r.fuente_titulo, fuenteVersion: r.fuente_version, orden: r.orden, texto: r.texto }));
   }
 
   async contar(coleccion: string): Promise<number> {

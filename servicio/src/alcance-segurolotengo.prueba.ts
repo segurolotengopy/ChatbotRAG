@@ -13,6 +13,16 @@
  *     modelo, así que ninguna compuerta de salida lo frena.
  *  3. Reponer en los mensajes fijos la promesa de explicar planes y coberturas.
  *
+ * EXCEPCIÓN DECIDIDA (Andres, 2026-10-25): el asistente SÍ puede citar precios y
+ * montos tal como aparecen en la pantalla /plan, y se ingesta `plan.md` completo
+ * (fuente `manual-plan`). Es la ÚNICA excepción a la regla 1; lo demás sigue igual:
+ * sin recomendar plan, sin comparar para decidir y sin evaluar un caso particular.
+ * Hoy la excepción no es necesaria, porque ningún id ni ruta coincide con
+ * FUENTE_DE_PRODUCTO (ni siquiera `manual-plan`); se deja escrita para documentar la
+ * decisión y para que siga valiendo si el regex se amplía.
+ * Los montos en guaraníes solo pueden vivir en los archivos listados en
+ * MANUALES_CON_MONTOS; cualquier otro archivo con un monto hace fallar la prueba.
+ *
  * Esta prueba lee la configuración REAL, la que se despliega, y no un ejemplo.
  * Qué NO garantiza: que el modelo respete el alcance ante un mensaje adverso.
  * Eso lo miden las baterías de casos fuera de alcance, no esta prueba.
@@ -38,6 +48,10 @@ const config = cargarConfiguracionDesdeJson(readFileSync(RUTA, 'utf8'));
 
 /** Lo que se busca en las fuentes: el contenido de producto que quedó fuera de alcance. */
 const FUENTE_DE_PRODUCTO = /cobertura|exclusion|planes?-|premio|poliza|carencia/i;
+/** Fuentes de producto que se admiten por decisión expresa (ver cabecera). */
+const EXCEPCIONES_DE_FUENTE_DE_PRODUCTO = ['manual-plan'];
+/** Archivos del corpus (ruta relativa a corpus/segurolotengo/) que pueden traer montos. */
+const MANUALES_CON_MONTOS = ['manuales/plan.md'];
 /** Un monto en guaraníes: `Gs. 319.000`, `Gs 50.000.000`. */
 const MONTO = /Gs\.?\s*\d/;
 
@@ -48,15 +62,33 @@ describe('alcance del asistente de SeguroLoTengo: funcionamiento, no producto', 
     expect(Object.keys(config.perfiles).sort()).toEqual(['ACCIDENTES_PERSONALES', 'RESPONSABILIDAD_CIVIL', 'VIDA', 'VIDA_ONCOLOGICO']);
   });
 
-  it('ningún perfil carga fuentes de coberturas, exclusiones, planes o premios', () => {
+  it('ningún perfil carga fuentes de coberturas, exclusiones, planes o premios, salvo manual-plan', () => {
     for (const [id, perfil] of perfiles) {
       for (const f of perfil.conocimiento?.fuentes ?? []) {
+        if (EXCEPCIONES_DE_FUENTE_DE_PRODUCTO.includes(f.id)) continue;
         expect(`${id}: ${f.id} ${f.ruta}`, `el perfil ${id} carga la fuente de producto «${f.id}»`).not.toMatch(FUENTE_DE_PRODUCTO);
       }
     }
     for (const f of config.conocimiento.fuentes) {
+      if (EXCEPCIONES_DE_FUENTE_DE_PRODUCTO.includes(f.id)) continue;
       expect(`${f.id} ${f.ruta}`, `la configuración global carga la fuente de producto «${f.id}»`).not.toMatch(FUENTE_DE_PRODUCTO);
     }
+  });
+
+  it('los montos en guaraníes solo aparecen en los archivos del corpus autorizados, nunca en la configuración ni en orientación', () => {
+    // Decisión del 2026-10-25: solo el manual de /plan cita montos. Esto fija la lista exacta:
+    // un monto nuevo en otro manual, en orientación o en la configuración rompe la prueba.
+    const base = new URL('../../configuraciones/corpus/segurolotengo/', import.meta.url);
+    const conMontos: string[] = [];
+    const recorrer = (dir: URL, prefijo: string): void => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        if (e.isDirectory()) recorrer(new URL(`${e.name}/`, dir), `${prefijo}${e.name}/`);
+        else if (e.name.endsWith('.md') && MONTO.test(readFileSync(new URL(e.name, dir), 'utf8'))) conMontos.push(`${prefijo}${e.name}`);
+      }
+    };
+    recorrer(base, '');
+    expect(conMontos.sort()).toEqual([...MANUALES_CON_MONTOS].sort());
+    expect(cadenas(crudo).filter((c) => MONTO.test(c)), 'la configuración contiene un monto').toEqual([]);
   });
 
   it('ningún perfil ofrece la herramienta que recomienda plan', () => {
@@ -95,8 +127,14 @@ describe('alcance del asistente de SeguroLoTengo: funcionamiento, no producto', 
 
   it('declara como bloqueados los temas de producto que se sacaron del alcance', () => {
     const bloqueados = config.alcance.temasBloqueados.join(' | ').toLowerCase();
-    expect(bloqueados).toContain('cubre');
-    expect(bloqueados).toContain('precios');
+    expect(bloqueados).toContain('recomendar');
+    expect(bloqueados).toContain('cubierto');
+    // El permitido cita lo que muestra la pantalla y ya no promete «sin recomendar ni comparar».
+    const permitidos = config.alcance.temasPermitidos.join(' | ').toLowerCase();
+    expect(permitidos).toContain('según la pantalla');
+    expect(permitidos).not.toContain('recomendar ni comparar');
+    // Los precios ya no se bloquean como tema: se citan como los muestra la pantalla.
+    expect(bloqueados).not.toContain('precios');
   });
 });
 
@@ -119,15 +157,29 @@ const crudo: unknown = JSON.parse(readFileSync(RUTA, 'utf8'));
  */
 const VOSEO_O_TUTEO = /(?<![\p{L}])(?:vos|tu|tus|te|ti|podés|querés|necesitás|tenés|sabés|repetís|recibís|contame|decime|escribime|tené|fijate|acercarte|contarte|informarte|explicarte|acá)(?![\p{L}])/iu;
 
+/**
+ * Única excepción, acordada con SLT y Andres el 2026-10-30: mientras el cliente Kuaa
+ * no entre y este agente siga sirviendo la demo, la bienvenida general presenta a
+ * Kuaa en voseo y las respuestas siguen en «usted». Se compara el texto exacto: otra
+ * frase en voseo, o esta misma con un cambio, vuelve a fallar. Se borra junto con el
+ * agente `segurolotengo`.
+ */
+const SALUDO_KUAA_TRANSITORIO = 'Hola, soy Kuaa, el asistente virtual de SeguroLoTengo. Te ayudo a entender cómo funciona este sitio. ¿Qué querés saber?';
+
 describe('trato de usted con quien consulta', () => {
   it('el tratamiento configurado es usted', () => {
     expect(config.voz.tratamiento).toBe('usted');
   });
 
   it('ningún texto de la configuración está en voseo ni en tuteo', () => {
-    for (const c of cadenas(crudo)) {
+    for (const c of cadenas(crudo).filter((x) => x !== SALUDO_KUAA_TRANSITORIO)) {
       expect(c, 'un texto de la configuración usa voseo o tuteo').not.toMatch(VOSEO_O_TUTEO);
     }
+  });
+
+  it('la excepción del saludo de Kuaa vale solo para la bienvenida general', () => {
+    expect(config.mensajes.bienvenida).toBe(SALUDO_KUAA_TRANSITORIO);
+    expect(cadenas(crudo).filter((c) => c === SALUDO_KUAA_TRANSITORIO)).toHaveLength(1);
   });
 });
 
@@ -309,5 +361,92 @@ describe('compuerta de entrada por dato, de punta a punta con la configuración 
     expect(evento).toMatchObject({ avisos: expect.arrayContaining(['entrada:tarjeta']) });
     expect(JSON.stringify(bitacora.eventos)).not.toContain(texto);
     expect(JSON.stringify(bitacora.eventos)).not.toContain('123');
+  });
+});
+
+describe('razonamiento del modelo en SeguroLoTengo', () => {
+  it('desactiva el razonamiento: con 1.024 tokens de salida el razonamiento se comía la respuesta (batería del 24-oct-2026)', () => {
+    expect(config.modelo.razonamiento).toBe('desactivado');
+    expect(config.modelo.maxTokensSalida).toBe(1024);
+  });
+});
+
+describe('compuerta recomienda_plan con la configuración real', () => {
+  it('está activa, al final de la lista, y reemplaza la respuesta real de PAG-plan-011', () => {
+    expect(config.seguridad.compuertasSalida.at(-1)).toBe('recomienda_plan');
+    const efectiva = resolverConfiguracion(config, 'VIDA_ONCOLOGICO');
+    const r = aplicarCompuertasSalida('Según el documento «Elección del plan», el plan recomendado es el VIVE TOTAL.', { config: efectiva });
+    expect(r.avisos).toContain('recomienda_plan');
+    expect(r.texto).toBe(`${efectiva.mensajes.fueraDeAlcance} ${efectiva.mensajes.derivacion}`);
+  });
+
+  it('declara los nombres de los planes y detecta «le recomiendo VIVE TOTAL» sin tocar «elija el plan»', () => {
+    expect(config.seguridad.nombresDePlanes).toEqual(['VIVE TOTAL', 'VIVE+', 'VIVE']);
+    const efectiva = resolverConfiguracion(config, 'VIDA_ONCOLOGICO');
+    expect(aplicarCompuertasSalida('Le recomiendo VIVE TOTAL.', { config: efectiva }).avisos).toContain('recomienda_plan');
+    const instruccion = 'Elija el plan y pulse CONTINUAR.';
+    const r = aplicarCompuertasSalida(instruccion, { config: efectiva });
+    expect(r.avisos).not.toContain('recomienda_plan');
+    expect(r.texto).toBe(instruccion);
+  });
+});
+
+describe('marcas literales con la configuración real', () => {
+  it('el texto de PAG-retracto-007 sale íntegro, con la marca del manual que antes se borraba', () => {
+    expect(config.seguridad.marcasLiterales).toContain('PENDIENTE_DE_DEFINICION_LEGAL');
+    const efectiva = resolverConfiguracion(config, 'VIDA_ONCOLOGICO');
+    const texto =
+      'La página de Derecho de retracto indica que el plazo para retractarse está [PENDIENTE DE DEFINICIÓN LEGAL], por lo que no contamos con ese dato. Si desea, puede consultar con una persona de Interseguros S.A. escribiendo al WhatsApp +595 991 478 468 o al correo segurolotengo@interseguros360.com.';
+    const r = aplicarCompuertasSalida(texto, { config: efectiva });
+    expect(r.texto).toBe(texto);
+    expect(r.avisos).not.toContain('marca_no_declarada');
+  });
+});
+
+describe('criterio de salud y PEP con la configuración real, de punta a punta', () => {
+  function armar() {
+    const bitacora = new BitacoraEnMemoria();
+    const peticiones: PeticionLLM[] = [];
+    const simulado = new ProveedorSimulado();
+    const proveedor = {
+      nombre: 'simulado-contado',
+      generar: async (p: PeticionLLM) => {
+        peticiones.push(p);
+        return simulado.generar(p);
+      },
+    };
+    const agente = new Agente({
+      config,
+      proveedor,
+      indice: new IndiceEnMemoria(null),
+      memoria: new MemoriaEnProceso(),
+      herramientas: new RegistroHerramientas(),
+      bitacora,
+      reloj: () => new Date('2026-10-25T14:00:00Z'),
+    });
+    return { agente, bitacora, peticiones };
+  }
+
+  it('usa criterioSaludPep «sin_sujeto» y sigue bloqueando salud y pep', () => {
+    expect(config.seguridad.criterioSaludPep).toBe('sin_sujeto');
+    expect(config.seguridad.bloquearEntrada).toEqual(expect.arrayContaining(['salud', 'pep']));
+  });
+
+  it('PAG-actividad-007 «Si marco que sí soy PEP, ¿qué pasa?» llega al proveedor', async () => {
+    const { agente, bitacora, peticiones } = armar();
+    await agente.responder({ conversacionId: 'conv_00000201', texto: 'Si marco que sí soy PEP, ¿qué pasa?', canal: 'web' });
+    expect(peticiones.length).toBeGreaterThan(0);
+    expect(bitacora.eventos.some((e) => e.tipo === 'entrada_bloqueada')).toBe(false);
+  });
+
+  it('«Soy PEP» no llega al proveedor y la bitácora no guarda el texto', async () => {
+    const { agente, bitacora, peticiones } = armar();
+    const texto = 'Soy PEP';
+    const r = await agente.responder({ conversacionId: 'conv_00000202', texto, canal: 'web' });
+    expect(r.texto).toBe(config.mensajes.entradaBloqueada);
+    expect(r.avisos).toContain('entrada:pep');
+    expect(peticiones).toHaveLength(0);
+    expect(JSON.stringify(bitacora.eventos)).not.toContain(texto);
+    expect(JSON.stringify(bitacora.eventos)).not.toMatch(/soy pep/i);
   });
 });

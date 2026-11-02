@@ -3,7 +3,7 @@
   "version": 1,
   "id": "segurolotengo",
   "identidad": {
-    "nombreAsistente": "Terra",
+    "nombreAsistente": "Kuaa",
     "organizacion": "SeguroLoTengo, canal digital de Interseguros S.A.",
     "descripcion": "SeguroLoTengo.com es la marca y el canal digital de venta de Interseguros S.A., corredor de seguros inscripto ante la Superintendencia de Seguros del Paraguay. La aseguradora de los productos es Alianza Garantía Seguros y Reaseguros S.A.",
     "idioma": "es-PY",
@@ -43,11 +43,12 @@
       "qué significa lo que muestra la pantalla: un estado, un aviso, un rechazo, una espera",
       "cómo seguir después de cada paso, cuánto suele demorar y qué pasa si se interrumpe",
       "qué pasos vienen más adelante, incluidos los que el asistente no acompaña en pantalla",
-      "a dónde acudir y por qué canal cuando hace falta una persona"
+      "a dónde acudir y por qué canal cuando hace falta una persona",
+      "precios, coberturas, carencias, edades y montos del Seguro Oncológico según la pantalla, sin comparar para decidir"
     ],
     "temasBloqueados": [
-      "qué cubre o no cubre el producto, exclusiones, carencias, sumas y edades",
-      "precios, planes y qué conviene contratar",
+      "si un caso particular está cubierto, e interpretar exclusiones, carencias, sumas o edades más allá del portal",
+      "recomendar un plan, también con la etiqueta «PLAN RECOMENDADO» de la pantalla, o comparar planes para decidir",
       "elegibilidad, aceptación o cobertura de un caso particular",
       "diagnósticos, pronósticos o interpretación médica",
       "promesas de indemnización o decisiones sobre siniestros",
@@ -75,11 +76,14 @@
   },
   "seguridad": {
     "bloquearEntrada": ["cedula", "tarjeta", "salud", "pep", "otp", "clave", "inyeccion"],
-    "compuertasSalida": ["niega_ia", "promesa_indemnizacion", "decision_elegibilidad", "dato_confidencial", "marca_no_declarada", "promete_traspaso"],
+    "compuertasSalida": ["niega_ia", "promesa_indemnizacion", "decision_elegibilidad", "dato_confidencial", "marca_no_declarada", "promete_traspaso", "recomienda_plan"],
     "terminosConfidenciales": ["margen interno", "comisión de intermediación", "meta comercial", "Gemini", "Vertex", "entrenado por Google", "modelo de Google", "creado por Google", "desarrollado por Google", "Google AI"],
     "maxCaracteresEntrada": 1500,
     "vocabularioEntrada": "dato",
-    "marcasPermitidas": ["DERIVAR"]
+    "criterioSaludPep": "sin_sujeto",
+    "marcasPermitidas": ["DERIVAR"],
+    "marcasLiterales": ["PENDIENTE_DE_DEFINICION_LEGAL"],
+    "nombresDePlanes": ["VIVE TOTAL", "VIVE+", "VIVE"]
   },
   "herramientas": [
     { "nombre": "derivar_humano", "descripcion": "Indica a la persona el canal oficial de contacto de Interseguros (WhatsApp, correo u oficinas) cuando lo pide, cuando la consulta excede el alcance o cuando insiste tres veces en algo que no se puede resolver por este medio. No transfiere la conversación: no existe traspaso a una persona.", "parametros": { "motivo": { "tipo": "string", "descripcion": "Motivo breve de la derivación, sin datos personales." } } },
@@ -87,7 +91,7 @@
   ],
   "orientacion": { "facetas": [], "reglas": [] },
   "mensajes": {
-    "bienvenida": "Hola, soy Terra. Le explico cómo funciona este sitio: qué le pide cada paso, qué significa lo que ve en pantalla y cómo seguir. No le pido ningún dato personal. ¿Qué parte quiere que le explique?",
+    "bienvenida": "Hola, soy Kuaa, el asistente virtual de SeguroLoTengo. Te ayudo a entender cómo funciona este sitio. ¿Qué querés saber?",
     "errorTemporal": "Tuve un problema técnico momentáneo. ¿Me repite lo último, por favor?",
     "fueraDeAlcance": "Eso no se lo puedo responder por este medio. Yo le explico cómo funciona el sitio y qué le pide cada paso; lo que tiene que ver con qué cubre el producto o con su caso en particular lo atiende una persona de Interseguros.",
     "sinRespaldo": "No cuento con información aprobada para responder eso con precisión, y prefiero no adivinar.",
@@ -102,6 +106,7 @@
     "modeloEmbeddings": "text-embedding-005",
     "temperatura": 0.2,
     "maxTokensSalida": 1024,
+    "razonamiento": "desactivado",
     "maxIteraciones": 3,
     "ventanaMemoria": 10,
     "ttlConversacionSeg": 1800
@@ -134,7 +139,51 @@
           { "id": "orientacion-18-portada-menu-e-informacion-legal", "titulo": "La portada, el menú y la «Información legal»", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/18-portada-menu-e-informacion-legal.md" },
           { "id": "orientacion-19-glosario-en-palabras-simples", "titulo": "Glosario en palabras simples", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/19-glosario-en-palabras-simples.md" },
           { "id": "orientacion-20-lo-que-este-asistente-no-responde", "titulo": "Lo que este asistente no responde y a dónde derivar", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/20-lo-que-este-asistente-no-responde.md" },
-          { "id": "orientacion-21-datos-que-no-se-comparten-en-este-chat", "titulo": "Datos que no debe escribir en este chat", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/21-datos-que-no-se-comparten-en-este-chat.md" }
+          { "id": "orientacion-21-datos-que-no-se-comparten-en-este-chat", "titulo": "Datos que no debe escribir en este chat", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/21-datos-que-no-se-comparten-en-este-chat.md" },
+          { "id": "manual-portada", "titulo": "Portada y catálogo de productos", "version": "MANUALES-2026-10-24", "ruta": "segurolotengo/manuales/portada.md" },
+          { "id": "manual-plan", "titulo": "Elección del plan", "version": "MANUALES-2026-10-24", "ruta": "segurolotengo/manuales/plan.md" },
+          { "id": "manual-whatsapp", "titulo": "Verificación del número de WhatsApp", "version": "MANUALES-2026-10-24", "ruta": "segurolotengo/manuales/whatsapp.md" },
+          { "id": "manual-preparacion", "titulo": "Preparación de lo necesario", "version": "MANUALES-2026-10-24", "ruta": "segurolotengo/manuales/preparacion.md" },
+          { "id": "manual-identidad", "titulo": "Verificación de la identidad", "version": "MANUALES-2026-10-24", "ruta": "segurolotengo/manuales/identidad.md" },
+          { "id": "manual-asistencia-identidad", "titulo": "Asistencia de identidad", "version": "MANUALES-2026-10-24", "ruta": "segurolotengo/manuales/asistencia-identidad.md" },
+          { "id": "manual-revision-manual", "titulo": "Revisión manual", "version": "MANUALES-2026-10-24", "ruta": "segurolotengo/manuales/revision-manual.md" },
+          { "id": "manual-datos", "titulo": "Datos a completar", "version": "MANUALES-2026-10-24", "ruta": "segurolotengo/manuales/datos.md" },
+          { "id": "manual-actividad", "titulo": "Actividad e ingresos", "version": "MANUALES-2026-10-24", "ruta": "segurolotengo/manuales/actividad.md" },
+          { "id": "manual-declaraciones", "titulo": "Datos y declaraciones", "version": "MANUALES-2026-10-24", "ruta": "segurolotengo/manuales/declaraciones.md" },
+          { "id": "manual-consentimientos", "titulo": "Consentimientos", "version": "MANUALES-2026-10-24", "ruta": "segurolotengo/manuales/consentimientos.md" },
+          { "id": "manual-firma", "titulo": "Revisión, aceptación y firma", "version": "MANUALES-2026-10-24", "ruta": "segurolotengo/manuales/firma.md" },
+          { "id": "manual-solicitud-vencida", "titulo": "Solicitud vencida", "version": "MANUALES-2026-10-24", "ruta": "segurolotengo/manuales/solicitud-vencida.md" },
+          { "id": "manual-retracto", "titulo": "Derecho de retracto", "version": "MANUALES-2026-10-24", "ruta": "segurolotengo/manuales/retracto.md" },
+          { "id": "manual-pago", "titulo": "Realización del pago", "version": "MANUALES-2026-10-24", "ruta": "segurolotengo/manuales/pago.md" },
+          { "id": "manual-pago-checkout", "titulo": "Pago con tarjeta (formulario seguro de Bancard)", "version": "MANUALES-2026-10-24", "ruta": "segurolotengo/manuales/pago-checkout.md" },
+          { "id": "manual-pago-retorno", "titulo": "Retorno del pago con tarjeta", "version": "MANUALES-2026-10-24", "ruta": "segurolotengo/manuales/pago-retorno.md" },
+          { "id": "manual-confirmacion", "titulo": "Contratación aceptada", "version": "MANUALES-2026-10-24", "ruta": "segurolotengo/manuales/confirmacion.md" },
+          { "id": "manual-privacidad", "titulo": "Datos personales", "version": "MANUALES-2026-10-24", "ruta": "segurolotengo/manuales/privacidad.md" },
+          { "id": "manual-verificar", "titulo": "Verificación de documentos", "version": "MANUALES-2026-10-24", "ruta": "segurolotengo/manuales/verificar.md" },
+          { "id": "manual-verificar-codigo", "titulo": "Resultado de la verificación de un documento", "version": "MANUALES-2026-10-24", "ruta": "segurolotengo/manuales/verificar-codigo.md" }
+        ],
+        "paginas": [
+          { "id": "portada", "fuenteId": "manual-portada" },
+          { "id": "plan", "fuenteId": "manual-plan" },
+          { "id": "whatsapp", "fuenteId": "manual-whatsapp" },
+          { "id": "preparacion", "fuenteId": "manual-preparacion" },
+          { "id": "identidad", "fuenteId": "manual-identidad" },
+          { "id": "asistencia-identidad", "fuenteId": "manual-asistencia-identidad" },
+          { "id": "revision-manual", "fuenteId": "manual-revision-manual" },
+          { "id": "datos", "fuenteId": "manual-datos" },
+          { "id": "actividad", "fuenteId": "manual-actividad" },
+          { "id": "declaraciones", "fuenteId": "manual-declaraciones" },
+          { "id": "consentimientos", "fuenteId": "manual-consentimientos" },
+          { "id": "firma", "fuenteId": "manual-firma" },
+          { "id": "solicitud-vencida", "fuenteId": "manual-solicitud-vencida" },
+          { "id": "retracto", "fuenteId": "manual-retracto" },
+          { "id": "pago", "fuenteId": "manual-pago" },
+          { "id": "pago-checkout", "fuenteId": "manual-pago-checkout" },
+          { "id": "pago-retorno", "fuenteId": "manual-pago-retorno" },
+          { "id": "confirmacion", "fuenteId": "manual-confirmacion" },
+          { "id": "privacidad", "fuenteId": "manual-privacidad" },
+          { "id": "verificar", "fuenteId": "manual-verificar" },
+          { "id": "verificar-codigo", "fuenteId": "manual-verificar-codigo" }
         ]
       },
       "herramientas": [
@@ -158,7 +207,7 @@
         { "id": "otros-seguros", "titulo": "Otros seguros del canal", "version": "v1.0", "ruta": "segurolotengo/proximamente/otros-seguros.md" },
         { "id": "orientacion-16-contacto-con-la-atencion", "titulo": "Cómo contactar a la atención oficial de Interseguros", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/16-contacto-con-la-atencion.md" }
       ] },
-      "mensajes": { "bienvenida": "Hola, soy Terra. El Seguro de Vida todavía no se contrata en línea en SeguroLoTengo; puedo contarle cómo dejar su interés o informarle sobre el Seguro de Vida Oncológico VIVE, que sí está disponible." }
+      "mensajes": { "bienvenida": "Hola, soy Kuaa. El Seguro de Vida todavía no se contrata en línea en SeguroLoTengo; puedo contarle cómo dejar su interés o informarle sobre el Seguro de Vida Oncológico VIVE, que sí está disponible." }
     },
     "ACCIDENTES_PERSONALES": {
       "nombre": "Accidentes Personales",
@@ -171,7 +220,7 @@
         { "id": "otros-seguros", "titulo": "Otros seguros del canal", "version": "v1.0", "ruta": "segurolotengo/proximamente/otros-seguros.md" },
         { "id": "orientacion-16-contacto-con-la-atencion", "titulo": "Cómo contactar a la atención oficial de Interseguros", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/16-contacto-con-la-atencion.md" }
       ] },
-      "mensajes": { "bienvenida": "Hola, soy Terra. El seguro de Accidentes Personales todavía no se contrata en línea en SeguroLoTengo; puedo contarle cómo dejar su interés o informarle sobre el Seguro de Vida Oncológico VIVE, que sí está disponible." }
+      "mensajes": { "bienvenida": "Hola, soy Kuaa. El seguro de Accidentes Personales todavía no se contrata en línea en SeguroLoTengo; puedo contarle cómo dejar su interés o informarle sobre el Seguro de Vida Oncológico VIVE, que sí está disponible." }
     },
     "RESPONSABILIDAD_CIVIL": {
       "nombre": "Responsabilidad Civil",
@@ -184,7 +233,7 @@
         { "id": "otros-seguros", "titulo": "Otros seguros del canal", "version": "v1.0", "ruta": "segurolotengo/proximamente/otros-seguros.md" },
         { "id": "orientacion-16-contacto-con-la-atencion", "titulo": "Cómo contactar a la atención oficial de Interseguros", "version": "ORIENTACION-v1.0", "ruta": "segurolotengo/orientacion/16-contacto-con-la-atencion.md" }
       ] },
-      "mensajes": { "bienvenida": "Hola, soy Terra. El seguro de Responsabilidad Civil todavía no se contrata en línea en SeguroLoTengo; puedo contarle cómo dejar su interés o informarle sobre el Seguro de Vida Oncológico VIVE, que sí está disponible." }
+      "mensajes": { "bienvenida": "Hola, soy Kuaa. El seguro de Responsabilidad Civil todavía no se contrata en línea en SeguroLoTengo; puedo contarle cómo dejar su interés o informarle sobre el Seguro de Vida Oncológico VIVE, que sí está disponible." }
     }
   }
 }

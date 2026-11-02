@@ -17,6 +17,17 @@
  *     portal retiene toda respuesta con un teléfono o correo que no sea de las
  *     entidades.
  *
+ * MANUALES DE PANTALLA (decisión de Andres, 2026-10-25). Los 21 manuales de
+ * `manuales/` los entrega SeguroLoTengo y citan LITERALMENTE los textos del portal,
+ * que está en tuteo («Elige tu plan», «Te quedan N intentos»). Por eso la prueba de
+ * «usted» exime en esos archivos, y solo en ellos, (a) lo que va entre «…», (b) los
+ * títulos H1 (nombres literales de pantalla) y (c) el comentario HTML inicial. La
+ * narración de los manuales, `orientacion/**`, `interno/**` y la configuración siguen
+ * igual de estrictas. Dos exenciones análogas valen para la prueba de teléfonos: los
+ * montos precedidos por `Gs.` y el número de ejemplo «981 000 000» de la pantalla de
+ * WhatsApp. Qué NO garantiza: que el modelo no imite el «tú» de una cita al responder;
+ * eso lo mide la batería de casos de SeguroLoTengo, no esta prueba.
+ *
  * Qué NO garantiza: que el contenido sea correcto ni que el modelo lo cite bien. Eso
  * lo miden las baterías de casos del portal.
  */
@@ -52,6 +63,67 @@ const WHATSAPP_DIGITOS = '595991478468';
 const CORREO_UNICO = 'segurolotengo@interseguros360.com';
 const CORREO = /[\p{L}\p{N}._%+-]+@[\p{L}\p{N}.-]+\.[a-z]{2,}/giu;
 const TELEFONO = /(?<!\d)\+?\d(?:[\s().-]{0,2}\d){8,12}(?!\d)/g;
+const NUMERO_DE_EJEMPLO = '981 000 000';
+
+/**
+ * Quita el comentario HTML que abre el archivo SOLO si empieza y termina en la primera línea.
+ * Se hace con operaciones de texto y no con una expresión regular: CodeQL marca
+ * `js/bad-tag-filter` en una regexp de comentarios que no cubre el cierre `--!>` ni los
+ * saltos de línea, y aquí justamente no se quiere cubrir un comentario de varias líneas
+ * (podría esconder narración en tuteo).
+ */
+function sinComentarioInicial(texto: string): string {
+  const sinEspacios = texto.trimStart();
+  if (!sinEspacios.startsWith('<!--')) return texto;
+  const finDeLinea = sinEspacios.indexOf('\n');
+  const primeraLinea = finDeLinea === -1 ? sinEspacios : sinEspacios.slice(0, finDeLinea);
+  const cierres = ['-->', '--!>'].map((c) => ({ posicion: primeraLinea.indexOf(c, 4), largo: c.length })).filter((c) => c.posicion !== -1);
+  if (cierres.length === 0) return texto;
+  const primero = cierres.reduce((a, b) => (b.posicion < a.posicion ? b : a));
+  return sinEspacios.slice(primero.posicion + primero.largo);
+}
+
+/**
+ * Quita de un manual de pantalla lo que se cita literalmente del portal: el comentario
+ * HTML inicial (una sola línea), la primera línea de contenido si es un H1 y el texto entre
+ * «…» (sin cruzar saltos de línea ni «» anidadas). Lo que queda es la narración, que
+ * sí debe ir en «usted». Es función pura para poder probar que la exención no se cuela.
+ */
+function sinCitasDePantalla(texto: string): string {
+  return sinComentarioInicial(texto)
+    .replace(/^(\s*)# .*$/m, '$1')
+    .replace(/«[^«»\n]*»/g, '');
+}
+
+/** Primera línea de un texto en la que « y » no quedan balanceados, o 0 si todas lo están. */
+function lineaConComillasDesbalanceadas(texto: string): number {
+  const lineas = texto.split('\n');
+  for (let i = 0; i < lineas.length; i++) {
+    const linea = lineas[i] ?? '';
+    let nivel = 0;
+    for (const c of linea) {
+      if (c === '«') nivel++;
+      else if (c === '»') nivel--;
+      if (nivel < 0 || nivel > 1) return i + 1;
+    }
+    if (nivel !== 0) return i + 1;
+  }
+  return 0;
+}
+
+const FORMA_DE_MONTO = /^\d{1,3}(?:\.\d{3})+$/;
+
+/** Teléfonos de un texto, sin los montos en guaraníes (solo si el número tiene forma de monto) ni el número de ejemplo de la pantalla. */
+function telefonosInformados(texto: string): string[] {
+  const salida: string[] = [];
+  for (const m of texto.matchAll(TELEFONO)) {
+    const antes = texto.slice(0, m.index);
+    if ((/Gs\.?\s*$/.test(antes) && FORMA_DE_MONTO.test(m[0])) || m[0] === NUMERO_DE_EJEMPLO) continue;
+    salida.push(m[0]);
+  }
+  return salida;
+}
+
 const VOSEO_O_TUTEO = /(?<![\p{L}])(?:vos|tu|tus|te|ti|podés|querés|necesitás|tenés|sabés|repetís|recibís|contame|decime|escribime|tené|fijate|acercarte|contarte|informarte|explicarte|acá)(?![\p{L}])/iu;
 
 describe('fuentes del asistente de SeguroLoTengo', () => {
@@ -61,10 +133,14 @@ describe('fuentes del asistente de SeguroLoTengo', () => {
     }
   });
 
-  it('el perfil con producto disponible carga los 22 documentos de orientación', () => {
+  it('el perfil con producto disponible carga 22 documentos de orientación y 21 manuales de pantalla', () => {
+    // Antes eran solo los 22 de orientación; el 2026-10-25 se sumaron los 21 manuales de
+    // pantalla de SeguroLoTengo (uno por página), así que el perfil carga 43 fuentes.
     const ids = (config.perfiles['VIDA_ONCOLOGICO']?.conocimiento?.fuentes ?? []).map((f) => f.id);
-    expect(ids).toHaveLength(22);
-    expect(ids.every((id) => id.startsWith('orientacion-'))).toBe(true);
+    expect(ids.filter((id) => id.startsWith('orientacion-'))).toHaveLength(22);
+    expect(ids.filter((id) => id.startsWith('manual-'))).toHaveLength(21);
+    expect(ids).toHaveLength(43);
+    expect(new Set(ids).size, 'hay ids de fuente repetidos').toBe(ids.length);
   });
 
   it('todos los documentos de orientación llevan la misma versión', () => {
@@ -99,8 +175,31 @@ describe('todas las fuentes públicas que se cargan', () => {
 
   it('están en usted: sin voseo ni tuteo', () => {
     for (const r of publicas) {
-      expect(leer(r.ruta), `${r.ruta} usa voseo o tuteo`).not.toMatch(VOSEO_O_TUTEO);
+      const texto = leer(r.ruta);
+      if (r.ruta.startsWith('segurolotengo/manuales/')) {
+        expect(lineaConComillasDesbalanceadas(texto), `${r.ruta}: « y » desbalanceados en esa línea`).toBe(0);
+      }
+      const evaluado = r.ruta.startsWith('segurolotengo/manuales/') ? sinCitasDePantalla(texto) : texto;
+      expect(evaluado, `${r.ruta} usa voseo o tuteo`).not.toMatch(VOSEO_O_TUTEO);
     }
+  });
+
+  it('la exención de citas de pantalla es estrecha: un «tu» en la narración sí falla', () => {
+    const base = '<!-- pagina_id: x | ruta: / -->\n# Elige tu plan\nLa pantalla dice «Revisa tu conexión» y «Te quedan N intentos».\n';
+    expect(sinCitasDePantalla(base)).not.toMatch(VOSEO_O_TUTEO);
+    expect(sinCitasDePantalla(`${base}Revise tu conexión antes de seguir.\n`)).toMatch(VOSEO_O_TUTEO);
+    expect(sinCitasDePantalla(`${base}## Tu paso\n`)).toMatch(VOSEO_O_TUTEO);
+    // La cita no cruza líneas: una « sin cerrar no esconde la narración que sigue.
+    expect(sinCitasDePantalla('«Hola.\nRevise tu conexión y te esperamos.\nLuego «Otro».')).toMatch(VOSEO_O_TUTEO);
+    expect(lineaConComillasDesbalanceadas('«Hola.\nRevise.\n')).toBe(1);
+    expect(lineaConComillasDesbalanceadas('Dice «uno» y «dos».\nSin comillas.\n')).toBe(0);
+    // Solo se exime el primer H1; otro más abajo se evalúa.
+    expect(sinCitasDePantalla('# Título\nTexto.\n# Ahora completa tu información\n')).toMatch(VOSEO_O_TUTEO);
+    // Comentario inicial: solo el de una línea (con --> o --!>) se exime; uno de varias líneas o sin cerrar no.
+    expect(sinCitasDePantalla('<!-- pagina_id: x | tu paso -->\n# Título\nTexto.\n')).not.toMatch(VOSEO_O_TUTEO);
+    expect(sinCitasDePantalla('<!-- pagina_id: x | tu paso --!>\n# Título\nTexto.\n')).not.toMatch(VOSEO_O_TUTEO);
+    expect(sinCitasDePantalla('<!-- pagina_id: x\nRevise tu conexión -->\n# Título\nTexto.\n')).toMatch(VOSEO_O_TUTEO);
+    expect(sinCitasDePantalla('<!-- pagina_id: x | tu paso\n# Título\nTexto.\n')).toMatch(VOSEO_O_TUTEO);
   });
 
   it('el único correo que informan es el de contacto', () => {
@@ -113,10 +212,22 @@ describe('todas las fuentes públicas que se cargan', () => {
   it('el único teléfono que informan es el WhatsApp de atención, no el de la aseguradora', () => {
     for (const r of publicas) {
       const t = leer(r.ruta);
-      for (const tel of t.match(TELEFONO) ?? []) {
+      for (const tel of telefonosInformados(t)) {
         expect(tel.replace(/\D/g, ''), `${r.ruta} informa un teléfono distinto: ${tel}`).toBe(WHATSAPP_DIGITOS);
       }
       expect(t, `${r.ruta} informa el teléfono de Alianza como canal`).not.toMatch(/236\s*0000/);
+    }
+  });
+
+  it('la exención de montos y del número de ejemplo es estrecha: un teléfono real distinto sí cuenta', () => {
+    expect(telefonosInformados('cáncer Gs. 100.000.000 y renta Gs 50.000.000')).toEqual([]);
+    expect(telefonosInformados('por ejemplo 981 000 000')).toEqual([]);
+    expect(telefonosInformados('llame al 021 236 0000')).toHaveLength(1);
+    expect(telefonosInformados('llame al 0981 123 456')).toHaveLength(1);
+    expect(telefonosInformados('llame al +595 991 478 468')).toHaveLength(1);
+    // Un número con forma de teléfono no se esconde detrás de «Gs.».
+    for (const s of ['Gs. 0981 123 456', 'Gs.0981 123 456', 'Gs 0981123456', 'Gs. +595 991 478 468', 'Gs. 021 236 0000']) {
+      expect(telefonosInformados(s), s).toHaveLength(1);
     }
   });
 });

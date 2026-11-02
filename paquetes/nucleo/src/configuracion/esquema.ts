@@ -33,6 +33,8 @@ import { z } from 'zod';
 /** Identificadores: minúsculas, dígitos y guiones. Se usan en rutas y nombres de colección. */
 export const ID_AGENTE = /^[a-z0-9][a-z0-9-]{2,59}$/;
 export const ID_PERFIL = /^[A-Za-z0-9][A-Za-z0-9_-]{1,59}$/;
+/** Identificador de pantalla del sitio (contexto de página). Es el único valor del cliente que se compara con la configuración. */
+export const ID_PAGINA = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 const textoCorto = (max: number) => z.string().trim().max(max);
 const textoOpcional = (max: number) => z.string().trim().max(max).optional();
@@ -55,6 +57,10 @@ export const COMPUERTAS_SALIDA = [
   'marca_no_declarada',
   'afirma_cobro_real',
   'promete_traspaso',
+  /** dato_tarjeta_codigo corre siempre (salida.ts). */
+  'dato_tarjeta_codigo',
+  /** Reemplaza la respuesta que recomienda un plan concreto (origen: batería del 24-oct-2026, PAG-plan-011). */
+  'recomienda_plan',
 ] as const;
 
 export const esquemaVoz = z
@@ -131,6 +137,19 @@ export const esquemaFuente = z
   })
   .strict();
 
+/**
+ * Una pantalla del sitio y la fuente (manual) que la describe. El id viaja en cada mensaje
+ * (`pagina`) y solo SELECCIONA una fuente ya declarada: el valor del cliente jamás entra al
+ * prompt. NO garantiza que la persona esté de verdad en esa pantalla: el sitio lo declara y
+ * el núcleo no puede verificarlo.
+ */
+export const esquemaPagina = z
+  .object({
+    id: z.string().regex(ID_PAGINA),
+    fuenteId: z.string().regex(/^[a-z0-9][a-z0-9-]{1,79}$/),
+  })
+  .strict();
+
 export const esquemaConocimiento = z
   .object({
     modo: z.enum(['rag', 'solo_prompt']).default('rag'),
@@ -148,6 +167,27 @@ export const esquemaConocimiento = z
     tamanoFragmento: z.number().int().min(200).max(4000).default(900),
     solapamiento: z.number().int().min(0).max(1000).default(120),
     fuentes: z.array(esquemaFuente).max(200).default([]),
+    /**
+     * Pantallas del sitio con manual propio. Si el mensaje trae una `pagina` de esta lista, el
+     * manual de esa pantalla entra al prompt delante de los resultados de búsqueda y cuenta como
+     * respaldo. Cada fuente debe existir y ser pública (lo valida `cargar.ts`). Como los demás
+     * arreglos, un perfil que la define reemplaza la de la base.
+     */
+    paginas: z.array(esquemaPagina).max(60).default([]),
+    /**
+     * Tope de caracteres del manual de pantalla que se inyecta al prompt. Acota el costo y
+     * evita que un manual largo desplace el resto del respaldo. NO recorta a mitad de
+     * fragmento: se descartan los fragmentos que no caben completos. El solapamiento repite
+     * texto entre fragmentos vecinos y ese texto repetido cuenta contra el tope. Debe ser al
+     * menos `tamanoFragmento + 200` (lo valida `cargar.ts`), para que entre al menos un fragmento.
+     */
+    maxCaracteresPagina: z.number().int().min(500).max(8000).default(4000),
+    /**
+     * Paquete de conocimiento no validado (solo Kuaa). `habilitado` permite que el servicio, ÚNICAMENTE con el
+     * perfil `pruebas` del entorno, cargue el paquete desde su bucket privado. Es un booleano y no lleva ni
+     * bucket ni versión: esos viajan en el entorno, fuera del repo. Con el perfil `produccion` no tiene efecto.
+     */
+    paquete: z.object({ habilitado: z.boolean().default(false) }).strict().prefault({}),
   })
   .strict();
 
@@ -169,8 +209,40 @@ export const esquemaSeguridad = z
      * («cuatro uno uno uno…») sea detectado; `clave`, `cedula`, `salud`, `pep` e `inyeccion` no cambian.
      */
     vocabularioEntrada: z.enum(['palabra', 'dato']).default('palabra'),
+    /**
+     * Cuándo bloquea la compuerta de entrada `salud` y `pep`. `primera_persona` (por omisión) es el
+     * criterio de siempre: el vocabulario bloquea salvo que sea una pregunta general sin primera
+     * persona, así que «Si marco que sí soy PEP, ¿qué pasa?» se bloquea. `declaracion` deja pasar
+     * SOLO la consulta de formulario: un mensaje que EMPIEZA con «si marco/respondo/… que (sí) soy PEP»
+     * o «… que tengo una enfermedad» (el «si» condicional, sin tilde, y verbos que no sean
+     * performativos), es una pregunta y, quitado el marco, solo queda una pregunta de procedimiento de
+     * lista cerrada («¿qué pasa?», «¿qué tengo que hacer?»). Origen: PAG-actividad-007 de la batería
+     * del 24-oct-2026 (una de 10 entradas bloqueadas, la única por error). Es un enumerado: jamás se
+     * interpola texto libre. NO garantiza detectar toda declaración personal escrita de otra forma:
+     * fuera del marco bloquea lo mismo que `primera_persona` (probado con una lista cerrada, no
+     * demostrado para todo texto). `sin_sujeto` cierra el límite preexistente de `esPreguntaGeneral` (una declaración escrita como pregunta: «me detectaron un tumor ¿me cubren?», «Fui PEP hasta el año pasado, ¿me afecta?», «Era ministro, ¿puedo contratar?»): bloquea siempre el vocabulario de salud y PEP salvo una pregunta única, corta y sin marcas de persona ni de tiempo sobre el producto («¿cubre cáncer?»), y conserva el marco de formulario de `declaracion`; nunca bloquea menos que `primera_persona`. NO garantiza detectar datos personales sin ese vocabulario (sinónimos, otros idiomas, datos repartidos en varios turnos). No cambia cédula, tarjeta, código, clave ni inyección.
+     */
+    criterioSaludPep: z.enum(['primera_persona', 'declaracion', 'sin_sujeto']).default('primera_persona'),
     /** Marcas de control `[MARCA]` que el modelo puede emitir. Cualquier otra se borra. */
     marcasPermitidas: z.array(z.string().regex(/^[A-Z_]{3,30}$/)).max(10).default(['DERIVAR']),
+    /**
+     * Marcas entre corchetes que son TEXTO de los manuales y no marcas de control: se conservan tal
+     * cual en la respuesta, sin contarlas ni borrarlas. Origen: batería del 24-oct-2026, PAG-retracto-007
+     * dijo «el plazo está "".» porque el manual trae `[PENDIENTE DE DEFINICIÓN LEGAL]` y la compuerta
+     * borra todo `[X]` no permitido. Coincidencia exacta con la clave normalizada igual que
+     * `extraerMarcas` (sin tildes, mayúsculas, espacios como `_`); el valor jamás se interpola en el
+     * prompt. NO garantiza que el modelo cite la marca; solo que, si la cita, no se pierde. No puede
+     * repetirse en `marcasPermitidas` (lo rechaza `cargar.ts`).
+     */
+    marcasLiterales: z.array(z.string().regex(/^[A-Z_]{3,30}$/)).max(10).default([]),
+    /**
+     * Nombres de los planes del producto («VIVE TOTAL», «VIVE+»). Los usa SOLO la compuerta
+     * `recomienda_plan` para detectar un nombre de plan junto a un verbo de recomendación («le recomiendo
+     * VIVE TOTAL»). Son DATO: se comparan normalizados (sin tildes, minúsculas) y con límites de palabra,
+     * y jamás se interpolan en el prompt. Obligatorio, no vacío, si `recomienda_plan` está activa (lo
+     * exige `cargar.ts`). NO garantiza detectar un plan aludido sin nombre ni un nombre no declarado.
+     */
+    nombresDePlanes: z.array(z.string().regex(/^[A-Za-z0-9+ ]{2,30}$/)).max(10).default([]),
   })
   .strict();
 
@@ -249,6 +321,17 @@ export const esquemaModelo = z
     temperatura: z.number().min(0).max(1).default(0.3),
     maxTokensSalida: z.number().int().min(64).max(8192).default(1024),
     maxIteraciones: z.number().int().min(1).max(6).default(3),
+    /**
+     * Razonamiento interno del modelo. `automatico` (por omisión) no envía nada y deja al modelo
+     * decidir; `desactivado` le pide al proveedor no razonar antes de responder. Origen: batería
+     * de SeguroLoTengo del 24-oct-2026, donde dos respuestas terminaron en `MAX_TOKENS` con apenas
+     * 37 y 64 tokens visibles de 1.024: el razonamiento de Gemini 2.5 se descuenta del mismo
+     * presupuesto de salida y se cobra como salida. Es un enumerado: jamás se interpola texto.
+     * NO garantiza que el proveedor lo respete: Gemini 2.5 Pro no admite apagarlo (la carga rechaza
+     * `desactivado` con un nombre de modelo que contenga `pro`), en Gemini 3 el parámetro está obsoleto
+     * y Bedrock lo ignora.
+     */
+    razonamiento: z.enum(['automatico', 'desactivado']).default('automatico'),
     ventanaMemoria: z.number().int().min(2).max(40).default(10),
     /** Segundos de inactividad tras los cuales la conversación se olvida. */
     ttlConversacionSeg: z.number().int().min(60).max(86400).default(3600),
@@ -312,6 +395,12 @@ export const esquemaConfiguracionAgente = z
     $schema: z.string().optional(),
     version: z.literal(1),
     id: z.string().regex(ID_AGENTE),
+    /**
+     * Clase de agente. `general` (por omisión) es el asistente conversacional de siempre; `kuaa` habilita el
+     * agente de oportunidad de venta (`oportunidad/agente-kuaa.ts`), que responde con una salida estructurada.
+     * Es un enumerado: jamás se interpola en el prompt. No lo puede cambiar un perfil.
+     */
+    tipoAgente: z.enum(['general', 'kuaa']).default('general'),
     identidad: esquemaIdentidad,
     voz: esquemaVoz.prefault({}),
     operacion: esquemaOperacion.prefault({}),
@@ -332,6 +421,24 @@ export const esquemaConfiguracionAgente = z
     message: 'operacion.contactoHumano.modo «canal» exige al menos una vía de contacto (whatsapp, correo o telefono)',
     path: ['operacion', 'contactoHumano'],
   })
+  .refine((c) => c.tipoAgente === 'kuaa' || !c.conocimiento.paquete.habilitado, {
+    message: 'conocimiento.paquete.habilitado solo se admite con tipoAgente «kuaa»',
+    path: ['conocimiento', 'paquete'],
+  })
+  .refine((c) => Object.values(c.perfiles).every((p) => p.conocimiento?.paquete === undefined), {
+    message: 'un perfil no puede definir conocimiento.paquete: el paquete se habilita solo en la base',
+    path: ['perfiles'],
+  })
+  // La colección `<agente>--paquete` es del paquete no validado: ni un perfil ni una colección configurada
+  // pueden coincidir con ella, o el corpus público y lo no validado compartirían fragmentos.
+  .refine((c) => Object.keys(c.perfiles).every((id) => id.toLowerCase() !== 'paquete'), {
+    message: 'el id de perfil «paquete» está reservado para el paquete no validado',
+    path: ['perfiles'],
+  })
+  .refine((c) => [c.conocimiento.coleccion, ...Object.values(c.perfiles).map((p) => p.conocimiento?.coleccion)].every((x) => x === undefined || !x.endsWith('--paquete')), {
+    message: 'conocimiento.coleccion no puede terminar en «--paquete» (reservado)',
+    path: ['conocimiento', 'coleccion'],
+  })
   .refine((c) => !c.perfilPorDefecto || c.perfilPorDefecto in c.perfiles, {
     message: 'perfilPorDefecto debe existir en perfiles',
     path: ['perfilPorDefecto'],
@@ -346,6 +453,7 @@ export type Datos = z.infer<typeof esquemaDatos>;
 export type Alcance = z.infer<typeof esquemaAlcance>;
 export type Conocimiento = z.infer<typeof esquemaConocimiento>;
 export type Fuente = z.infer<typeof esquemaFuente>;
+export type Pagina = z.infer<typeof esquemaPagina>;
 export type Seguridad = z.infer<typeof esquemaSeguridad>;
 export type Herramienta = z.infer<typeof esquemaHerramienta>;
 export type Orientacion = z.infer<typeof esquemaOrientacion>;
