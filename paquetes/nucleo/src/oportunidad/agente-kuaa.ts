@@ -43,7 +43,7 @@ import type { FragmentoRecuperado } from '../puertos/indice-conocimiento.js';
 import { EntradaKuaa, SalidaOportunidad, filtrarBotonesSalida } from './esquemas.js';
 import { normalizarEntradaKuaa } from './normalizar-entrada.js';
 import { armarPromptKuaa } from './prompt-kuaa.js';
-import { afirmaHechoNoRespaldado, patronEnlaceOPrecio, permitidosDe, analizarSalida, filtraPrompt, retirarCodigosInternos, salidaFallback, salidaSinCifras } from './salida-kuaa.js';
+import { afirmaHechoNoRespaldado, afirmaTratamientoTributario, salidaTributaria, patronEnlaceOPrecio, permitidosDe, analizarSalida, filtraPrompt, retirarCodigosInternos, salidaFallback, salidaSinCifras } from './salida-kuaa.js';
 
 export interface ResultadoKuaa {
   salida: SalidaOportunidad;
@@ -175,6 +175,9 @@ export class AgenteKuaa {
     const permitidos = permitidosDe(entrada.plataforma);
     const patron = patronEnlaceOPrecio(textoBase, permitidos) ?? patronEnlaceOPrecio(textoSaneado, permitidos);
     if (patron) return cierre({ salida: salidaSinCifras(etapa), avisos: [...avisos, `patron_bloqueado:${patron}`, 'enlace_o_precio'] });
+    if (afirmaTratamientoTributario(textoBase) || afirmaTratamientoTributario(textoSaneado)) {
+      return cierre({ salida: salidaTributaria(etapa), avisos: [...avisos, 'tributario_bloqueado'] });
+    }
     const hecho = afirmaHechoNoRespaldado(textoSaneado, entrada.estados);
     if (hecho) return cierre(fallback(avisos, `hecho_no_respaldado:${hecho}`));
     if (filtraPrompt(textoSaneado)) return cierre(fallback(avisos, 'fuga_prompt'));

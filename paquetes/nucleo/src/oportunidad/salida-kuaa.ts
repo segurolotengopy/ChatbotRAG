@@ -204,6 +204,26 @@ export function salidaSinCifras(etapa: EtapaVenta): SalidaOportunidad {
 }
 
 /**
+ * El tratamiento tributario del premio (IVA, impuestos, exención) está pendiente de Contabilidad, Legal y la
+ * aseguradora (contradicción C14 del paquete): Kuaa solo informa el premio total publicado. Frase provisional de
+ * Rodrigo; sin segunda persona de verbo, para valer con voseo, tuteo o usted.
+ */
+export const TEXTO_TRIBUTARIO = 'Puedo informar el premio total publicado; para el tratamiento tributario y la factura te orientamos con Interseguros.';
+
+/**
+ * Detecta cualquier afirmación sobre IVA, impuestos o exención («IVA incluido», «más IVA», «exento», «impuestos
+ * incluidos»). Es deliberadamente amplio: mencionar el IVA ya es tomar posición, y la respuesta permitida no lo nombra.
+ * Qué NO garantiza: paráfrasis sin esas palabras («ya trae todo»).
+ */
+export function afirmaTratamientoTributario(texto: string): boolean {
+  return /\biva\b|\bimpuestos?\b|\bexent[oa]s?\b|\bgravad[oa]s?\b|\bimponible/.test(paraDetectar(texto));
+}
+
+export function salidaTributaria(etapa: EtapaVenta): SalidaOportunidad {
+  return { texto: TEXTO_TRIBUTARIO, etapa_propuesta: etapa, objecion: null, botones: [], propuestas: [] };
+}
+
+/**
  * Retira referencias a códigos internos del paquete (una letra mayúscula y dos dígitos): los que van entre
  * paréntesis y los que siguen a «según», «ver» o «código». Un código suelto («vitamina B12») o pegado a un punto,
  * arroba o barra («x.A12.py») NO se toca, para no alterar texto legítimo ni esconder un dominio al detector.

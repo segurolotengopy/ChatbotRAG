@@ -17,7 +17,7 @@ import { AgenteKuaa } from './agente-kuaa.js';
 import { ESTADOS_OPERATIVOS_DESCONOCIDOS, EntradaKuaa, Plataforma, RESUMEN_DESCONOCIDO } from './esquemas.js';
 import { REGLAS_KUAA, reglasKuaa } from './frases-kuaa.js';
 import { armarPromptKuaa } from './prompt-kuaa.js';
-import { patronEnlaceOPrecio, permitidosDe, salidaSinCifras, type Permitidos } from './salida-kuaa.js';
+import { afirmaTratamientoTributario, patronEnlaceOPrecio, permitidosDe, salidaSinCifras, salidaTributaria, type Permitidos } from './salida-kuaa.js';
 
 const RUTA = fileURLToPath(new URL('../../../../configuraciones/kuaa.json', import.meta.url));
 const JSON_KUAA = readFileSync(RUTA, 'utf8');
@@ -227,6 +227,30 @@ async function armar(texto: string) {
   const agente = new AgenteKuaa({ config, proveedor, indice, memoria, herramientas: new RegistroHerramientas(null), bitacora });
   return { agente, proveedor, bitacora };
 }
+
+describe('tratamiento tributario (C14 pendiente)', () => {
+  it.each(['El premio es de 390.000 con IVA incluido.', 'Más IVA.', 'El seguro está exento.', 'Los impuestos están incluidos.', 'Es el premio sin I.V.A. (iva)', 'El monto imponible es otro.'])(
+    '«%s» se detecta',
+    (texto) => {
+      expect(afirmaTratamientoTributario(texto)).toBe(true);
+    },
+  );
+  it.each(['Puedo informar el premio total publicado; para el tratamiento tributario y la factura te orientamos con Interseguros.', 'La cobertura incluye la renta diaria.', 'Es un seguro de vida.'])(
+    '«%s» no se detecta',
+    (texto) => {
+      expect(afirmaTratamientoTributario(texto)).toBe(false);
+    },
+  );
+  it('el agente reemplaza «IVA incluido» por la frase provisional y lo avisa sin texto', async () => {
+    const { agente } = await armar('El plan cuesta 390.000 Gs al año, con IVA incluido.');
+    const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+    expect(r.salida).toEqual(salidaTributaria('E04'));
+    expect(r.avisos).toContain('tributario_bloqueado');
+  });
+  it('el prompt lleva la regla de no afirmar nada sobre IVA', () => {
+    expect(REGLAS_KUAA.join(' ')).toContain('no afirme nada');
+  });
+});
 
 describe('agente con plataforma', () => {
   it('con plataforma, el modelo puede decir «390.000» y la respuesta pasa', async () => {
