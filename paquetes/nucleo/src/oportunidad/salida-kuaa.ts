@@ -243,9 +243,9 @@ export function quitarPromesasDeEntrega(texto: string): string {
  */
 export function retirarNumerosDeRegistro(texto: string): string {
   return texto
-    .replace(/,?\s*matr[ií]cula\s+(?:bcp\s+)?(?:n\.?\s*[o°º]\.?\s*)?\d+/giu, '')
-    .replace(/,?\s*\bBCP\s+n\.?\s*[o°º]\.?\s*\d+/giu, '')
-    .replace(/\s+([.,;!?])/g, '$1')
+    .replace(/,?\s{0,3}matr[ií]cula\s{1,3}(?:bcp\s{1,3})?(?:n\.?\s{0,3}[o°º]\.?\s{0,3})?\d{1,6}/giu, '')
+    .replace(/,?\s{0,3}\bBCP\s{1,3}n\.?\s{0,3}[o°º]\.?\s{0,3}\d{1,6}/giu, '')
+    .replace(/ {1,3}([.,;!?])/g, '$1')
     .trim();
 }
 
