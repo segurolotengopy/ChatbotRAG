@@ -43,7 +43,7 @@ import type { FragmentoRecuperado } from '../puertos/indice-conocimiento.js';
 import { EntradaKuaa, SalidaOportunidad, filtrarBotonesSalida } from './esquemas.js';
 import { normalizarEntradaKuaa } from './normalizar-entrada.js';
 import { armarPromptKuaa } from './prompt-kuaa.js';
-import { afirmaHechoNoRespaldado, afirmaTratamientoTributario, quitarPromesasDeEntrega, salidaTributaria, patronEnlaceOPrecio, permitidosDe, analizarSalida, filtraPrompt, retirarCodigosInternos, salidaFallback, salidaSinCifras } from './salida-kuaa.js';
+import { afirmaHechoNoRespaldado, afirmaTratamientoTributario, quitarPromesasDeEntrega, retirarNumerosDeRegistro, salidaTributaria, patronEnlaceOPrecio, permitidosDe, analizarSalida, filtraPrompt, retirarCodigosInternos, salidaFallback, salidaSinCifras } from './salida-kuaa.js';
 
 export interface ResultadoKuaa {
   salida: SalidaOportunidad;
@@ -170,7 +170,9 @@ export class AgenteKuaa {
     // La salida también se sanea (controles, marcas bidi) antes de cualquier control y de la memoria.
     const sinPromesas = quitarPromesasDeEntrega(interpretada.texto);
     if (sinPromesas !== interpretada.texto.trim()) avisos.push('promesa_entrega_retirada');
-    const textoBase = sanearTexto(sinPromesas === '' ? interpretada.texto : sinPromesas, 4000);
+    const sinRegistro = retirarNumerosDeRegistro(sinPromesas === '' ? interpretada.texto : sinPromesas);
+    if (sinRegistro !== (sinPromesas === '' ? interpretada.texto : sinPromesas).trim()) avisos.push('registro_retirado');
+    const textoBase = sanearTexto(sinRegistro === '' ? interpretada.texto : sinRegistro, 4000);
     const textoSaneado = retirarCodigosInternos(textoBase);
     if (textoSaneado !== textoBase) avisos.push('codigo_interno_retirado');
     if (textoSaneado === '') return cierre(fallback([...avisos, 'causa_salida:vacia_tras_sanear'], 'salida_invalida'));

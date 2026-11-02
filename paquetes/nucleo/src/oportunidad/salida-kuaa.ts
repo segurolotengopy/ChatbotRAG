@@ -38,6 +38,12 @@ export function analizarSalida(texto: string): { salida: SalidaOportunidad; desc
     const o = valor as Record<string, unknown>;
     for (const [clave, permitido] of [['botones', BotonSalida.options], ['propuestas', PropuestaSalida.options]] as const) {
       const lista = o[clave];
+      // Un campo ausente o nulo equivale a «sin botones/propuestas»: el modelo suele omitirlo cuando no propone nada, y
+      // eso tumbaba toda la respuesta con «problema técnico» (R06 y R09 de la batería de SLT: `esquema:propuestas`).
+      if (lista === undefined || lista === null) {
+        o[clave] = [];
+        continue;
+      }
       if (!Array.isArray(lista)) continue;
       const validos = lista.filter((x) => typeof x === 'string' && (permitido as readonly string[]).includes(x));
       descartados += lista.length - validos.length;
@@ -222,11 +228,24 @@ export function salidaSinCifras(etapa: EtapaVenta, whatsappE164?: string): Salid
  * el detalle»). Devuelve el texto sin ellas; vacío si no quedaba otra cosa. Qué NO garantiza: promesas con otra forma.
  */
 export function quitarPromesasDeEntrega(texto: string): string {
-  const PROMESA = /\b(?:te|le)\s+(?:preparo|armo|envio|mando|paso|genero)\b[^.!?]{0,40}\b(?:resumen|informe|documento|detalle|comprobante|cotizacion|propuesta)|\b(?:preparo|armo|genero)\s+(?:un|el)\s+(?:resumen|informe|detalle)/;
+  const PROMESA = /\b(?:te|le)\s+(?:preparo|armo|envio|mando|paso|genero)\b[^.!?]{0,40}\b(?:resumen|informe|documento|detalle|comprobante|cotizacion|propuesta)|\b(?:preparo|armo|genero)\s+(?:un|el)\s+(?:resumen|informe|detalle)|\b(?:queres|quieres|te\s+muestro|puedo\s+mostrarte)\b[^.!?]{0,60}\b(?:documentacion|informacion\s+institucional|quien\s+asegura)/;
   return texto
     .split(/(?<=[.!?])\s+/)
     .filter((frase) => !PROMESA.test(paraDetectar(frase)))
     .join(' ')
+    .trim();
+}
+
+/**
+ * Quita el número de matrícula o registro del corredor («matrícula BCP N.o 118»): el dato no está aprobado para
+ * citarse hasta que Legal lo confirme (contradicciones del paquete). Deja el resto de la frase. Qué NO garantiza:
+ * otros números de registro con otra forma.
+ */
+export function retirarNumerosDeRegistro(texto: string): string {
+  return texto
+    .replace(/,?\s{0,3}matr[ií]cula\s{1,3}(?:bcp\s{1,3})?(?:n\.?\s{0,3}[o°º]\.?\s{0,3})?\d{1,6}/giu, '')
+    .replace(/,?\s{0,3}\bBCP\s{1,3}n\.?\s{0,3}[o°º]\.?\s{0,3}\d{1,6}/giu, '')
+    .replace(/ {1,3}([.,;!?])/g, '$1')
     .trim();
 }
 
