@@ -269,7 +269,7 @@ export function salvarQuitandoBloqueado(texto: string, bloqueado: (fragmento: st
   const ok = (t: string): boolean => t.length >= minimo && !bloqueado(t);
   const porFrases = quitarFrases(texto, bloqueado);
   if (ok(porFrases)) return porFrases;
-  const clausulas = texto.split(/(?<=[.!?;,])\s+|\s+pero\s+/);
+  const clausulas = texto.split(/(?<=[.!?;,])\s{1,8}|\s{1,8}pero\s{1,8}/);
   const resto = clausulas.filter((c) => !bloqueado(c)).join(' ').replace(/[,;]\s*$/, '.').trim();
   return ok(resto) ? resto : null;
 }
