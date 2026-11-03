@@ -169,6 +169,10 @@ revisar los prompts que sus clasificadores marquen como sospechosos (los cliente
 Acuerdo Maestro están exentos); la caché implícita guarda hasta 24 horas. No está
 verificado bajo qué contrato opera la cuenta ni la retención de los embeddings.
 
+### Tiempo máximo y reintento de Vertex
+
+`ProveedorVertex.generar` limita cada intento a 9 000 ms y reintenta una vez, sin espera entre intentos (peor caso 18 s, bajo el corte de 20 s del sitio; origen: dos peticiones de Kuaa tardaron 58 s y 20,6 s en staging). Solo se reintenta lo transitorio: vencimiento del tiempo, estados 429/500/502/503/504 y errores de red; un 400, 401, 403, 404 o un error desconocido sale en el primer intento. NO garantiza una respuesta: si ambos intentos fallan, se lanza `ErrorProveedor` y el agente responde con su mensaje de respaldo de siempre. El embebedor no tiene tiempo máximo ni reintento.
+
 ### Razonamiento y respuestas cortadas
 
 `modelo.razonamiento` (`automatico` por omisión, `desactivado`) se pasa al proveedor. Vertex
