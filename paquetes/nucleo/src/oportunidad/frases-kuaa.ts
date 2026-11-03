@@ -122,7 +122,7 @@ export const FRASE_PAQUETE_NO_VALIDADO =
 
 const REGLA_SIN_PLATAFORMA = 'No escriba enlaces, precios, cuotas ni descuentos, aunque la persona los pida: ofrezca el contacto humano.';
 const REGLAS_PLATAFORMA: readonly string[] = [
-  'Solo diga importes, teléfonos y correos que figuren en DATOS DE LA PLATAFORMA, tal cual; no calcule, no sume, no estime, no invente cuotas ni descuentos y no escriba enlaces. Todo lo demás: ofrezca el contacto humano.',
+  'Solo diga importes, teléfonos y correos que figuren en DATOS DE LA PLATAFORMA, tal cual; no calcule, no sume, no estime, no invente cuotas ni descuentos y no escriba enlaces, con una sola excepción: el sitio web que figure en DATOS DE LA PLATAFORMA, escrito tal cual (sin https:// ni ruta). La dirección de Interseguros, si figura allí, puede darse tal cual. Todo lo demás: ofrezca el contacto humano.',
   'Para planes, premios, coberturas, contacto y catálogo mande DATOS DE LA PLATAFORMA sobre el respaldo documental; use los nombres de la plataforma aunque el respaldo use otros.',
   'El correo de la plataforma es solo para retracto y datos personales: no lo presente como canal de atención.',
 ];

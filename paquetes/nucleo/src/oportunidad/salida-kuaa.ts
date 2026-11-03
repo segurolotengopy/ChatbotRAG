@@ -120,6 +120,8 @@ const PATRONES_ENLACE_O_PRECIO: readonly (readonly [string, RegExp])[] = [
   // El marcador «§» lo deja `quitarPermitidos` donde había un importe permitido: un multiplicador o una moneda ajena
   // junto a él cambia la cifra («390.000 millones», «US$ 390.000») y no está respaldado.
   ['importe_permitido_alterado', /§\s*(?:mil\b|millon|millones|%|usd\b|u\$s|dolar|lucas)|(?:usd|u\$s|us\$|\$)\.?\s*§/],
+  // «¶» lo deja `quitarPermitidos` cuando el texto repite la dirección permitida con otro número.
+  ['direccion_alterada', /¶/],
   ['numero_en_palabras', new RegExp(`\\b${NUMERO_EN_PALABRAS}\\b(?:\\s+[a-z]+){0,3}?\\s+(?:mil|millon|millones|guarani|guaranies|dolar|dolares|lucas)\\b`)],
 ];
 
@@ -131,6 +133,10 @@ export interface Permitidos {
   importes: number[];
   telefonos: string[];
   correos: string[];
+  /** Dominios (sitio web) que pueden escribirse sueltos, en minúsculas. */
+  dominios: string[];
+  /** Direcciones que pueden darse como frase completa; se comparan ya normalizadas con `paraDetectar`. */
+  direcciones: string[];
 }
 
 /** Importes bajo 1000 no disparan ningún patrón y quitarlos solo ensuciaría el texto. */
@@ -145,8 +151,14 @@ export function permitidosDe(plataforma: Plataforma | undefined): Permitidos | u
   const importes = plataforma.planes
     .flatMap((p) => [p.premio_anual_gs, p.capital_fallecimiento_gs, p.indemnizacion_cancer_gs, p.renta_hospitalaria_dia_gs, p.gastos_medicos_accidente_gs])
     .filter((n) => n >= IMPORTE_MINIMO_PERMITIDO);
-  const { whatsapp_e164: tel, correo_derechos: correo } = plataforma.contacto;
-  return { importes: [...new Set(importes)], telefonos: tel === undefined ? [] : [tel], correos: correo === undefined ? [] : [correo] };
+  const { whatsapp_e164: tel, correo_derechos: correo, sitio_web: sitio, direccion } = plataforma.contacto;
+  return {
+    importes: [...new Set(importes)],
+    telefonos: tel === undefined ? [] : [tel],
+    correos: correo === undefined ? [] : [correo],
+    dominios: sitio === undefined ? [] : [sitio.toLowerCase()],
+    direcciones: direccion === undefined ? [] : [paraDetectar(direccion)],
+  };
 }
 
 const escaparRe = (t: string): string => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -169,6 +181,22 @@ function quitarPermitidos(t: string, p: Permitidos): string {
   }
   for (const c of p.correos) {
     r = r.replace(new RegExp(`(?<![a-z0-9._%+-])${escaparRe(c.toLowerCase())}(?![a-z0-9_-]|\\.[a-z0-9])`, 'g'), '§');
+  }
+  // Dominio (sitio web): solo el texto suelto. No puede ir pegado a algo anterior (otro rótulo, «.», «@», «/», «-») ni
+  // seguido de otro rótulo, ruta, puerto, consulta o «%»: «x.interseguros360.com», «interseguros360.com.evil.com» o
+  // «interseguros360.com/ruta» siguen visibles y los patrones los bloquean. Un punto final de oración sí se admite.
+  for (const d of p.dominios) {
+    r = r.replace(new RegExp(`(?<![a-z0-9._%+@/:-])${escaparRe(d)}(?![a-z0-9_@/:?#%-]|\\.[a-z0-9])`, 'g'), '§');
+  }
+  // Dirección: frase completa, sin letra ni número pegados ni «.dd» o «,dd» detrás. Si no está completa pero el texto
+  // trae la misma frase con otro número («Av X 1235» por «Av X 1234»), queda el marcador «¶» y el detector la bloquea.
+  for (const dir of p.direcciones) {
+    const cuerpo = escaparRe(dir);
+    r = r.replace(new RegExp(`(?<![\\p{L}\\p{N}])${cuerpo}(?![\\p{L}\\p{N}]|[.,]\\d)`, 'gu'), '§');
+    if (/\d/.test(dir)) {
+      const comodin = cuerpo.replace(/\d+/g, '\\d{1,9}');
+      r = r.replace(new RegExp(`(?<![\\p{L}\\p{N}])${comodin}(?![\\p{L}\\p{N}])`, 'gu'), '¶');
+    }
   }
   return r;
 }
