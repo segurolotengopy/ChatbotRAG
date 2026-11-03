@@ -63,7 +63,7 @@ const APROBADO_POR = z
   .string()
   .trim()
   .regex(/^(?=.*\p{L})[\p{L}\p{N} ,._-]{2,80}$/u)
-  .refine((v) => !/\d{4}-\d{2}-\d{2}/.test(v), { message: 'aprobado_por no lleva fecha' });
+  .refine((v) => !/\d{4}-\d{2}-\d{2}/.test(v) && !/\b\d{1,2}[-.]\d{1,2}[-.]\d{2,4}\b/.test(v), { message: 'aprobado_por no lleva fecha' });
 
 /** Pregunta comparable: `normalizar()` más sin signos de puntuación y con espacios colapsados. */
 export function normalizarPregunta(texto: string): string {
@@ -72,13 +72,21 @@ export function normalizarPregunta(texto: string): string {
     .replace(/\s+/g, ' ')
     .trim();
 }
+/** Pregunta con contenido: tras normalizar debe quedar algo (una pregunta vacía calzaría con cualquier mensaje). */
+const PREGUNTA = (max: number) =>
+  z
+    .string()
+    .trim()
+    .min(1)
+    .max(max)
+    .refine((p) => normalizarPregunta(p).length >= 2, { message: 'pregunta sin contenido' });
 const TEXTO = (max: number) => z.string().trim().min(1).max(max);
 
 export const EntradaRespuesta = z
   .object({
     id: z.string().regex(ID_ENTRADA),
     tema: z.string().regex(TEMA),
-    preguntas: z.array(TEXTO(300)).min(1).max(30),
+    preguntas: z.array(PREGUNTA(300)).min(1).max(30),
     plantilla: TEXTO(1500),
     aprobado_por: APROBADO_POR,
     riesgo: Riesgo,
@@ -95,7 +103,7 @@ export const EntradaDerivacion = z
   .object({
     id: z.string().regex(ID_ENTRADA),
     motivo: MotivoDerivacion.exclude(['atencion_humana_ya_solicitada', 'contenido_pendiente']),
-    preguntas: z.array(TEXTO(300)).max(60).default([]),
+    preguntas: z.array(PREGUNTA(300)).max(60).default([]),
     terminos: z
       .array(z.string().trim().regex(/^(?=.*\p{L})[\p{L}\p{N} ]{3,40}$/u))
       .max(200)

@@ -107,4 +107,13 @@ describe('esquema del banco de respuestas', () => {
     expect(EntradaRespuesta.safeParse(respuesta({ preguntas: muchas })).success).toBe(false);
     expect(BancoRespuestas.safeParse(banco({ formato: 2 })).success).toBe(false);
   });
+
+  it.each(['???', '¿?', ' ', 'a'])('rechaza la pregunta sin contenido %j en respuestas y derivaciones', (p) => {
+    expect(EntradaRespuesta.safeParse(respuesta({ preguntas: [p] })).success).toBe(false);
+    expect(EntradaDerivacion.safeParse({ id: 'd-uno', motivo: 'siniestro_particular', preguntas: [p], texto: 'T', aprobado_por: 'ejemplo sintetico' }).success).toBe(false);
+  });
+
+  it.each(['02-11-2026', '2.11.26', 'Ana 02-11-2026'])('rechaza aprobado_por con fecha %j', (v) => {
+    expect(EntradaRespuesta.safeParse(respuesta({ aprobado_por: v })).success).toBe(false);
+  });
 });
