@@ -405,6 +405,10 @@ sirve a cualquier agente de ChatbotRAG y no solo a Kuaa.
   los faltantes para que quien llama derive, y si aun así quedan llaves, lanza un error. Un valor que contenga
   `{{...}}` no se reinterpreta.
 
+Pendiente para H2: el texto armado de una plantilla debe pasar siempre por las compuertas de salida, y se
+recomienda validar el banco rellenándolo con la plataforma vigente antes de publicarlo. Fuera de las pruebas, un
+banco cuya `descripcion` diga «SINTÉTICO» o cuyo `aprobado_por` sea el reservado «ejemplo sintetico» debe rechazarse.
+
 Qué NO garantiza: que la respuesta sea correcta, completa o conveniente. Eso lo da quien figura en `aprobado_por`;
 el código solo asegura la forma, la integridad del archivo y que ningún marcador llegue al cliente.
 
