@@ -1,0 +1,60 @@
+{
+  "formato": 1,
+  "version": "0.0.1",
+  "descripcion": "Banco SINTÉTICO de ejemplo para pruebas; no contiene respuestas reales ni aprobadas.",
+  "respuestas": [
+    {
+      "id": "ejemplo-precio-1",
+      "tema": "precio_plan",
+      "preguntas": ["pregunta sintetica de precio uno", "pregunta sintetica de precio dos"],
+      "plantilla": "(ejemplo) El plan {{nombre_plan}} tiene un premio de {{premio_plan}}.",
+      "aprobado_por": "ejemplo sintetico",
+      "riesgo": "normal"
+    },
+    {
+      "id": "ejemplo-precio-2",
+      "tema": "precio_plan",
+      "preguntas": ["pregunta sintetica de precio tres"],
+      "plantilla": "(ejemplo) {{nombre_plan}}: {{premio_plan}} al año.",
+      "aprobado_por": "ejemplo sintetico",
+      "riesgo": "normal"
+    },
+    {
+      "id": "ejemplo-contacto",
+      "tema": "contacto",
+      "preguntas": ["pregunta sintetica de contacto"],
+      "plantilla": "(ejemplo) Puede escribir al {{whatsapp}}.",
+      "aprobado_por": "ejemplo sintetico",
+      "riesgo": "normal"
+    },
+    {
+      "id": "ejemplo-pendiente",
+      "tema": "contenido_pendiente",
+      "preguntas": ["pregunta sintetica de tema pendiente"],
+      "plantilla": "(ejemplo) Texto pendiente de aprobación.",
+      "aprobado_por": "ejemplo sintetico",
+      "riesgo": "normal",
+      "derivar_cuando": ["contenido_pendiente"]
+    }
+  ],
+  "derivaciones": [
+    {
+      "id": "ejemplo-emergencia",
+      "motivo": "emergencia",
+      "terminos": ["termino emergencia ejemplo"],
+      "texto": "(ejemplo) Texto de derivación por emergencia.",
+      "aprobado_por": "ejemplo sintetico"
+    },
+    {
+      "id": "ejemplo-siniestro",
+      "motivo": "siniestro_particular",
+      "preguntas": ["pregunta sintetica de siniestro uno", "pregunta sintetica de siniestro dos"],
+      "texto": "(ejemplo) Texto de derivación por siniestro.",
+      "aprobado_por": "ejemplo sintetico"
+    }
+  ],
+  "aclaraciones": {
+    "ambigua": { "texto": "(ejemplo) Texto para pregunta ambigua.", "aprobado_por": "ejemplo sintetico" },
+    "falta_plan": { "texto": "(ejemplo) Texto cuando falta elegir plan.", "aprobado_por": "ejemplo sintetico" }
+  }
+}

@@ -11,11 +11,39 @@ La sesión nueva retomó el proyecto el 23-oct. Esta sección completa lo que `#
 **Pendientes que la sesión antigua llevaba y faltaban en la lista** (tareas de la sesión):
 - **P16.** Normalización NFKC en `normalizar`: hoy la compuerta de entrada no unifica formas Unicode equivalentes (por ejemplo dígitos de ancho completo), y eso puede dejar pasar un dato que el bloqueo por forma debería detectar.
 - **P17.** Compuerta de salida que borre PAN, CVV y OTP del texto que sale, como defensa en profundidad además de la compuerta de entrada.
-- **P18.** Verificar la retención de datos de Vertex AI en la documentación oficial de Google, con fuente y fecha de consulta. Es un dato que respalda el texto de privacidad (decisión de Andres sobre «IA de un tercero»); no se afirma de memoria.
+- **P18 (hecho el 23-oct, en esta rama).** Retención y uso de datos de Vertex AI verificados en la documentación oficial de Google; resultado en la subsección «P18» más abajo. Queda pendiente que Andres lo use para el texto de privacidad (decisión suya) y que confirme bajo qué contrato opera la cuenta de GCP.
 
 **Incidente menor.** El UUID del chequeo de prueba de Healthchecks.io quedó expuesto en una captura de pantalla. Ese chequeo ya está borrado, así que el identificador no da acceso a nada. El UUID no se anota aquí.
 
 **No verificado en esta sección:** el detalle de P16 sale del encargo del relevo y no lo comprobé contra el código; hay que leer `normalizar` antes de planificar el cambio.
+### P18 · Retención y uso de datos en Vertex AI (consultado el 2026-10-23)
+
+**Fuentes oficiales** (ambas con «última actualización 2026-10-22 UTC»; Google presenta el producto hoy como «Gemini Enterprise Agent Platform», antes Vertex AI):
+- <https://docs.cloud.google.com/vertex-ai/generative-ai/docs/vertex-ai-zero-data-retention> (sirve también la ruta antigua `…/docs/data-governance`, que redirige).
+- <https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/abuse-monitoring> (la ruta `…/vertex-ai/generative-ai/docs/learn/abuse-monitoring` también existe).
+
+**Qué usa este proyecto:** `gemini-2.5-flash` y embeddings `text-embedding-005`, por Vertex AI con ADC, región `us-central1`. Llamadas de generación sin búsqueda en Google ni en Maps, sin Interactions API y sin Live API (verificado en el código); el registro de solicitudes y respuestas está apagado por omisión, y no se confirmó en la consola de GCP que siga apagado.
+
+**Lo que dice la documentación**
+- **Entrenamiento.** «Google won't use your data to train or fine-tune any AI/ML models without your prior permission or instruction» (modelos administrados, GA y pre-GA).
+- **Monitoreo de abuso, modelos de Google que no son «Frontier» ni «Advanced AI».** Se registran solo los prompts (no las respuestas) que los clasificadores automáticos marcan como sospechosos; se guardan hasta 90 días en la región elegida para el proyecto; personal autorizado de Google puede revisarlos y contactar al cliente. Aplica a quien opera bajo los Términos de la Plataforma de Google Cloud; los clientes con un Acuerdo Maestro de Google Cloud están exentos por omisión. No describe cómo excluirse si se está bajo los términos en línea. Esos registros no usan claves del cliente (CMEK).
+- **Modelos «Frontier» y «Advanced AI»** registran prompts y respuestas hasta 30 días, aunque no sean sospechosos. Los ejemplos que cita no son Gemini 2.5.
+- **Caché implícita de Gemini** (activa por omisión): en memoria, por proyecto, se borra a más tardar a las 24 horas; la duradera, también a las 24 horas como máximo. Solo sirve para atender las solicitudes del propio cliente y no entrena modelos. Se apaga por proyecto con `disableCache: true` (exige el rol `roles/aiplatform.admin`), y entonces no se retiene dato en caché.
+- **Residencia.** Con endpoint regional, la caché duradera queda en la región elegida; con el endpoint `global`, las solicitudes y su caché pueden atenderse desde cualquier región; la caché en memoria se procesa en la región que atiende.
+- **Retención cero.** Exige acciones concretas en cada área: no activar el registro de solicitudes y respuestas, `store = false` en la Interactions API, no usar la reanudación de sesión de Live API ni las instantáneas de Sandbox, y apagar la caché. La página no ofrece forma de excluirse del registro de monitoreo de abuso.
+
+**Inferencias mías (no están escritas en la documentación)**
+- Que `gemini-2.5-flash` cae en la categoría «no Frontier ni Advanced»: la documentación nombra ejemplos de las otras categorías y no lista Gemini 2.5; no la encontré en ninguna de ellas.
+- Que la cuenta de GCP del proyecto (`encuentramebo-1` para staging) opera bajo los términos en línea y no bajo un Acuerdo Maestro: por ser una cuenta personal lo más probable es que sí, pero no lo verifiqué.
+
+**No encontré / no verifiqué**
+- Nada sobre la retención de **`text-embedding-005`** en estas dos páginas.
+- No consulté los Términos de Servicio ni el Anexo de Tratamiento de Datos de Google Cloud, que son lo que de verdad rige.
+- Verifiqué en el código que no se usan búsqueda ni Maps, Interactions API, Live API ni caché explícita (`paquetes/proveedor-vertex`, `servicio`), y que la región es `us-central1` por omisión (`servicio/src/entorno.ts`), es decir endpoint regional. No verifiqué el valor de `GCP_REGION` realmente fijado en el servicio desplegado.
+- No es asesoría jurídica: el texto de privacidad lo aprueban Legal e Interseguros (P15).
+
+**Qué implica para el texto de privacidad (P8)**, si Andres lo decide: con las condiciones anteriores, afirmar «no se guardan los mensajes» sería inexacto. Lo que la documentación sustenta es: Google no entrena con los datos sin permiso; puede guardar hasta 90 días y revisar los mensajes que sus clasificadores marquen como sospechosos; y puede mantener copias en caché hasta 24 horas.
+
 ### Trampas operativas que no estaban escritas (relevo del 2026-10-23)
 
 - **Herramientas del equipo.** El cambio de Python del sistema a 3.14 rompió pre-commit, semgrep y checkov (instalaciones de usuario): el hook de commit falla con «No module named pre_commit» y `security-local.sh` dice «aprobado con cobertura parcial», que no es lo mismo que limpio. Se reinstalaron en entornos propios, sin sudo: `~/.local/share/{pre-commit,checkov,semgrep}-venv`, enlazados desde `~/.local/bin`; `pysemgrep` apuntaba a una instalación de `uv` rota y se repuso. Si vuelve a fallar tras otra actualización del sistema, repetir eso y volver a correr `pre-commit install`. Un análisis con herramientas «no ejecutadas» no se da por aprobado.

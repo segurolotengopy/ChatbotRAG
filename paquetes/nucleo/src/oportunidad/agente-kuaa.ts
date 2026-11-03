@@ -43,7 +43,7 @@ import type { FragmentoRecuperado } from '../puertos/indice-conocimiento.js';
 import { EntradaKuaa, SalidaOportunidad, filtrarBotonesSalida } from './esquemas.js';
 import { normalizarEntradaKuaa } from './normalizar-entrada.js';
 import { armarPromptKuaa } from './prompt-kuaa.js';
-import { afirmaHechoNoRespaldado, patronEnlaceOPrecio, permitidosDe, analizarSalida, filtraPrompt, retirarCodigosInternos, salidaFallback, salidaSinCifras } from './salida-kuaa.js';
+import { afirmaHechoNoRespaldado, afirmaTratamientoTributario, quitarFrases, salvarQuitandoBloqueado, quitarPromesasDeEntrega, retirarNumerosDeRegistro, salidaTributaria, patronEnlaceOPrecio, permitidosDe, analizarSalida, filtraPrompt, retirarCodigosInternos, salidaFallback, salidaSinCifras } from './salida-kuaa.js';
 
 export interface ResultadoKuaa {
   salida: SalidaOportunidad;
@@ -57,6 +57,9 @@ type BaseBitacora = Pick<EventoBitacora, 'agenteId' | 'perfilId' | 'conversacion
 export function claveMemoriaKuaa(clienteId: string, oportunidadId: string): string {
   return `kuaa:${clienteId}:${createHash('sha256').update(`${clienteId}\0${oportunidadId}`).digest('hex')}`;
 }
+
+/** Lo que debe quedar de una respuesta tras quitarle una frase para seguir valiendo («¿Ok?» solo no ayuda a nadie). */
+const RESTO_MINIMO = 30;
 
 export class AgenteKuaa {
   private readonly reloj: () => Date;
@@ -165,17 +168,45 @@ export class AgenteKuaa {
     const analizada = analizarSalida(textoModelo);
     if ('causa' in analizada) return cierre(fallback([...avisos, `causa_salida:${analizada.causa}`], 'salida_invalida'));
     const interpretada = analizada.salida;
+    if (analizada.descartados > 0) avisos.push('valores_descartados');
 
     // La salida también se sanea (controles, marcas bidi) antes de cualquier control y de la memoria.
-    const textoBase = sanearTexto(interpretada.texto, 4000);
-    const textoSaneado = retirarCodigosInternos(textoBase);
+    const sinPromesas = quitarPromesasDeEntrega(interpretada.texto);
+    if (sinPromesas !== interpretada.texto.trim()) avisos.push('promesa_entrega_retirada');
+    const sinRegistro = retirarNumerosDeRegistro(sinPromesas === '' ? interpretada.texto : sinPromesas);
+    if (sinRegistro !== (sinPromesas === '' ? interpretada.texto : sinPromesas).trim()) avisos.push('registro_retirado');
+    let textoBase = sanearTexto(sinRegistro === '' ? interpretada.texto : sinRegistro, 4000);
+    let textoSaneado = retirarCodigosInternos(textoBase);
     if (textoSaneado !== textoBase) avisos.push('codigo_interno_retirado');
     if (textoSaneado === '') return cierre(fallback([...avisos, 'causa_salida:vacia_tras_sanear'], 'salida_invalida'));
     // El detector mira el texto del modelo tal cual y también el ya limpio: el retiro nunca debe esconderle nada.
     const permitidos = permitidosDe(entrada.plataforma);
-    const patron = patronEnlaceOPrecio(textoBase, permitidos) ?? patronEnlaceOPrecio(textoSaneado, permitidos);
-    if (patron) return cierre({ salida: salidaSinCifras(etapa), avisos: [...avisos, `patron_bloqueado:${patron}`, 'enlace_o_precio'] });
-    const hecho = afirmaHechoNoRespaldado(textoSaneado, entrada.estados);
+    let patron = patronEnlaceOPrecio(textoBase, permitidos) ?? patronEnlaceOPrecio(textoSaneado, permitidos);
+    // Un valor suelto (un dominio, o «diez mil» al desmentir un precio) no justifica perder toda la respuesta: se quita
+    // lo que lo lleva y se revisa de nuevo lo que queda; si aún hay algo bloqueado o queda poco, se responde sin cifras.
+    if (patron) {
+      const salvado = salvarQuitandoBloqueado(textoBase, (f) => patronEnlaceOPrecio(f, permitidos) !== null, RESTO_MINIMO);
+      if (salvado !== null) {
+        textoBase = salvado;
+        textoSaneado = retirarCodigosInternos(salvado);
+        patron = patronEnlaceOPrecio(textoSaneado, permitidos);
+        avisos.push('frase_con_valor_retirada');
+      }
+    }
+    if (patron) return cierre({ salida: salidaSinCifras(etapa, entrada.plataforma?.contacto.whatsapp_e164), avisos: [...avisos, `patron_bloqueado:${patron}`, 'enlace_o_precio'] });
+    if (afirmaTratamientoTributario(textoBase) || afirmaTratamientoTributario(textoSaneado)) {
+      return cierre({ salida: salidaTributaria(etapa), avisos: [...avisos, 'tributario_bloqueado'] });
+    }
+    let hecho = afirmaHechoNoRespaldado(textoSaneado, entrada.estados);
+    // Igual que con el dominio: se quita la frase que afirma el hecho («tu pago fue acreditado») y se revisa el resto.
+    if (hecho) {
+      const sinHecho = quitarFrases(textoSaneado, (f) => afirmaHechoNoRespaldado(f, entrada.estados) !== null);
+      if (sinHecho.length >= RESTO_MINIMO && afirmaHechoNoRespaldado(sinHecho, entrada.estados) === null) {
+        textoSaneado = sinHecho;
+        hecho = null;
+        avisos.push('frase_con_hecho_retirada');
+      }
+    }
     if (hecho) return cierre(fallback(avisos, `hecho_no_respaldado:${hecho}`));
     if (filtraPrompt(textoSaneado)) return cierre(fallback(avisos, 'fuga_prompt'));
 
