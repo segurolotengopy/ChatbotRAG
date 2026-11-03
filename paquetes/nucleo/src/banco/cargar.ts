@@ -63,7 +63,11 @@ export function cargarBanco(contenido: string, opciones: { sha256Esperado?: stri
   if (!analisis.success) {
     throw new ErrorBanco(
       'banco inválido',
-      analisis.error.issues.map((i) => `${i.path.join('.') || '(raíz)'}: ${i.message}`),
+      analisis.error.issues.map((i) => {
+        const ruta = i.path.join('.') || '(raíz)';
+        // Zod nombra la clave sobrante en su mensaje; podría ser un secreto pegado por error.
+        return i.code === 'unrecognized_keys' ? `${ruta}: clave no admitida` : `${ruta}: ${i.message}`;
+      }),
     );
   }
   const banco = analisis.data;

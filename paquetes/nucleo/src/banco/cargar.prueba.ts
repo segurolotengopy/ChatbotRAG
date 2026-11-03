@@ -104,4 +104,14 @@ describe('cargarBanco', () => {
     );
     expect(e.detalles).toHaveLength(2);
   });
+
+  it('una clave extra no muestra su nombre en ningún detalle ni en el mensaje', () => {
+    const nombre = 'AIzaSECRETOxxxxxxxxxxxxxxxx';
+    const enRaiz = falla(texto(banco({ [nombre]: 1 })));
+    const enEntrada = falla(texto(banco({ respuestas: [respuesta({ [nombre]: 1 })] })));
+    for (const e of [enRaiz, enEntrada]) {
+      expect(`${e.message} ${e.detalles.join(' ')}`).not.toContain(nombre);
+      expect(e.detalles.some((d) => d.endsWith(': clave no admitida'))).toBe(true);
+    }
+  });
 });
