@@ -89,9 +89,11 @@ export function enrutar(texto: string, indice: IndiceEnrutador, config: Enrutado
   const nt = normalizarParaTerminos(texto);
   if (nt === '') return { carril: 'ia', motivo: 'sin_contenido', entradaCandidata: null };
 
+  // Filtro barato: un término solo puede coincidir si su primera palabra está entre las del mensaje.
+  const palabras = new Set(nt.split(' '));
   const rodeado = ` ${nt} `;
   for (const t of indice.terminos) {
-    if (!rodeado.includes(t.buscado)) continue;
+    if (!palabras.has(t.buscado.slice(1, t.buscado.indexOf(' ', 1))) || !rodeado.includes(t.buscado)) continue;
     const d = indice.banco.derivaciones[t.derivacion];
     if (d) return { carril: 'derivacion', motivo: d.motivo, origen: 'termino_emergencia', entradaId: d.id };
   }
