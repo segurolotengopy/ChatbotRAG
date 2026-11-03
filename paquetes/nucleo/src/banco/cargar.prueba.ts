@@ -1,7 +1,10 @@
 /** Pruebas del cargador del banco de respuestas. Datos sintéticos. */
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { ErrorBanco, cargarBanco } from './cargar.js';
+
+const EJEMPLO = readFileSync(new URL('./banco-ejemplo.json', import.meta.url), 'utf8');
 
 const respuesta = (cambios: Record<string, unknown> = {}) => ({
   id: 'r-uno',
@@ -26,6 +29,14 @@ function falla(contenido: string, opciones?: { sha256Esperado?: string }): Error
 }
 
 describe('cargarBanco', () => {
+  it('el banco de ejemplo carga y su SHA-256 es estable', () => {
+    const { banco: b, sha256 } = cargarBanco(EJEMPLO);
+    expect(b.respuestas).toHaveLength(4);
+    expect(b.derivaciones).toHaveLength(2);
+    expect(sha256).toBe(createHash('sha256').update(EJEMPLO, 'utf8').digest('hex'));
+    expect(cargarBanco(EJEMPLO + ' ').sha256).not.toBe(sha256);
+  });
+
   it('el SHA-256 es estable y cambia con un byte', () => {
     const t = texto(banco());
     const { sha256 } = cargarBanco(t);
