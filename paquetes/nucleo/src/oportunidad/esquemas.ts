@@ -241,11 +241,14 @@ export const PropuestaSalida = z.enum([
 ]);
 
 /** Esquema de SALIDA del asistente. `etapa_propuesta` es una propuesta, nunca evidencia. */
+/** Objeción que el modelo reporta en su salida; si no cumple el esquema, `analizarSalida` la descarta. */
+export const ObjecionSalida = z.object({ codigo: CodigoObjecion, estado: EstadoObjecion }).strict();
+
 export const SalidaOportunidad = z
   .object({
     texto: z.string().min(1).max(4000),
     etapa_propuesta: EtapaVenta,
-    objecion: z.object({ codigo: CodigoObjecion, estado: EstadoObjecion }).strict().nullable(),
+    objecion: ObjecionSalida.nullable(),
     botones: z.array(BotonSalida),
     propuestas: z.array(PropuestaSalida),
   })
