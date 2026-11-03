@@ -345,6 +345,14 @@ importes, teléfonos y correos (con límites de dígitos y de dominio) antes de 
 otra cifra sigue bloqueada. El bloque no se guarda en la memoria ni en la bitácora (solo el aviso `plataforma:<version>`).
 No garantiza que los datos sean correctos (los fija SLT) ni que el modelo los use en el contexto adecuado.
 
+`contacto` admite además dos campos opcionales que SLT envía ya saneados. `direccion` es la dirección de Interseguros
+(5 a 200 caracteres; solo letras, números, espacio y `. + -`, sin comas ni «º») y Kuaa puede darla tal cual, como frase
+completa. `sitio_web` es el sitio de Interseguros como dominio suelto en minúsculas (sin esquema, ruta ni puerto) y es
+la única excepción a la prohibición de enlaces. No garantizan: no se admite ningún otro dato de contacto (otra dirección,
+redes, otros dominios); el sitio web solo se permite escrito como dominio suelto (`interseguros360.com`, no
+`https://…`, ni con ruta, ni como parte de un dominio más largo) y la dirección solo completa; la misma frase con otro
+número se bloquea. Sin estos campos el comportamiento es idéntico al anterior.
+
 1. **Entrada.** Normaliza localmente (NFKC, sin caracteres de formato, marcas combinantes ni rellenos,
    homóglifos cirílicos y griegos plegados) ANTES de las compuertas y de enviar al modelo; el modelo recibe
    el texto normalizado. Un mensaje más largo que `maxCaracteresEntrada` responde 413 `TEXTO_LARGO` (con
