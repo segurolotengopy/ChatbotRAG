@@ -593,6 +593,38 @@ describe('dirección y sitio web del contacto', () => {
       expect(patronEnlaceOPrecio('evil。com')).toBe('dominio');
       expect(patronEnlaceOPrecio('evil．com')).toBe('dominio');
     });
+    it.each([
+      ['evil.coΜ', 'dominio'],
+      ['evil.pΥ', 'dominio'],
+      ['evil.ΝET', 'dominio'],
+      ['ΗTTPS://evil.tk', 'https'],
+      ['5 ΜIL guaraníes', 'mil_millon'],
+      ['cinco ΜILLONES', 'numero_en_palabras'],
+      ['ΝUEVE mil', 'numero_en_palabras'],
+      ['pΥg 5', 'moneda_antes'],
+      ['㏁', null],
+      ['ϒ', null],
+    ])('sin permitidos «%s» da lo mismo que el detector de main: %s (mayúsculas griegas)', (texto, esperado) => {
+      expect(patronEnlaceOPrecio(texto)).toBe(esperado);
+    });
+    it('una dirección que termina en dígito no deja pasar un importe pegado; una que no, no da falso positivo', () => {
+      const DIR_NUM = 'Calle Peru 1234';
+      const p = permitidosDe(Plataforma.parse(plataforma({ contacto: { direccion: DIR_NUM } }))) as Permitidos;
+      expect(patronEnlaceOPrecio(`Estamos en ${DIR_NUM}.`, p)).toBeNull();
+      for (const sufijo of ['mil', 'millones de guaranies', '%']) expect(patronEnlaceOPrecio(`Estamos en ${DIR_NUM} ${sufijo}`, p)).not.toBeNull();
+      expect(patronEnlaceOPrecio(`Estamos en ${DIRECCION} mil gracias`, perm)).toBeNull();
+    });
+    it.each([
+      ['enlace con destino sin protocolo', '[x](evil.tk)'],
+      ['dominio permitido como texto y destino relativo al protocolo', '[interseguros360.com](//evil.tk)'],
+      ['lo mismo con espacios', '[ interseguros360.com ](//evil.tk)'],
+      ['con espacio entre corchete y paréntesis', '[x] (evil.tk)'],
+    ])('bloquea el enlace de Markdown: %s', (_n, texto) => {
+      expect(patronEnlaceOPrecio(texto, perm)).not.toBeNull();
+    });
+    it.each(['El plan (el básico) cubre lo indicado.', '(ver arriba)', 'Hay tres opciones (A, B y C).'])('un texto normal con paréntesis no dispara: %s', (texto) => {
+      expect(patronEnlaceOPrecio(texto, perm)).toBeNull();
+    });
     it('la dirección permitida no se confunde con un importe: «…Peru mil gracias» no dispara', () => {
       expect(patronEnlaceOPrecio(`Estamos en ${DIRECCION} mil gracias`, perm)).toBeNull();
     });

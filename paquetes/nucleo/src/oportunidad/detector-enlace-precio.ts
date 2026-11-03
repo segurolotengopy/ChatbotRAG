@@ -26,13 +26,14 @@ export function paraDetectar(texto: string): string {
 const sinTildes = (t: string): string => t.normalize('NFD').replace(/\p{Mn}/gu, '');
 
 /**
- * El texto tal como se parece al que recibe la persona: NFKC y minúsculas, con los puntos ideográficos («。», «．», «｡»)
+ * El texto tal como se parece al que recibe la persona: NFKC (SIN pasar a minúsculas: las mayúsculas griegas se pliegan
+ * distinto a sus minúsculas, y `paraDetectar` pasa a minúsculas DESPUÉS de plegar, como siempre), con los puntos ideográficos («。», «．», «｡»)
  * vueltos «.», sin los invisibles que UTS46 ignora en un nombre de dominio (U+200B, U+00AD, U+2060, U+FEFF, U+034F) y
  * sin los marcadores privados del detector. NO pliega homóglifos ni quita marcas combinantes: eso es justo lo que no
  * debe ocurrir antes de comparar un permitido.
  */
 function parecidoEntregado(texto: string): string {
-  return texto.normalize('NFKC').toLowerCase().replace(/[。．｡]/g, '.').replace(/\u034F|[\u200B\u00AD\u2060\uFEFF\uE000\uE001]/g, '');
+  return texto.normalize('NFKC').replace(/[。．｡]/g, '.').replace(/\u034F|[\u200B\u00AD\u2060\uFEFF\uE000\uE001]/g, '');
 }
 
 const NUMERO_EN_PALABRAS =
@@ -49,6 +50,10 @@ const PATRONES_ENLACE_O_PRECIO: readonly (readonly [string, RegExp])[] = [
   ['hxxp', /hxxps?/],
   ['www', /\bwww\./],
   ['punto_ofuscado', /\[\.\]|\(\.\)|\[dot\]/],
+  // Un enlace de Markdown («](destino)»): el texto visible puede ser un dominio permitido y el destino otro. Acotado a «]»
+  // seguido de «(»: un texto con paréntesis suelto («El plan (el básico)…») no dispara, pero «[1] (nota)» sí (falso positivo
+  // aceptado: Kuaa no usa listas con corchetes).
+  ['markdown_enlace', /\]\s*\(/],
   ['porcentaje_hex', /%[0-9a-f]{2}/],
   ['ruta_dominio', /\b[a-z0-9-]+\.[a-z]{2,}\//],
   ['dominio', /[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|py|net|org|io|me|app|ar|bo)\b/],
@@ -125,6 +130,7 @@ const LIMITE_DESPUES = `(?=${CIERRE}|[*_\`]{1,3}(?:${CIERRE}))`;
 /**
  * Marcadores de uso privado (el texto del modelo los pierde antes de detectar, así que nadie puede escribirlos): el de
  * la dirección permitida es propio y no «§», que es el de los importes («…Peru mil gracias» no es un importe alterado);
+ * pero si la dirección TERMINA en dígito se usa «§»: un «mil», «%» o «millones» pegado cambia esa cifra («Calle Peru 1234 mil»);
  * el de la dirección alterada dispara `direccion_alterada`.
  */
 const MARCA_DIRECCION = '\uE001';
@@ -133,21 +139,21 @@ const MARCA_ALTERADA = '\uE000';
 const escaparRe = (t: string): string => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
- * Retira correos y dominios permitidos sobre un texto que se parece al ENTREGADO a la persona (`parecidoEntregado`: NFKC y
- * minúsculas, sin plegar homóglifos ni tildes ni marcas combinantes): «іnterseguros360.com» (con «і» cirílica),
+ * Retira correos y dominios permitidos sobre un texto que se parece al ENTREGADO a la persona (`parecidoEntregado`: NFKC, sin
+ * plegar homóglifos ni tildes ni marcas combinantes): «іnterseguros360.com» (con «і» cirílica),
  * «ínterseguros360.com» o «interse̲guros360.com» no son el dominio permitido aunque, ya plegados, lo parezcan; la persona
  * ve el texto original. Qué NO garantiza: nada sobre lo que rodea al permitido más allá de los límites de lista blanca.
  */
 function quitarContactos(t: string, p: Permitidos): string {
   let r = t;
   for (const c of p.correos) {
-    r = r.replace(new RegExp(`${LIMITE_ANTES}${escaparRe(c.toLowerCase())}${LIMITE_DESPUES}`, 'gu'), '§');
+    r = r.replace(new RegExp(`${LIMITE_ANTES}${escaparRe(c)}${LIMITE_DESPUES}`, 'giu'), '§');
   }
   // Dominio (sitio web): solo el texto suelto, con los mismos límites de lista blanca que el correo. Antes solo puede
   // haber inicio, espacio o un signo de apertura; después, fin, espacio, un signo de cierre o puntuación de frase. Todo lo
   // demás (letras de otros alfabetos pegadas, «&x=1», «](url)», «/ruta», otro rótulo) deja el dominio visible a los patrones.
   for (const d of p.dominios) {
-    r = r.replace(new RegExp(`${LIMITE_ANTES}${escaparRe(d)}${LIMITE_DESPUES}`, 'gu'), '§');
+    r = r.replace(new RegExp(`${LIMITE_ANTES}${escaparRe(d)}${LIMITE_DESPUES}`, 'giu'), '§');
   }
   return r;
 }
@@ -172,7 +178,7 @@ function quitarPermitidos(t: string, p: Permitidos): string {
   // trae la misma frase con otro número («Av X 1235» por «Av X 1234»), queda el marcador privado U+E000 y el detector la bloquea.
   for (const dir of p.direcciones) {
     const cuerpo = escaparRe(dir);
-    r = r.replace(new RegExp(`(?<![\\p{L}\\p{N}])${cuerpo}(?![\\p{L}\\p{N}]|[.,]\\d)`, 'gu'), MARCA_DIRECCION);
+    r = r.replace(new RegExp(`(?<![\\p{L}\\p{N}])${cuerpo}(?![\\p{L}\\p{N}]|[.,]\\d)`, 'gu'), /\d$/.test(dir) ? '§' : MARCA_DIRECCION);
     if (/\d/.test(dir)) {
       const comodin = cuerpo.replace(/\d+/g, '\\d{1,9}');
       r = r.replace(new RegExp(`(?<![\\p{L}\\p{N}])${comodin}(?![\\p{L}\\p{N}])`, 'gu'), MARCA_ALTERADA);
@@ -192,7 +198,7 @@ export function patronEnlaceOPrecio(texto: string, permitidos?: Permitidos): str
   const entregado = parecidoEntregado(texto);
   // Correos y dominios se comparan contra lo que la persona leerá; solo después se pliegan homóglifos y tildes.
   const sinContactos = permitidos ? quitarContactos(entregado, permitidos) : entregado;
-  const t0 = sinTildes(normalizarEntradaKuaa(sinContactos));
+  const t0 = paraDetectar(sinContactos);
   const t = permitidos ? quitarPermitidos(t0, permitidos) : t0;
   return PATRONES_ENLACE_O_PRECIO.find(([, re]) => re.test(t))?.[0] ?? null;
 }
