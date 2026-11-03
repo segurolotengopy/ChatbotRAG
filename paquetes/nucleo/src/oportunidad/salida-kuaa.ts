@@ -259,6 +259,22 @@ export function quitarFrases(texto: string, debeQuitarse: (frase: string) => boo
 }
 
 /**
+ * Intenta salvar una respuesta bloqueada quitando lo que la bloquea: primero por frases y, si eso deja muy poco, por
+ * cláusulas (separadas por coma, punto y coma o «pero»), de modo que «El premio es Gs. 390.000 por año, no diez mil.»
+ * conserve la primera parte. Devuelve el texto que queda solo si tiene al menos `minimo` caracteres y `bloqueado` ya
+ * no lo marca; si no, null y quien llama responde como antes. Qué NO garantiza: que lo que queda diga todo lo que el
+ * modelo quería decir; solo que no contiene lo bloqueado.
+ */
+export function salvarQuitandoBloqueado(texto: string, bloqueado: (fragmento: string) => boolean, minimo: number): string | null {
+  const ok = (t: string): boolean => t.length >= minimo && !bloqueado(t);
+  const porFrases = quitarFrases(texto, bloqueado);
+  if (ok(porFrases)) return porFrases;
+  const clausulas = texto.split(/(?<=[.!?;,])\s{1,8}|\s{1,8}pero\s{1,8}/);
+  const resto = clausulas.filter((c) => !bloqueado(c)).join(' ').replace(/[,;]\s*$/, '.').trim();
+  return ok(resto) ? resto : null;
+}
+
+/**
  * Quita el número de matrícula o registro del corredor («matrícula BCP N.o 118»): el dato no está aprobado para
  * citarse hasta que Legal lo confirme (contradicciones del paquete). Deja el resto de la frase. Qué NO garantiza:
  * otros números de registro con otra forma.

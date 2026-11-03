@@ -10,6 +10,7 @@ import { cargarConfiguracionDesdeJson } from '../configuracion/cargar.js';
 import { resolverConfiguracion } from '../configuracion/perfiles.js';
 import { coleccionDe } from '../conocimiento/cargar-corpus.js';
 import { IndiceEnMemoria } from '../conocimiento/indice-memoria.js';
+import { formatearGs } from './formato-plataforma.js';
 import { RegistroHerramientas } from '../herramientas/registro.js';
 import { MemoriaEnProceso } from '../memoria/memoria-en-proceso.js';
 import type { PeticionLLM, ProveedorLLM, RespuestaLLM } from '../puertos/proveedor-llm.js';
@@ -316,12 +317,24 @@ describe('fallas de la batería de SLT', () => {
     const { agente } = await armar('SeguroLoTengo es el canal digital de Interseguros para contratar seguros. Visitá segurolotengo.com.py para más datos.');
     const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
     expect(r.salida.texto).toBe('SeguroLoTengo es el canal digital de Interseguros para contratar seguros.');
-    expect(r.avisos).toContain('frase_con_dominio_retirada');
+    expect(r.avisos).toContain('frase_con_valor_retirada');
   });
   it('un dominio en la única frase sigue bloqueando la respuesta', async () => {
     const { agente } = await armar('Visitá segurolotengo.com.py para más datos.');
     const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
     expect(r.avisos).toContain('patron_bloqueado:dominio');
+  });
+  it('al desmentir un precio ajeno se conserva el importe permitido y no se repite el ajeno (TCV014)', async () => {
+    const premio = formatearGs(plataforma().planes[0]?.premio_anual_gs ?? 0);
+    const { agente } = await armar(`El premio publicado es de ${premio} por año, no diez mil.`);
+    const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+    expect(r.salida.texto).toBe(`El premio publicado es de ${premio} por año.`);
+    expect(r.avisos).toContain('frase_con_valor_retirada');
+  });
+  it('si solo queda el valor ajeno, sigue sin cifras', async () => {
+    const { agente } = await armar('La web dice diez mil guaraníes.');
+    const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+    expect(r.avisos).toContain('patron_bloqueado:numero_en_palabras');
   });
   it('una frase que afirma el pago acreditado se quita y se conserva el resto', async () => {
     const { agente } = await armar('El plazo para el envío de la póliza es de 24 horas desde la acreditación del pago. Tu pago fue acreditado correctamente.');
