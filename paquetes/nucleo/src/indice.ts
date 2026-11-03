@@ -28,3 +28,7 @@ export * from './oportunidad/frases-kuaa.js';
 export * from './oportunidad/prompt-kuaa.js';
 export * from './oportunidad/salida-kuaa.js';
 export * from './oportunidad/agente-kuaa.js';
+export * from './banco/esquema.js';
+export * from './banco/plantillas.js';
+export * from './banco/cargar.js';
+export * from './oportunidad/variables-plataforma.js';

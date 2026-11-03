@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { GenerateContentResponse } from '@google/genai';
 import { agruparPorPresupuesto, aContenidos, EmbebedorVertex, ErrorProveedor, MAX_CARACTERES_POR_LOTE, MAX_TEXTOS_POR_LOTE, ProveedorVertex, type ClienteGemini } from './indice.js';
 
@@ -128,5 +128,154 @@ describe('ProveedorVertex: razonamiento', () => {
   it('suma los tokens de razonamiento a los de salida (se cobran como salida)', async () => {
     const r = await new ProveedorVertex(clienteFalso(respuesta)).generar({ ...base, parametros: { modelo: 'gemini-2.5-flash', temperatura: 0, maxTokensSalida: 100 } });
     expect(r.uso).toEqual({ tokensEntrada: 10, tokensSalida: 940 });
+  });
+});
+
+describe('ProveedorVertex: tiempo máximo y reintento', () => {
+  const peticion = { sistema: 'S', mensajes: [{ rol: 'usuario' as const, contenido: 'secreto-del-usuario' }], herramientas: [], parametros: { modelo: 'gemini-2.5-flash', temperatura: 0, maxTokensSalida: 100 } };
+  const buena = { candidates: [{ content: { role: 'model', parts: [{ text: 'Hola.' }] }, finishReason: 'STOP' as never }] } as unknown as GenerateContentResponse;
+
+  type Paso = 'lento' | 'bueno' | Error;
+  /** Cliente falso que ignora la señal en los pasos lentos (nunca resuelve) y registra cada llamada. */
+  function clienteGuionado(pasos: Paso[]) {
+    const senales: AbortSignal[] = [];
+    const cliente: ClienteGemini = {
+      generateContent(p) {
+        if (p.config.abortSignal) senales.push(p.config.abortSignal);
+        const paso = pasos[senales.length - 1] ?? 'bueno';
+        if (paso === 'lento') return new Promise<GenerateContentResponse>(() => undefined);
+        if (paso === 'bueno') return Promise.resolve(buena);
+        return Promise.reject(paso);
+      },
+      embedContent: async () => ({ embeddings: [] }),
+    };
+    return { cliente, senales };
+  }
+  const conEstado = (mensaje: string, status: number) => Object.assign(new Error(mensaje), { status });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('un intento lento y el segundo bueno: devuelve la respuesta tras 2 llamadas, la primera abortada', async () => {
+    vi.useFakeTimers();
+    const { cliente, senales } = clienteGuionado(['lento', 'bueno']);
+    const promesa = new ProveedorVertex(cliente).generar(peticion);
+    await vi.advanceTimersByTimeAsync(9000);
+    expect((await promesa).texto).toBe('Hola.');
+    expect(senales).toHaveLength(2);
+    expect(senales[0]!.aborted).toBe(true);
+    expect(senales[1]!.aborted).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('dos intentos lentos: ErrorProveedor con «tiempo máximo» y sin el contenido de la petición', async () => {
+    vi.useFakeTimers();
+    const { cliente, senales } = clienteGuionado(['lento', 'lento']);
+    const asercion = expect(new ProveedorVertex(cliente).generar(peticion)).rejects.toSatisfy((e: unknown) => e instanceof ErrorProveedor && e.message === 'Vertex (gemini-2.5-flash): tiempo máximo de 9000 ms agotado');
+    await vi.advanceTimersByTimeAsync(18000);
+    await asercion;
+    expect(senales).toHaveLength(2);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('un 503 y luego bueno: 2 llamadas', async () => {
+    const { cliente, senales } = clienteGuionado([conEstado('no disponible', 503), 'bueno']);
+    expect((await new ProveedorVertex(cliente).generar(peticion)).texto).toBe('Hola.');
+    expect(senales).toHaveLength(2);
+  });
+
+  it('un 500 se reintenta', async () => {
+    const { cliente, senales } = clienteGuionado([conEstado('interno', 500), 'bueno']);
+    expect((await new ProveedorVertex(cliente).generar(peticion)).texto).toBe('Hola.');
+    expect(senales).toHaveLength(2);
+  });
+
+  it('un 429 (cuota) sale en el primer intento: 1 llamada', async () => {
+    const { cliente, senales } = clienteGuionado([conEstado('cuota', 429), 'bueno']);
+    await expect(new ProveedorVertex(cliente).generar(peticion)).rejects.toThrow(/cuota/);
+    expect(senales).toHaveLength(1);
+  });
+
+  it('400, 401 y 403 salen en 1 llamada', async () => {
+    for (const status of [400, 401, 403]) {
+      const { cliente, senales } = clienteGuionado([conEstado('rechazo', status), 'bueno']);
+      await expect(new ProveedorVertex(cliente).generar(peticion)).rejects.toThrow(ErrorProveedor);
+      expect(senales).toHaveLength(1);
+    }
+  });
+
+  it('un 400 cuyo mensaje cita ETIMEDOUT sale en 1 llamada', async () => {
+    const { cliente, senales } = clienteGuionado([conEstado('petición inválida: ETIMEDOUT', 400), 'bueno']);
+    await expect(new ProveedorVertex(cliente).generar(peticion)).rejects.toThrow(ErrorProveedor);
+    expect(senales).toHaveLength(1);
+  });
+
+  it('un error de red (fetch failed) se reintenta y devuelve la respuesta buena', async () => {
+    const { cliente, senales } = clienteGuionado([new Error('fetch failed'), 'bueno']);
+    expect((await new ProveedorVertex(cliente).generar(peticion)).texto).toBe('Hola.');
+    expect(senales).toHaveLength(2);
+  });
+
+  it('un `code` de texto ECONNRESET se reintenta y devuelve la respuesta buena', async () => {
+    const { cliente, senales } = clienteGuionado([Object.assign(new Error('socket'), { code: 'ECONNRESET' }), 'bueno']);
+    expect((await new ProveedorVertex(cliente).generar(peticion)).texto).toBe('Hola.');
+    expect(senales).toHaveLength(2);
+  });
+
+  it('un cliente que respeta el abortSignal (AbortError) igual da el reintento exitoso', async () => {
+    vi.useFakeTimers();
+    const senales: AbortSignal[] = [];
+    const cliente: ClienteGemini = {
+      generateContent(p) {
+        const senal = p.config.abortSignal!;
+        senales.push(senal);
+        if (senales.length > 1) return Promise.resolve(buena);
+        return new Promise<GenerateContentResponse>((_, rechazar) => {
+          senal.addEventListener('abort', () => rechazar(Object.assign(new Error('This operation was aborted'), { name: 'AbortError' })));
+        });
+      },
+      embedContent: async () => ({ embeddings: [] }),
+    };
+    const promesa = new ProveedorVertex(cliente).generar(peticion);
+    await vi.advanceTimersByTimeAsync(9000);
+    expect((await promesa).texto).toBe('Hola.');
+    expect(senales).toHaveLength(2);
+    expect(senales[0]!.aborted).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('opciones inválidas lanzan', () => {
+    const { cliente } = clienteGuionado([]);
+    expect(() => new ProveedorVertex(cliente, { tiempoMaximoMs: 0 })).toThrow(/tiempoMaximoMs/);
+    expect(() => new ProveedorVertex(cliente, { tiempoMaximoMs: 1.5 })).toThrow(/tiempoMaximoMs/);
+    expect(() => new ProveedorVertex(cliente, { reintentos: -1 })).toThrow(/reintentos/);
+    expect(() => new ProveedorVertex(cliente, { reintentos: 0.5 })).toThrow(/reintentos/);
+    expect(() => new ProveedorVertex(cliente, { tiempoMaximoMs: 1, reintentos: 0 })).not.toThrow();
+  });
+
+  it('un 404 (modelo retirado): 1 sola llamada y error', async () => {
+    const { cliente, senales } = clienteGuionado([conEstado('model no longer available', 404), 'bueno']);
+    await expect(new ProveedorVertex(cliente).generar(peticion)).rejects.toThrow(/Vertex \(gemini-2.5-flash\): model no longer available/);
+    expect(senales).toHaveLength(1);
+  });
+
+  it('un error desconocido: 1 sola llamada', async () => {
+    const { cliente, senales } = clienteGuionado([new Error('algo raro'), 'bueno']);
+    await expect(new ProveedorVertex(cliente).generar(peticion)).rejects.toThrow(ErrorProveedor);
+    expect(senales).toHaveLength(1);
+  });
+
+  it('`reintentos: 0`: 1 llamada aunque el fallo sea transitorio', async () => {
+    const { cliente, senales } = clienteGuionado([conEstado('no disponible', 503), 'bueno']);
+    await expect(new ProveedorVertex(cliente, { reintentos: 0 }).generar(peticion)).rejects.toThrow(/no disponible/);
+    expect(senales).toHaveLength(1);
+  });
+
+  it('el temporizador queda limpio tras una respuesta rápida', async () => {
+    vi.useFakeTimers();
+    const { cliente } = clienteGuionado(['bueno']);
+    await new ProveedorVertex(cliente).generar(peticion);
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

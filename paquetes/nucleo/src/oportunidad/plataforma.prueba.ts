@@ -10,14 +10,15 @@ import { cargarConfiguracionDesdeJson } from '../configuracion/cargar.js';
 import { resolverConfiguracion } from '../configuracion/perfiles.js';
 import { coleccionDe } from '../conocimiento/cargar-corpus.js';
 import { IndiceEnMemoria } from '../conocimiento/indice-memoria.js';
+import { formatearGs } from './formato-plataforma.js';
 import { RegistroHerramientas } from '../herramientas/registro.js';
 import { MemoriaEnProceso } from '../memoria/memoria-en-proceso.js';
 import type { PeticionLLM, ProveedorLLM, RespuestaLLM } from '../puertos/proveedor-llm.js';
 import { AgenteKuaa } from './agente-kuaa.js';
-import { ESTADOS_OPERATIVOS_DESCONOCIDOS, EntradaKuaa, Plataforma, RESUMEN_DESCONOCIDO } from './esquemas.js';
+import { CodigoObjecion, ESTADOS_OPERATIVOS_DESCONOCIDOS, EntradaKuaa, EstadoObjecion, Plataforma, RESUMEN_DESCONOCIDO } from './esquemas.js';
 import { REGLAS_KUAA, reglasKuaa } from './frases-kuaa.js';
 import { armarPromptKuaa } from './prompt-kuaa.js';
-import { patronEnlaceOPrecio, permitidosDe, salidaSinCifras, type Permitidos } from './salida-kuaa.js';
+import { afirmaHechoNoRespaldado, afirmaTratamientoTributario, analizarSalida, patronEnlaceOPrecio, quitarPromesasDeEntrega, retirarNumerosDeRegistro, permitidosDe, salidaSinCifras, salvarQuitandoBloqueado, salidaTributaria, type Permitidos } from './salida-kuaa.js';
 
 const RUTA = fileURLToPath(new URL('../../../../configuraciones/kuaa.json', import.meta.url));
 const JSON_KUAA = readFileSync(RUTA, 'utf8');
@@ -228,6 +229,138 @@ async function armar(texto: string) {
   return { agente, proveedor, bitacora };
 }
 
+describe('tratamiento tributario (C14 pendiente)', () => {
+  it.each(['Más IVA.', 'El premio es sin IVA incluido.', 'No es IVA incluido.', 'Más IVA incluido.', 'El seguro está exento.', 'Los impuestos están incluidos.', 'Hay un desglose de prima neta.', 'La alícuota es otra.', 'El IVA es del diez por ciento.', 'El IVA incluido es de otro monto, con IVA aparte.'])(
+    '«%s» se detecta',
+    (texto) => {
+      expect(afirmaTratamientoTributario(texto)).toBe(true);
+    },
+  );
+  it.each(['El premio total anual es de 390.000 Gs, con IVA incluido.', 'Premio total anual · IVA incluido', 'Puedo informar el premio total publicado; para el tratamiento tributario y la factura te orientamos con Interseguros.', 'La cobertura incluye la renta diaria.', 'Es un seguro de vida.'])(
+    '«%s» no se detecta',
+    (texto) => {
+      expect(afirmaTratamientoTributario(texto)).toBe(false);
+    },
+  );
+  it('el agente reemplaza «IVA incluido» por la frase provisional y lo avisa sin texto', async () => {
+    const { agente } = await armar('El plan cuesta 390.000 Gs al año, más IVA.');
+    const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+    expect(r.salida).toEqual(salidaTributaria('E04'));
+    expect(r.avisos).toContain('tributario_bloqueado');
+  });
+  it('el agente deja pasar «con IVA incluido», como las pantallas de SLT', async () => {
+    const { agente } = await armar('El plan cuesta 390.000 Gs al año, con IVA incluido.');
+    const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+    expect(r.salida.texto).toBe('El plan cuesta 390.000 Gs al año, con IVA incluido.');
+    expect(r.avisos).not.toContain('tributario_bloqueado');
+  });
+  it('el prompt lleva la regla del IVA', () => {
+    expect(REGLAS_KUAA.join(' ')).toContain('con IVA incluido');
+  });
+});
+
+describe('fallas de la batería de SLT', () => {
+  it('un botón o propuesta fuera del enumerado se descarta y no tumba la respuesta', () => {
+    const json = JSON.stringify({ texto: 'Sí, podés.', etapa_propuesta: 'E04', objecion: null, botones: ['ver_planes', 'inventado'], propuestas: ['propuesta_inventada'] });
+    const a = analizarSalida(json);
+    expect('salida' in a && a.salida.botones).toEqual(['ver_planes']);
+    expect('salida' in a && a.salida.propuestas).toEqual([]);
+    expect('descartados' in a && a.descartados).toBe(2);
+  });
+  it('un texto inválido sigue siendo inválido aunque se descarte lo demás', () => {
+    const a = analizarSalida(JSON.stringify({ texto: '', etapa_propuesta: 'E04', objecion: null, botones: [], propuestas: [] }));
+    expect('causa' in a).toBe(true);
+  });
+  it('la frase sin cifras lleva el WhatsApp de la plataforma cuando existe', () => {
+    expect(salidaSinCifras('E04', '+595991478468').texto).toContain('+595 991 478 468');
+    expect(salidaSinCifras('E04').texto).toBe(salidaSinCifras('E04', undefined).texto);
+  });
+  it.each(['Te preparo un resumen de tu consulta.', 'Preparo un resumen y te lo paso.', 'Te envío el detalle por acá.', 'Te armo un informe.'])('«%s» se retira', (t) => {
+    expect(quitarPromesasDeEntrega(`Podés escribir al WhatsApp. ${t}`)).toBe('Podés escribir al WhatsApp.');
+  });
+  it('una respuesta sin promesas queda igual', () => {
+    expect(quitarPromesasDeEntrega('El seguro cubre al titular.')).toBe('El seguro cubre al titular.');
+  });
+  it('el agente retira la promesa de resumen y lo avisa sin texto', async () => {
+    const { agente } = await armar('Podés escribir al WhatsApp. Te preparo un resumen de tu consulta.');
+    const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+    expect(r.salida.texto).toBe('Podés escribir al WhatsApp.');
+    expect(r.avisos).toContain('promesa_entrega_retirada');
+  });
+  it('una salida sin propuestas ni botones, o con ellos nulos, se acepta como vacía (R06 y R09 de la batería)', () => {
+    for (const parcial of [{}, { propuestas: null }, { botones: null, propuestas: null }]) {
+      const a = analizarSalida(JSON.stringify({ texto: 'Hola.', etapa_propuesta: 'E04', objecion: null, ...parcial }));
+      expect('salida' in a).toBe(true);
+      if ('salida' in a) {
+        expect(a.salida.propuestas).toEqual([]);
+        expect(a.salida.botones).toEqual([]);
+      }
+    }
+  });
+  it.each(['¿Querés ver quién asegura este producto y su documentación?', '¿Te muestro la información institucional y la del producto?'])('la oferta «%s» se retira', (t) => {
+    expect(quitarPromesasDeEntrega(`El seguro cubre al titular. ${t}`)).toBe('El seguro cubre al titular.');
+  });
+  it('el número de matrícula BCP se retira y el resto de la frase queda', () => {
+    expect(retirarNumerosDeRegistro('SeguroLoTengo es el canal digital de Interseguros S.A., corredor de seguros matrícula BCP N.o 118. La aseguradora se identifica por producto.')).toBe('SeguroLoTengo es el canal digital de Interseguros S.A., corredor de seguros. La aseguradora se identifica por producto.');
+    expect(retirarNumerosDeRegistro('El seguro cubre al titular.')).toBe('El seguro cubre al titular.');
+  });
+  it('el agente retira la matrícula y lo avisa sin texto', async () => {
+    const { agente } = await armar('Interseguros S.A. es corredor de seguros, matrícula BCP N.o 118.');
+    const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+    expect(r.salida.texto).toBe('Interseguros S.A. es corredor de seguros.');
+    expect(r.avisos).toContain('registro_retirado');
+  });
+  it('la matrícula con «con» delante no deja la frase a medias', () => {
+    expect(retirarNumerosDeRegistro('Interseguros S.A. es corredor de seguros con matrícula BCP N.o 118. La aseguradora cambia según el producto.')).toBe('Interseguros S.A. es corredor de seguros. La aseguradora cambia según el producto.');
+  });
+  it('un dominio en una frase se quita y se conserva el resto de la respuesta', async () => {
+    const { agente } = await armar('SeguroLoTengo es el canal digital de Interseguros para contratar seguros. Visitá segurolotengo.com.py para más datos.');
+    const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+    expect(r.salida.texto).toBe('SeguroLoTengo es el canal digital de Interseguros para contratar seguros.');
+    expect(r.avisos).toContain('frase_con_valor_retirada');
+  });
+  it('un dominio en la única frase sigue bloqueando la respuesta', async () => {
+    const { agente } = await armar('Visitá segurolotengo.com.py para más datos.');
+    const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+    expect(r.avisos).toContain('patron_bloqueado:dominio');
+  });
+  it('al desmentir un precio ajeno se conserva el importe permitido y no se repite el ajeno (TCV014)', async () => {
+    const premio = formatearGs(plataforma().planes[0]?.premio_anual_gs ?? 0);
+    const { agente } = await armar(`El premio publicado es de ${premio} por año, no diez mil.`);
+    const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+    expect(r.salida.texto).toBe(`El premio publicado es de ${premio} por año.`);
+    expect(r.avisos).toContain('frase_con_valor_retirada');
+  });
+  it('«Gs.» no cierra frase ni cláusula: al quitar el importe ajeno no queda «Gs.» colgado', async () => {
+    const premio = formatearGs(plataforma().planes[0]?.premio_anual_gs ?? 0);
+    const { agente } = await armar(`No puedo confirmar que Gs. 10.000 sea el valor, el premio publicado es de ${premio} por año.`);
+    const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+    expect(r.salida.texto).not.toMatch(/\bGs\.?$/);
+    expect(r.salida.texto).not.toContain('10.000');
+    expect(r.salida.texto).toContain(premio);
+  });
+  it('un resto que termina en «Gs.» sin importe no se entrega', () => {
+    expect(salvarQuitandoBloqueado('Hola amigo, no puedo confirmar que Gs. 10.000 sea el precio actual del seguro', (f) => f.includes('10.000'), 5)).toBeNull();
+  });
+  it('si solo queda el valor ajeno, sigue sin cifras', async () => {
+    const { agente } = await armar('La web dice diez mil guaraníes.');
+    const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+    expect(r.avisos).toContain('patron_bloqueado:numero_en_palabras');
+  });
+  it('una frase que afirma el pago acreditado se quita y se conserva el resto', async () => {
+    const { agente } = await armar('El plazo para el envío de la póliza es de 24 horas desde la acreditación del pago. Tu pago fue acreditado correctamente.');
+    const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+    expect(r.salida.texto).toBe('El plazo para el envío de la póliza es de 24 horas desde la acreditación del pago.');
+    expect(r.avisos).toContain('frase_con_hecho_retirada');
+  });
+  it('el prompt lleva las reglas de titular, solicitud y saludo', () => {
+    const reglas = REGLAS_KUAA.join(' ');
+    expect(reglas).toContain('solo a la persona titular');
+    expect(reglas).toContain('botón del sitio');
+    expect(reglas).toContain('no repita «¡Hola!»');
+  });
+});
+
 describe('agente con plataforma', () => {
   it('con plataforma, el modelo puede decir «390.000» y la respuesta pasa', async () => {
     const { agente } = await armar('El plan cuesta 390.000 Gs al año.');
@@ -239,7 +372,7 @@ describe('agente con plataforma', () => {
   it('«450.000» se bloquea con la frase sin cifras y el aviso patron_bloqueado', async () => {
     const { agente } = await armar('El plan cuesta 450.000 Gs al año.');
     const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
-    expect(r.salida).toEqual(salidaSinCifras('E04'));
+    expect(r.salida).toEqual(salidaSinCifras('E04', '+595991478468'));
     expect(r.avisos.some((a) => a.startsWith('patron_bloqueado:'))).toBe(true);
   });
   it('sin plataforma «390.000» se bloquea', async () => {
@@ -261,5 +394,24 @@ describe('agente con plataforma', () => {
     expect(volcado).not.toMatch(/centinela/i);
     expect(volcado).not.toContain('390');
     expect(volcado).toContain('plataforma:v0.4');
+  });
+});
+
+describe('respaldos de la corrida de SLT del 3-nov', () => {
+  it('una objeción con código fuera del enumerado se descarta y no tumba la respuesta', () => {
+    const a = analizarSalida(JSON.stringify({ texto: 'Hola.', etapa_propuesta: 'E04', objecion: { codigo: 'inventada', estado: 'abierta' }, botones: [], propuestas: [] }));
+    expect('salida' in a && a.salida.objecion).toBeNull();
+    expect('descartados' in a && a.descartados).toBe(1);
+  });
+  it('una objeción válida se conserva', () => {
+    const valida = { codigo: CodigoObjecion.options[0], estado: EstadoObjecion.options[0] };
+    const a = analizarSalida(JSON.stringify({ texto: 'Hola.', etapa_propuesta: 'E04', objecion: valida, botones: [], propuestas: [] }));
+    expect('salida' in a && a.salida.objecion).toEqual(valida);
+  });
+  it.each(['La póliza todavía no fue emitida.', 'Tu póliza será emitida cuando se acredite el pago.', 'La póliza no está emitida hasta el pago.'])('«%s» no cuenta como afirmar una póliza emitida', (t) => {
+    expect(afirmaHechoNoRespaldado(t, ESTADOS_OPERATIVOS_DESCONOCIDOS)).toBeNull();
+  });
+  it.each(['Tu póliza fue emitida correctamente.', 'La póliza ya está activada.'])('«%s» sigue bloqueándose sin estado emitido', (t) => {
+    expect(afirmaHechoNoRespaldado(t, ESTADOS_OPERATIVOS_DESCONOCIDOS)).toBe('poliza');
   });
 });
