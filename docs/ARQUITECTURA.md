@@ -337,22 +337,25 @@ sin `recomienda_plan`). `oportunidad/agente-kuaa.ts` es un recorrido aparte de `
 (`oportunidad/esquemas.ts`, estricto): `version`, `catalogo` (hasta 4 productos con nombre y estado
 `disponible`/`proximamente`), `planes` (hasta 3, sin repetir `plan`; premio anual, capital por fallecimiento,
 indemnización por cáncer, renta hospitalaria por día y máximo de días, gastos médicos por accidente, en Gs enteros) y
-`contacto` (`whatsapp_e164`, `canal`, `correo_derechos`). Los nombres solo admiten letras, números, espacio y `+ . -`.
+`contacto` (`whatsapp_e164`, `canal`, `correo_derechos`, `direccion`, `sitio_web`). Los nombres solo admiten letras, números, espacio y `+ . -`.
 Sin el bloque, nada cambia: el prompt es el de siempre y el detector bloquea toda cifra, enlace o teléfono. Con él, el
 prompt agrega «DATOS DE LA PLATAFORMA» armado con plantillas fijas (importes con punto de miles, teléfono agrupado) y
-unas reglas que mandan a decir solo esos datos; `salida-kuaa.ts` retira del texto las apariciones EXACTAS de esos
+unas reglas que mandan a decir solo esos datos; `detector-enlace-precio.ts` (reexportado por `salida-kuaa.ts`) retira del texto las apariciones EXACTAS de esos
 importes, teléfonos y correos (con límites de dígitos y de dominio) antes de aplicar los patrones, así que cualquier
 otra cifra sigue bloqueada. El bloque no se guarda en la memoria ni en la bitácora (solo el aviso `plataforma:<version>`).
 No garantiza que los datos sean correctos (los fija SLT) ni que el modelo los use en el contexto adecuado.
 
 `contacto` admite además dos campos opcionales que SLT envía ya saneados. `direccion` es la dirección de Interseguros
 (5 a 120 caracteres; solo letras, números, espacio y `. + -`, sin comas ni «º»; el esquema rechaza la que dispare el
-detector de enlaces, teléfonos o cifras, o tenga un grupo de más de 5 dígitos) y Kuaa puede darla tal cual, como frase
+detector de enlaces, teléfonos o cifras, lo que incluye cualquier grupo de 5 o más dígitos seguidos) y Kuaa puede darla tal cual, como frase
 completa; la misma frase con otro número se bloquea. `sitio_web` es el sitio de Interseguros como dominio suelto en
-minúsculas (sin esquema, ruta ni puerto) y es la única excepción a la prohibición de enlaces: solo cuenta escrito suelto,
-precedido de inicio, espacio o signo de apertura y seguido de fin, espacio, signo de cierre o puntuación de frase (lista
-blanca; los correos permitidos usan el mismo límite). No cuenta con letras pegadas de otro alfabeto o con tilde, con
-`https://`, ruta, puerto, otro rótulo ni como destino de un enlace Markdown. Sin estos campos el detector se comporta como
+minúsculas (sin esquema, ruta, puerto ni punycode, y con el último rótulo alfabético: «390.000» no es un sitio) y es la única excepción a la prohibición de enlaces: solo cuenta escrito suelto,
+precedido de inicio, espacio, signo de apertura o «:» y seguido de fin, espacio, signo de cierre o puntuación de frase,
+con adornos de Markdown (`*`, `_`, comilla invertida) a los lados (lista blanca; los correos permitidos usan el mismo
+límite). Los permitidos se comparan contra el texto tal como lo leerá la persona, antes de plegar homóglifos, tildes y
+marcas combinantes: «іnterseguros360.com» con «і» cirílica no es el dominio permitido (los invisibles U+200B y U+00AD sí
+se ignoran, como lo hace UTS46). No cuenta con letras pegadas de otro alfabeto o con tilde, con
+`https://`, ruta, consulta, puerto, otro rótulo ni como destino de un enlace Markdown. Sin estos campos el detector se comporta como
 antes, salvo que los límites de lista blanca de los correos permitidos son más estrictos que la versión anterior.
 
 `sitio_web` y `direccion` son datos de confianza: `/v1/kuaa/mensaje` se llama de servidor a servidor con la clave en el
@@ -361,7 +364,8 @@ No se admite ningún otro dato de contacto (otra dirección, redes, otros domini
 
 Límites conocidos (frente aparte; decide Andres): «interseguros360 punto com» no se bloquea; el patrón de dominio solo
 cubre unos pocos TLD (`.tk`, `.xyz` pasan); y `patronEnlaceOPrecio` tiene costo cuadrático con entradas largas y
-repetitivas (acotado por el tope de 4000 caracteres del texto del modelo).
+repetitivas (con 50 000 caracteres tarda segundos; con el tope de 4000 del texto del modelo queda bajo 500 ms, que es lo que
+verifica la prueba de tiempo).
 
 1. **Entrada.** Normaliza localmente (NFKC, sin caracteres de formato, marcas combinantes ni rellenos,
    homóglifos cirílicos y griegos plegados) ANTES de las compuertas y de enviar al modelo; el modelo recibe

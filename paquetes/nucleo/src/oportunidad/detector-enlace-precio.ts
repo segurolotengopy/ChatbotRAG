@@ -25,6 +25,16 @@ export function paraDetectar(texto: string): string {
 
 const sinTildes = (t: string): string => t.normalize('NFD').replace(/\p{Mn}/gu, '');
 
+/**
+ * El texto tal como se parece al que recibe la persona: NFKC y minúsculas, con los puntos ideográficos («。», «．», «｡»)
+ * vueltos «.», sin los invisibles que UTS46 ignora en un nombre de dominio (U+200B, U+00AD, U+2060, U+FEFF, U+034F) y
+ * sin los marcadores privados del detector. NO pliega homóglifos ni quita marcas combinantes: eso es justo lo que no
+ * debe ocurrir antes de comparar un permitido.
+ */
+function parecidoEntregado(texto: string): string {
+  return texto.normalize('NFKC').toLowerCase().replace(/[。．｡]/g, '.').replace(/\u034F|[\u200B\u00AD\u2060\uFEFF\uE000\uE001]/g, '');
+}
+
 const NUMERO_EN_PALABRAS =
   '(?:un|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|quince|veinte|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa|cien|ciento|doscientos|trescientos|cuatrocientos|quinientos|seiscientos|setecientos|ochocientos|novecientos|medio)';
 
@@ -57,8 +67,7 @@ const PATRONES_ENLACE_O_PRECIO: readonly (readonly [string, RegExp])[] = [
   // El marcador «§» lo deja `quitarPermitidos` donde había un importe permitido: un multiplicador o una moneda ajena
   // junto a él cambia la cifra («390.000 millones», «US$ 390.000») y no está respaldado.
   ['importe_permitido_alterado', /§\s*(?:mil\b|millon|millones|%|usd\b|u\$s|dolar|lucas)|(?:usd|u\$s|us\$|\$)\.?\s*§/],
-  // U+E000 (uso privado) lo deja `quitarPermitidos` cuando el texto repite la dirección permitida con otro número;
-  // `patronEnlaceOPrecio` lo elimina del texto del modelo antes de detectar, así que nadie puede dispararlo a mano.
+  // U+E000 lo deja `quitarPermitidos` cuando el texto repite la dirección permitida con otro número (ver MARCA_ALTERADA).
   ['direccion_alterada', /\uE000/],
   ['numero_en_palabras', new RegExp(`\\b${NUMERO_EN_PALABRAS}\\b(?:\\s+[a-z]+){0,3}?\\s+(?:mil|millon|millones|guarani|guaranies|dolar|dolares|lucas)\\b`)],
 ];
@@ -101,18 +110,33 @@ export function permitidosDe(plataforma: Plataforma | undefined): Permitidos | u
 
 /**
  * Límites de LISTA BLANCA para correos y dominios permitidos (bandera `u`): una lista negra de caracteres vecinos deja
- * pasar letras de otros alfabetos pegadas («øinterseguros360.com»). Qué NO garantiza: que lo que sigue a un espacio sea
- * inocuo; solo que el texto permitido no es parte de una palabra o dirección mayor.
+ * pasar letras de otros alfabetos pegadas («øinterseguros360.com»). Antes del permitido: inicio, espacio, signo de
+ * apertura, «:» pegado («Correo:derechos@…»), raya larga o media, un guion solo tras un espacio, o un adorno de Markdown
+ * (`*`, `_`, comilla invertida) que a su vez vaya tras uno de esos. Después: fin, espacio, signo de cierre, coma o punto
+ * y coma, «?», «!», «:» o puntos de frase (incluidos «...» y «…», que NFKC vuelve «...») solo si siguen espacio o fin, o un
+ * adorno de Markdown seguido de lo mismo. Qué NO garantiza: que lo que sigue a un espacio sea inocuo; solo que el
+ * texto permitido no es parte de una palabra, ruta, consulta o dirección mayor.
  */
-const LIMITE_ANTES = '(?<=^|[\\s(«"\'¿¡])';
-const LIMITE_DESPUES = '(?=$|[\\s)»"\',;!?]|:(?:\\s|$)|\\.(?:\\s|$))';
+const APERTURA = '^|[\\s(«"\'¿¡:—–]|(?:^|\\s)-\\s?';
+const LIMITE_ANTES = `(?<=${APERTURA}|(?:^|[\\s(«"'¿¡:—–])[*_\`]{1,3})`;
+const CIERRE = '$|[\\s)»"\',;]|[?!](?:\\s|$)|:(?:\\s|$)|\\.+(?:\\s|$)';
+const LIMITE_DESPUES = `(?=${CIERRE}|[*_\`]{1,3}(?:${CIERRE}))`;
+
+/**
+ * Marcadores de uso privado (el texto del modelo los pierde antes de detectar, así que nadie puede escribirlos): el de
+ * la dirección permitida es propio y no «§», que es el de los importes («…Peru mil gracias» no es un importe alterado);
+ * el de la dirección alterada dispara `direccion_alterada`.
+ */
+const MARCA_DIRECCION = '\uE001';
+const MARCA_ALTERADA = '\uE000';
 
 const escaparRe = (t: string): string => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
- * Retira correos y dominios permitidos sobre el texto CON tildes (solo NFKC y minúsculas): «ínterseguros360.com» no es
- * el dominio permitido aunque, sin tildes, lo parezca. Qué NO garantiza: nada sobre lo que rodea al permitido más allá
- * de los límites de lista blanca.
+ * Retira correos y dominios permitidos sobre un texto que se parece al ENTREGADO a la persona (`parecidoEntregado`: NFKC y
+ * minúsculas, sin plegar homóglifos ni tildes ni marcas combinantes): «іnterseguros360.com» (con «і» cirílica),
+ * «ínterseguros360.com» o «interse̲guros360.com» no son el dominio permitido aunque, ya plegados, lo parezcan; la persona
+ * ve el texto original. Qué NO garantiza: nada sobre lo que rodea al permitido más allá de los límites de lista blanca.
  */
 function quitarContactos(t: string, p: Permitidos): string {
   let r = t;
@@ -148,10 +172,10 @@ function quitarPermitidos(t: string, p: Permitidos): string {
   // trae la misma frase con otro número («Av X 1235» por «Av X 1234»), queda el marcador privado U+E000 y el detector la bloquea.
   for (const dir of p.direcciones) {
     const cuerpo = escaparRe(dir);
-    r = r.replace(new RegExp(`(?<![\\p{L}\\p{N}])${cuerpo}(?![\\p{L}\\p{N}]|[.,]\\d)`, 'gu'), '§');
+    r = r.replace(new RegExp(`(?<![\\p{L}\\p{N}])${cuerpo}(?![\\p{L}\\p{N}]|[.,]\\d)`, 'gu'), MARCA_DIRECCION);
     if (/\d/.test(dir)) {
       const comodin = cuerpo.replace(/\d+/g, '\\d{1,9}');
-      r = r.replace(new RegExp(`(?<![\\p{L}\\p{N}])${comodin}(?![\\p{L}\\p{N}])`, 'gu'), '\uE000');
+      r = r.replace(new RegExp(`(?<![\\p{L}\\p{N}])${comodin}(?![\\p{L}\\p{N}])`, 'gu'), MARCA_ALTERADA);
     }
   }
   return r;
@@ -165,9 +189,11 @@ function quitarPermitidos(t: string, p: Permitidos): string {
  * patrones se retiran las apariciones exactas de esos importes, teléfonos y correos; cualquier otra cosa sigue bloqueada.
  */
 export function patronEnlaceOPrecio(texto: string, permitidos?: Permitidos): string | null {
-  // Los puntos ideográficos («。», «．», «｡») valen como «.»; el marcador privado U+E000 es del detector, no del modelo.
-  const conTildes = normalizarEntradaKuaa(texto).toLowerCase().replace(/[。．｡]/g, '.').replace(/\uE000/g, '');
-  const t = permitidos ? quitarPermitidos(sinTildes(quitarContactos(conTildes, permitidos)), permitidos) : sinTildes(conTildes);
+  const entregado = parecidoEntregado(texto);
+  // Correos y dominios se comparan contra lo que la persona leerá; solo después se pliegan homóglifos y tildes.
+  const sinContactos = permitidos ? quitarContactos(entregado, permitidos) : entregado;
+  const t0 = sinTildes(normalizarEntradaKuaa(sinContactos));
+  const t = permitidos ? quitarPermitidos(t0, permitidos) : t0;
   return PATRONES_ENLACE_O_PRECIO.find(([, re]) => re.test(t))?.[0] ?? null;
 }
 

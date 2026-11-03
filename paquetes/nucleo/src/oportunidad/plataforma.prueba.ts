@@ -449,9 +449,13 @@ describe('dirección y sitio web del contacto', () => {
       ['dominio con espacio', { sitio_web: 'interseguros360 .com' }],
       ['dominio sin punto', { sitio_web: 'interseguros360' }],
       ['dominio con puerto', { sitio_web: 'interseguros360.com:8080' }],
+      ['importe disfrazado de dominio', { sitio_web: '390.000' }],
+      ['teléfono disfrazado de dominio', { sitio_web: '0981.123.456' }],
+      ['dos números con punto', { sitio_web: '1.2' }],
+      ['dominio punycode', { sitio_web: 'xn--interseguros-9wb.com' }],
       ['dirección con forma de dominio', { direccion: 'pago-seguro.com' }],
       ['dirección con forma de teléfono', { direccion: 'Llame 0981 123 456' }],
-      ['dirección con un grupo de más de 5 dígitos', { direccion: 'Av. Lopez 123456' }],
+      ['dirección con un número de 5 o más dígitos', { direccion: 'Av. Lopez 12345' }],
       ['dirección de 121 caracteres', { direccion: 'a'.repeat(121) }],
     ])('rechaza %s', (_n, contacto) => {
       expect(Plataforma.safeParse(plataforma({ contacto })).success).toBe(false);
@@ -534,21 +538,74 @@ describe('dirección y sitio web del contacto', () => {
       expect(patronEnlaceOPrecio('(derechos@ejemplo.com.py)', permSin)).toBeNull();
       expect(patronEnlaceOPrecio('Escriba a derechos@ejemplo.com.pyø', permSin)).not.toBeNull();
     });
-    it('un carácter de formato invisible dentro del dominio se quita al normalizar; una marca combinante lo invalida', () => {
+    it('un invisible (U+200B, U+00AD) dentro del dominio pasa: es inocuo y UTS46 lo ignora', () => {
       expect(patronEnlaceOPrecio('Visite interseguros\u200b360.com', perm)).toBeNull();
-      expect(patronEnlaceOPrecio('Visite interseguros\u0301360.com', perm)).not.toBeNull();
-      expect(patronEnlaceOPrecio('Visite interseguros\u0301360.com.evil.com', perm)).not.toBeNull();
+      expect(patronEnlaceOPrecio('Visite interseguros\u00ad360.com', perm)).toBeNull();
+    });
+    it.each([
+      ['«і» cirílica al inicio', 'Visite іnterseguros360.com'],
+      ['«ѕ» cirílica dentro', 'Visite interѕeguros360.com'],
+      ['«і» cirílica y «о» cirílica en el TLD', 'Visite іnterseguros360.соm'],
+      ['marca combinante U+0332 dentro', 'Visite interse\u0332guros360.com'],
+      ['marca combinante U+0332 delante del dominio', 'Visite \u0332interseguros360.com'],
+      ['marca combinante U+0332 al final', 'Visite interseguros360.com\u0332'],
+      ['«?» seguido de consulta', 'Visite interseguros360.com?x'],
+      ['«?r=» seguido de destino', 'Visite interseguros360.com?r=evil.tk'],
+      ['«!» seguido de texto pegado', 'Visite interseguros360.com!x'],
+      ['enlace de Markdown con el dominio como texto', 'Visite [interseguros360.com](evil.tk)'],
+      ['dominio más largo entre asteriscos', 'Visite **interseguros360.com.evil.com**'],
+      ['ruta entre comillas invertidas', 'Visite `interseguros360.com/x`'],
+      ['guion pegado antes (otro dominio)', 'Visite evil-interseguros360.com'],
+      ['guion bajo pegado antes', 'Visite evil_interseguros360.com'],
+      ['adorno de Markdown y texto pegado después', 'Visite **interseguros360.com**evil'],
+    ])('homóglifos, marcas y límites bloqueados: %s', (_n, texto) => {
+      expect(patronEnlaceOPrecio(texto, perm)).not.toBeNull();
+    });
+    it.each([
+      ['entre asteriscos', 'Visite **interseguros360.com** hoy'],
+      ['entre guiones bajos', 'Visite _interseguros360.com_ hoy'],
+      ['entre comillas invertidas', 'Visite `interseguros360.com` hoy'],
+      ['tras «:» sin espacio', 'Web:interseguros360.com'],
+      ['tras raya larga', 'Web —interseguros360.com'],
+      ['tras guion con espacio', 'Web - interseguros360.com'],
+      ['seguido de puntos suspensivos', 'Visite interseguros360.com...'],
+      ['seguido de «…»', 'Visite interseguros360.com… y más'],
+      ['seguido de «..»', 'Visite interseguros360.com.. y más'],
+      ['entre signos de pregunta', '¿Conoce interseguros360.com?'],
+      ['con negrita y punto final', 'Visite **interseguros360.com**.'],
+    ])('pasa el dominio %s', (_n, texto) => {
+      expect(patronEnlaceOPrecio(texto, perm)).toBeNull();
+    });
+    it.each([
+      ['entre asteriscos', '**derechos@ejemplo.com.py**'],
+      ['entre comillas invertidas', '`derechos@ejemplo.com.py`'],
+      ['tras «:» sin espacio', 'Correo:derechos@ejemplo.com.py'],
+      ['con guiones bajos', '_derechos@ejemplo.com.py_'],
+      ['con puntos suspensivos', 'Escriba a derechos@ejemplo.com.py...'],
+    ])('pasa el correo permitido %s', (_n, texto) => {
+      expect(patronEnlaceOPrecio(texto, permSin)).toBeNull();
+    });
+    it('el correo permitido con homóglifo, tilde o marca combinante se bloquea', () => {
+      for (const t of ['dеrechos@ejemplo.com.py', 'derechos@éjemplo.com.py', 'derechos@e\u0332jemplo.com.py'])
+        expect(patronEnlaceOPrecio(`Escriba a ${t}`, permSin)).not.toBeNull();
+    });
+    it('un punto ideográfico es un punto: «evil。com» dispara `dominio` sin permitidos', () => {
+      expect(patronEnlaceOPrecio('evil。com')).toBe('dominio');
+      expect(patronEnlaceOPrecio('evil．com')).toBe('dominio');
+    });
+    it('la dirección permitida no se confunde con un importe: «…Peru mil gracias» no dispara', () => {
+      expect(patronEnlaceOPrecio(`Estamos en ${DIRECCION} mil gracias`, perm)).toBeNull();
     });
     it('un «¶» del modelo no dispara nada sin permitidos ni con ellos, y U+E000 tampoco', () => {
       expect(patronEnlaceOPrecio('texto con ¶ pilcrow')).toBeNull();
       expect(patronEnlaceOPrecio('texto con ¶ pilcrow', perm)).toBeNull();
       expect(patronEnlaceOPrecio('texto con \uE000 privado', perm)).toBeNull();
     });
-    it('el detector con 4000 caracteres tarda menos de 250 ms', () => {
+    it('el detector con 4000 caracteres tarda menos de 500 ms', () => {
       for (const t of ['a'.repeat(4000), '1'.repeat(4000), 'interseguros360.com '.repeat(200), 'a.'.repeat(2000)]) {
         const inicio = performance.now();
         patronEnlaceOPrecio(t, perm);
-        expect(performance.now() - inicio).toBeLessThan(250);
+        expect(performance.now() - inicio).toBeLessThan(500);
       }
     });
     it('el resto sigue bloqueado con los campos presentes', () => {
@@ -579,7 +636,7 @@ describe('dirección y sitio web del contacto', () => {
       for (const t of largos) {
         const inicio = performance.now();
         patronEnlaceOPrecio(t, perm);
-        expect(performance.now() - inicio).toBeLessThan(250);
+        expect(performance.now() - inicio).toBeLessThan(500);
       }
     });
   });

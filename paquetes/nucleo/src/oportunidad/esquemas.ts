@@ -196,7 +196,7 @@ export const Plataforma = z
           .regex(/^[\p{L}\p{N} .+-]+$/u)
           // Una dirección que ya parece un enlace, un teléfono o un precio no es una dirección: se rechaza antes de que
           // la regla del prompt la deje decir. Qué NO garantiza: detectar toda cifra disfrazada de número de puerta.
-          .refine((d) => patronEnlaceOPrecio(d) === null && !/\d{6,}/.test(d), { message: 'dirección con forma de enlace, teléfono o cifra' })
+          .refine((d) => patronEnlaceOPrecio(d) === null, { message: 'dirección con forma de enlace, teléfono o cifra' })
           .optional(),
         /**
          * Sitio web de Interseguros como dominio suelto, en minúsculas: sin esquema, sin ruta, sin puerto. Así el único
@@ -205,7 +205,9 @@ export const Plataforma = z
         sitio_web: z
           .string()
           .max(100)
-          .regex(/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?){1,3}$/)
+          .regex(/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?){0,2}\.[a-z]{2,63}$/)
+          // Sin punycode (`xn--`): no hay un uso previsto y un dominio así se ve como otro.
+          .refine((d) => !d.includes('xn--'), { message: 'dominio punycode no admitido' })
           .optional(),
       })
       .strict(),
