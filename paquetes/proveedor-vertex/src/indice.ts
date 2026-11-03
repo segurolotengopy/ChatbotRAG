@@ -19,6 +19,16 @@
  * Lección de NovuChat: un nombre de modelo retirado devuelve 404 «no longer
  * available»; el error se propaga como `ErrorProveedor` con el nombre incluido
  * para que el diagnóstico sea inmediato.
+ *
+ * TIEMPO MÁXIMO Y REINTENTO: el 2026-11-03 dos peticiones de Kuaa esperaron 58 s y 20,6 s a Vertex
+ * en staging, y el sitio corta a los 20 s. Cada intento de `generar` tiene un tope de 9 000 ms
+ * (`tiempoMaximoMs`) y se reintenta una vez (`reintentos`), sin espera entre intentos: peor caso
+ * 2 × 9 s = 18 s, bajo el tope del sitio. Solo se reintenta lo transitorio: vencimiento del tiempo,
+ * estado 429/500/502/503/504 y errores de red (ECONNRESET, ETIMEDOUT, EAI_AGAIN, «fetch failed»).
+ * Un 400, 401, 403, 404 (modelo retirado) o un error desconocido sale en el primer intento. NO
+ * garantiza respuesta: si ambos intentos fallan, se lanza `ErrorProveedor` y el agente responde con
+ * su mensaje de respaldo de siempre. El mensaje del error nunca incluye el contenido de la petición.
+ * El embebedor no tiene tiempo máximo ni reintento.
  */
 import { GoogleGenAI, type Content, type FunctionDeclaration, type GenerateContentResponse, type Part, type Schema, Type } from '@google/genai';
 import type { DefinicionHerramientaLLM, Embebedor, MensajeLLM, MotivoFin, PeticionLLM, ProveedorLLM, RespuestaLLM } from '@chatbotrag/nucleo';
@@ -36,7 +46,7 @@ export interface ClienteGemini {
   generateContent(peticion: {
     model: string;
     contents: Content[];
-    config: { systemInstruction: string; temperature: number; maxOutputTokens: number; thinkingConfig?: { thinkingBudget: number }; tools?: Array<{ functionDeclarations: FunctionDeclaration[] }> };
+    config: { systemInstruction: string; temperature: number; maxOutputTokens: number; thinkingConfig?: { thinkingBudget: number }; tools?: Array<{ functionDeclarations: FunctionDeclaration[] }>; abortSignal?: AbortSignal };
   }): Promise<GenerateContentResponse>;
   embedContent(peticion: { model: string; contents: string[]; config?: { outputDimensionality?: number } }): Promise<{ embeddings?: Array<{ values?: number[] }> }>;
 }
@@ -112,31 +122,93 @@ function motivo(fin: string | undefined, hayLlamadas: boolean): MotivoFin {
   }
 }
 
+/** Opciones de la llamada al modelo (no del cliente): tiempo por intento y reintentos tras el primero. */
+export interface OpcionesLlamadaVertex {
+  tiempoMaximoMs?: number;
+  reintentos?: number;
+}
+
+class TiempoAgotado extends Error {
+  constructor(public readonly ms: number) {
+    super(`tiempo máximo de ${ms} ms agotado`);
+    this.name = 'TiempoAgotado';
+  }
+}
+
+const ESTADOS_TRANSITORIOS = new Set([429, 500, 502, 503, 504]);
+const RED_TRANSITORIA = /ECONNRESET|ETIMEDOUT|EAI_AGAIN|fetch failed/i;
+
+/** Transitorio: vale la pena reintentar. Lo desconocido NO lo es. */
+function esTransitorio(e: unknown): boolean {
+  if (e instanceof TiempoAgotado) return true;
+  if (typeof e === 'object' && e !== null) {
+    const { status, code } = e as { status?: unknown; code?: unknown };
+    if (typeof status === 'number' && ESTADOS_TRANSITORIOS.has(status)) return true;
+    if (typeof code === 'number' && ESTADOS_TRANSITORIOS.has(code)) return true;
+    if (typeof code === 'string' && RED_TRANSITORIA.test(code)) return true;
+  }
+  return e instanceof Error && RED_TRANSITORIA.test(e.message);
+}
+
 export class ProveedorVertex implements ProveedorLLM {
   readonly nombre = 'vertex';
+  private readonly tiempoMaximoMs: number;
+  private readonly reintentos: number;
 
-  constructor(private readonly cliente: ClienteGemini) {}
+  constructor(
+    private readonly cliente: ClienteGemini,
+    opciones: OpcionesLlamadaVertex = {},
+  ) {
+    this.tiempoMaximoMs = opciones.tiempoMaximoMs ?? 9000;
+    this.reintentos = opciones.reintentos ?? 1;
+  }
+
+  /** Un intento con su propio AbortController y temporizador; el temporizador se limpia siempre. */
+  private async intentar(p: Parameters<ClienteGemini['generateContent']>[0]): Promise<GenerateContentResponse> {
+    const control = new AbortController();
+    let temporizador: ReturnType<typeof setTimeout> | undefined;
+    const vencimiento = new Promise<never>((_, rechazar) => {
+      temporizador = setTimeout(() => {
+        control.abort();
+        rechazar(new TiempoAgotado(this.tiempoMaximoMs));
+      }, this.tiempoMaximoMs);
+    });
+    try {
+      const llamada = this.cliente.generateContent({ ...p, config: { ...p.config, abortSignal: control.signal } });
+      // Si gana el temporizador, la llamada abortada puede rechazar después: se silencia para no dejar un rechazo sin atender.
+      llamada.catch(() => undefined);
+      return await Promise.race([llamada, vencimiento]);
+    } finally {
+      clearTimeout(temporizador);
+    }
+  }
 
   async generar(peticion: PeticionLLM): Promise<RespuestaLLM> {
-    let r: GenerateContentResponse;
-    try {
-      r = await this.cliente.generateContent({
-        model: peticion.parametros.modelo,
-        contents: aContenidos(peticion.mensajes),
-        config: {
-          systemInstruction: peticion.sistema,
-          temperature: peticion.parametros.temperatura,
-          maxOutputTokens: peticion.parametros.maxTokensSalida,
-          // Con `desactivado`, presupuesto 0: el razonamiento no consume el tope de salida. Con `automatico`
-          // no se envía nada y el modelo decide, como siempre. Gemini 2.5 Pro no admite 0 (el servicio lo rechaza).
-          ...(peticion.parametros.razonamiento === 'desactivado' ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
-          ...(peticion.herramientas.length
-            ? { tools: [{ functionDeclarations: peticion.herramientas.map((h) => ({ name: h.nombre, description: h.descripcion, parameters: aEsquema(h.parametros) })) }] }
-            : {}),
-        },
-      });
-    } catch (e) {
-      throw new ErrorProveedor(`Vertex (${peticion.parametros.modelo}): ${e instanceof Error ? e.message : String(e)}`, 'vertex', peticion.parametros.modelo);
+    const modelo = peticion.parametros.modelo;
+    const solicitud: Parameters<ClienteGemini['generateContent']>[0] = {
+      model: modelo,
+      contents: aContenidos(peticion.mensajes),
+      config: {
+        systemInstruction: peticion.sistema,
+        temperature: peticion.parametros.temperatura,
+        maxOutputTokens: peticion.parametros.maxTokensSalida,
+        // Con `desactivado`, presupuesto 0: el razonamiento no consume el tope de salida. Con `automatico`
+        // no se envía nada y el modelo decide, como siempre. Gemini 2.5 Pro no admite 0 (el servicio lo rechaza).
+        ...(peticion.parametros.razonamiento === 'desactivado' ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+        ...(peticion.herramientas.length
+          ? { tools: [{ functionDeclarations: peticion.herramientas.map((h) => ({ name: h.nombre, description: h.descripcion, parameters: aEsquema(h.parametros) })) }] }
+          : {}),
+      },
+    };
+    let r: GenerateContentResponse | undefined;
+    for (let intento = 0; ; intento++) {
+      try {
+        r = await this.intentar(solicitud);
+        break;
+      } catch (e) {
+        if (intento < this.reintentos && esTransitorio(e)) continue;
+        throw new ErrorProveedor(`Vertex (${modelo}): ${e instanceof Error ? e.message : String(e)}`, 'vertex', modelo);
+      }
     }
     const candidato = r.candidates?.[0];
     const partes = candidato?.content?.parts ?? [];
