@@ -171,7 +171,7 @@ verificado bajo qué contrato opera la cuenta ni la retención de los embeddings
 
 ### Tiempo máximo y reintento de Vertex
 
-`ProveedorVertex.generar` limita cada intento a 9 000 ms y reintenta una vez, sin espera entre intentos (peor caso 18 s, bajo el corte de 20 s del sitio; origen: dos peticiones de Kuaa tardaron 58 s y 20,6 s en staging). Solo se reintenta lo transitorio: vencimiento del tiempo, estados 429/500/502/503/504 y errores de red; un 400, 401, 403, 404 o un error desconocido sale en el primer intento. NO garantiza una respuesta: si ambos intentos fallan, se lanza `ErrorProveedor` y el agente responde con su mensaje de respaldo de siempre. El embebedor no tiene tiempo máximo ni reintento.
+`ProveedorVertex.generar` limita cada intento a 9 000 ms y reintenta una vez, sin espera (origen: dos peticiones de Kuaa tardaron 58 s y 20,6 s en staging; el sitio corta a los 20 s). Solo se reintenta lo transitorio: vencimiento del tiempo, estados 500/502/503/504 y errores de red; un 400, 401, 403, 404, 429 (cuota: reintentar solo duplicaría la presión) o un error desconocido sale en el primer intento. El tope de 18 s vale por llamada al modelo, no por turno (el agente puede llamar hasta `maxIteraciones` veces; Kuaa usa una), y el reintento duplica las llamadas facturables en el peor caso; `crearClienteVertex` no pasa `httpOptions.retryOptions` a propósito (sería 2×5). NO garantiza una respuesta: si ambos intentos fallan, el agente responde con su mensaje de respaldo de siempre. El texto propio del error de tiempo no incluye la petición; el error de Vertex se propaga tal cual. El embebedor no cambia.
 
 ### Razonamiento y respuestas cortadas
 

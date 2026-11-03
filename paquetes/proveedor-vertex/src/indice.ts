@@ -24,11 +24,16 @@
  * en staging, y el sitio corta a los 20 s. Cada intento de `generar` tiene un tope de 9 000 ms
  * (`tiempoMaximoMs`) y se reintenta una vez (`reintentos`), sin espera entre intentos: peor caso
  * 2 × 9 s = 18 s, bajo el tope del sitio. Solo se reintenta lo transitorio: vencimiento del tiempo,
- * estado 429/500/502/503/504 y errores de red (ECONNRESET, ETIMEDOUT, EAI_AGAIN, «fetch failed»).
- * Un 400, 401, 403, 404 (modelo retirado) o un error desconocido sale en el primer intento. NO
- * garantiza respuesta: si ambos intentos fallan, se lanza `ErrorProveedor` y el agente responde con
- * su mensaje de respaldo de siempre. El mensaje del error nunca incluye el contenido de la petición.
- * El embebedor no tiene tiempo máximo ni reintento.
+ * estado 500/502/503/504 y errores de red (ECONNRESET, ETIMEDOUT, EAI_AGAIN, «fetch failed»).
+ * El 429 NO se reintenta a propósito: una cuota agotada no se resuelve en 0 ms y reintentar solo
+ * duplicaría la presión. Un 400, 401, 403, 404 (modelo retirado), 429 o un error desconocido sale en
+ * el primer intento; un `status`/`code` numérico no transitorio decide antes que el texto del mensaje.
+ * NO garantiza respuesta: si ambos intentos fallan, se lanza `ErrorProveedor` y el agente responde con
+ * su mensaje de respaldo de siempre. El texto propio del error de tiempo no incluye la petición; el
+ * de Vertex se propaga tal cual. El tope de 18 s vale POR LLAMADA al modelo, no por turno: el agente
+ * genérico puede llamar hasta `maxIteraciones` veces (Kuaa usa una sola). En el peor caso el
+ * reintento duplica las llamadas facturables. `crearClienteVertex` NO pasa `httpOptions.retryOptions`
+ * a propósito: si se añadiera, el factor sería 2×5. El embebedor no tiene tiempo máximo ni reintento.
  */
 import { GoogleGenAI, type Content, type FunctionDeclaration, type GenerateContentResponse, type Part, type Schema, Type } from '@google/genai';
 import type { DefinicionHerramientaLLM, Embebedor, MensajeLLM, MotivoFin, PeticionLLM, ProveedorLLM, RespuestaLLM } from '@chatbotrag/nucleo';
@@ -135,7 +140,7 @@ class TiempoAgotado extends Error {
   }
 }
 
-const ESTADOS_TRANSITORIOS = new Set([429, 500, 502, 503, 504]);
+const ESTADOS_TRANSITORIOS = new Set([500, 502, 503, 504]);
 const RED_TRANSITORIA = /ECONNRESET|ETIMEDOUT|EAI_AGAIN|fetch failed/i;
 
 /** Transitorio: vale la pena reintentar. Lo desconocido NO lo es. */
@@ -143,8 +148,9 @@ function esTransitorio(e: unknown): boolean {
   if (e instanceof TiempoAgotado) return true;
   if (typeof e === 'object' && e !== null) {
     const { status, code } = e as { status?: unknown; code?: unknown };
-    if (typeof status === 'number' && ESTADOS_TRANSITORIOS.has(status)) return true;
-    if (typeof code === 'number' && ESTADOS_TRANSITORIOS.has(code)) return true;
+    // Un código numérico manda sobre el texto: un 400 cuyo cuerpo cite «ETIMEDOUT» no se reintenta.
+    if (typeof status === 'number') return ESTADOS_TRANSITORIOS.has(status);
+    if (typeof code === 'number') return ESTADOS_TRANSITORIOS.has(code);
     if (typeof code === 'string' && RED_TRANSITORIA.test(code)) return true;
   }
   return e instanceof Error && RED_TRANSITORIA.test(e.message);
@@ -161,6 +167,8 @@ export class ProveedorVertex implements ProveedorLLM {
   ) {
     this.tiempoMaximoMs = opciones.tiempoMaximoMs ?? 9000;
     this.reintentos = opciones.reintentos ?? 1;
+    if (!Number.isInteger(this.tiempoMaximoMs) || this.tiempoMaximoMs < 1) throw new Error('tiempoMaximoMs debe ser un entero de al menos 1 milisegundo');
+    if (!Number.isInteger(this.reintentos) || this.reintentos < 0) throw new Error('reintentos debe ser un entero mayor o igual a 0');
   }
 
   /** Un intento con su propio AbortController y temporizador; el temporizador se limpia siempre. */
@@ -169,8 +177,9 @@ export class ProveedorVertex implements ProveedorLLM {
     let temporizador: ReturnType<typeof setTimeout> | undefined;
     const vencimiento = new Promise<never>((_, rechazar) => {
       temporizador = setTimeout(() => {
-        control.abort();
+        // Primero el rechazo: si el cliente respeta la señal y rechaza con AbortError, gana el vencimiento.
         rechazar(new TiempoAgotado(this.tiempoMaximoMs));
+        control.abort();
       }, this.tiempoMaximoMs);
     });
     try {

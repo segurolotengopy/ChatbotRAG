@@ -179,16 +179,79 @@ describe('ProveedorVertex: tiempo máximo y reintento', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('un 429 y luego bueno: 2 llamadas', async () => {
-    const { cliente, senales } = clienteGuionado([conEstado('cuota', 429), 'bueno']);
+  it('un 503 y luego bueno: 2 llamadas', async () => {
+    const { cliente, senales } = clienteGuionado([conEstado('no disponible', 503), 'bueno']);
     expect((await new ProveedorVertex(cliente).generar(peticion)).texto).toBe('Hola.');
     expect(senales).toHaveLength(2);
   });
 
-  it('un error de red (fetch failed) se reintenta', async () => {
-    const { cliente, senales } = clienteGuionado([new Error('fetch failed'), 'bueno']);
-    await new ProveedorVertex(cliente).generar(peticion);
+  it('un 500 se reintenta', async () => {
+    const { cliente, senales } = clienteGuionado([conEstado('interno', 500), 'bueno']);
+    expect((await new ProveedorVertex(cliente).generar(peticion)).texto).toBe('Hola.');
     expect(senales).toHaveLength(2);
+  });
+
+  it('un 429 (cuota) sale en el primer intento: 1 llamada', async () => {
+    const { cliente, senales } = clienteGuionado([conEstado('cuota', 429), 'bueno']);
+    await expect(new ProveedorVertex(cliente).generar(peticion)).rejects.toThrow(/cuota/);
+    expect(senales).toHaveLength(1);
+  });
+
+  it('400, 401 y 403 salen en 1 llamada', async () => {
+    for (const status of [400, 401, 403]) {
+      const { cliente, senales } = clienteGuionado([conEstado('rechazo', status), 'bueno']);
+      await expect(new ProveedorVertex(cliente).generar(peticion)).rejects.toThrow(ErrorProveedor);
+      expect(senales).toHaveLength(1);
+    }
+  });
+
+  it('un 400 cuyo mensaje cita ETIMEDOUT sale en 1 llamada', async () => {
+    const { cliente, senales } = clienteGuionado([conEstado('petición inválida: ETIMEDOUT', 400), 'bueno']);
+    await expect(new ProveedorVertex(cliente).generar(peticion)).rejects.toThrow(ErrorProveedor);
+    expect(senales).toHaveLength(1);
+  });
+
+  it('un error de red (fetch failed) se reintenta y devuelve la respuesta buena', async () => {
+    const { cliente, senales } = clienteGuionado([new Error('fetch failed'), 'bueno']);
+    expect((await new ProveedorVertex(cliente).generar(peticion)).texto).toBe('Hola.');
+    expect(senales).toHaveLength(2);
+  });
+
+  it('un `code` de texto ECONNRESET se reintenta y devuelve la respuesta buena', async () => {
+    const { cliente, senales } = clienteGuionado([Object.assign(new Error('socket'), { code: 'ECONNRESET' }), 'bueno']);
+    expect((await new ProveedorVertex(cliente).generar(peticion)).texto).toBe('Hola.');
+    expect(senales).toHaveLength(2);
+  });
+
+  it('un cliente que respeta el abortSignal (AbortError) igual da el reintento exitoso', async () => {
+    vi.useFakeTimers();
+    const senales: AbortSignal[] = [];
+    const cliente: ClienteGemini = {
+      generateContent(p) {
+        const senal = p.config.abortSignal!;
+        senales.push(senal);
+        if (senales.length > 1) return Promise.resolve(buena);
+        return new Promise<GenerateContentResponse>((_, rechazar) => {
+          senal.addEventListener('abort', () => rechazar(Object.assign(new Error('This operation was aborted'), { name: 'AbortError' })));
+        });
+      },
+      embedContent: async () => ({ embeddings: [] }),
+    };
+    const promesa = new ProveedorVertex(cliente).generar(peticion);
+    await vi.advanceTimersByTimeAsync(9000);
+    expect((await promesa).texto).toBe('Hola.');
+    expect(senales).toHaveLength(2);
+    expect(senales[0]!.aborted).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('opciones inválidas lanzan', () => {
+    const { cliente } = clienteGuionado([]);
+    expect(() => new ProveedorVertex(cliente, { tiempoMaximoMs: 0 })).toThrow(/tiempoMaximoMs/);
+    expect(() => new ProveedorVertex(cliente, { tiempoMaximoMs: 1.5 })).toThrow(/tiempoMaximoMs/);
+    expect(() => new ProveedorVertex(cliente, { reintentos: -1 })).toThrow(/reintentos/);
+    expect(() => new ProveedorVertex(cliente, { reintentos: 0.5 })).toThrow(/reintentos/);
+    expect(() => new ProveedorVertex(cliente, { tiempoMaximoMs: 1, reintentos: 0 })).not.toThrow();
   });
 
   it('un 404 (modelo retirado): 1 sola llamada y error', async () => {
