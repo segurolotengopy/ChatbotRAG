@@ -32,7 +32,7 @@ export class ErrorConfiguracion extends Error {
 const PREFIJOS_SECRETO = /(^|[^A-Za-z0-9])(AIza[0-9A-Za-z_-]{20,}|sk-[A-Za-z0-9_-]{16,}|AKIA[0-9A-Z]{12,}|ghp_[A-Za-z0-9]{20,}|xox[abp]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/;
 const NOMBRE_SECRETO = /(secret|token|apikey|api_key|clave_privada|password|contrasena|contraseña|credencial)/i;
 
-function pareceSecreto(valor: string): boolean {
+export function pareceSecreto(valor: string): boolean {
   if (PREFIJOS_SECRETO.test(valor)) return true;
   // Cadena larga sin espacios con mezcla de clases: alta entropía aparente.
   if (valor.length >= 32 && !/\s/.test(valor) && /[a-z]/.test(valor) && /[A-Z]/.test(valor) && /[0-9]/.test(valor)) {
