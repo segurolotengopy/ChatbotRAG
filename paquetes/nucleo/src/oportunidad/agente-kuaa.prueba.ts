@@ -77,14 +77,25 @@ describe('interpretarSalidaModelo', () => {
     ['texto después', `${valida} gracias`],
     ['arreglo', `[${valida}]`],
     ['dos objetos', `${valida}${valida}`],
-    ['clave extra', salidaJson({ extra: 1 })],
     ['etapa fuera de lista', salidaJson({ etapa_propuesta: 'E13' })],
-    ['botón inventado', salidaJson({ botones: ['pagar_ya'] })],
-    ['propuesta inventada', salidaJson({ propuestas: ['cobrar'] })],
+    ['botones que no son una lista', salidaJson({ botones: 'pagar_ya' })],
     ['texto vacío', salidaJson({ texto: '' })],
     ['texto enorme', salidaJson({ texto: 'a'.repeat(4001) })],
     ['objecion con código inválido', salidaJson({ objecion: { codigo: 'O99', estado: 'detectada' } })],
   ])('rechaza %s', (_n, texto) => expect(interpretarSalidaModelo(texto)).toBeNull());
+  it('descarta una clave desconocida de la raíz y toma la objeción ausente como nula, sin rechazar la salida', () => {
+    const o = JSON.parse(salidaJson({ razonamiento: 'x' })) as Record<string, unknown>;
+    delete o['objecion'];
+    const s = interpretarSalidaModelo(JSON.stringify({ ...o, notas: 'y' }));
+    expect(s).not.toBeNull();
+    expect(s?.objecion).toBeNull();
+    expect(Object.keys(s ?? {}).sort()).toEqual(['botones', 'etapa_propuesta', 'objecion', 'propuestas', 'texto']);
+  });
+  it('descarta un botón o propuesta inventados en vez de rechazar toda la salida', () => {
+    const s = interpretarSalidaModelo(salidaJson({ botones: ['pagar_ya', 'ver_planes'], propuestas: ['cobrar'] }));
+    expect(s?.botones).toEqual(['ver_planes']);
+    expect(s?.propuestas).toEqual([]);
+  });
 });
 
 describe('patronEnlaceOPrecio: nombra el patrón que dispara, no el texto', () => {
@@ -242,9 +253,8 @@ describe('AgenteKuaa', () => {
   describe('fallback al error temporal', () => {
     const casos: [string, string | Partial<RespuestaLLM>, string][] = [
       ['JSON roto', '{"texto": "a"', 'salida_invalida'],
-      ['clave extra', salidaJson({ extra: 1 }), 'salida_invalida'],
       ['etapa E13', salidaJson({ etapa_propuesta: 'E13' }), 'salida_invalida'],
-      ['botón inventado', salidaJson({ botones: ['pagar_ya'] }), 'salida_invalida'],
+      ['botones que no son una lista', salidaJson({ botones: 'pagar_ya' }), 'salida_invalida'],
       ['texto vacío', salidaJson({ texto: '' }), 'salida_invalida'],
       ['texto libre', 'Hola, soy una respuesta sin JSON.', 'salida_invalida'],
       ['corte por max_tokens', { texto: salidaJson(), motivoFin: 'max_tokens' }, 'respuesta_incompleta'],
@@ -263,8 +273,7 @@ describe('AgenteKuaa', () => {
       ['texto libre', 'Hola, soy una respuesta sin JSON.', 'causa_salida:sin_objeto'],
       ['JSON cortado', '{"texto": "a"', 'causa_salida:sin_objeto'],
       ['JSON roto', '{"texto": a}', 'causa_salida:json_roto'],
-      ['clave extra', salidaJson({ extra: 1 }), 'causa_salida:esquema:raiz'],
-      ['botón inventado', salidaJson({ botones: ['pagar_ya'] }), 'causa_salida:esquema:botones.0'],
+      ['botones que no son una lista', salidaJson({ botones: 'pagar_ya' }), 'causa_salida:esquema:botones'],
       ['texto vacío', salidaJson({ texto: '' }), 'causa_salida:esquema:texto'],
       ['texto solo de controles', salidaJson({ texto: '\u0007\u200f' }), 'causa_salida:vacia_tras_sanear'],
     ] as [string, string, string][])('la bitácora registra la causa de salida_invalida: %s, sin texto del modelo', async (_n, respuesta, causa) => {
@@ -275,11 +284,6 @@ describe('AgenteKuaa', () => {
       const atendido = bitacora.eventos.filter((e) => e.tipo === 'mensaje_atendido');
       expect(atendido[0]?.avisos).toContain(causa);
       expect(JSON.stringify(bitacora.eventos)).not.toContain('pagar_ya');
-    });
-    it('la causa no incluye claves inventadas por el modelo', async () => {
-      const { agente } = await armar(() => salidaJson({ 'Clave Rara!': 1 }), true);
-      const { avisos } = await resp(agente, entrada());
-      expect(avisos.filter((a) => a.startsWith('causa_salida:'))).toEqual(['causa_salida:esquema:raiz']);
     });
     it('la bitácora registra el patrón de enlace_o_precio sin el texto del modelo', async () => {
       const { agente, bitacora } = await armar(() => salidaJson({ texto: 'Escribí a TEXTO-CENTINELA@kuaa.com ahora.' }), true);
