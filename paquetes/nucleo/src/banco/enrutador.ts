@@ -13,15 +13,20 @@
  * Orden fijo: (a) enrutador apagado, (b) sin contenido, (c) término de emergencia, (d) pregunta conocida,
  * (e) sin coincidencia. La derivación va primero: un término de emergencia gana sobre cualquier respuesta fija.
  * No se construye ninguna expresión regular con datos del banco: los términos se buscan como palabras completas
- * con `includes` sobre texto normalizado y rodeado de espacios, de modo que no hay ReDoS posible.
+ * comparando grupos de palabras consecutivas del texto normalizado contra un mapa de términos, de modo que no hay
+ * ReDoS posible y el costo no crece con la cantidad de términos. Se prueban dos variantes del mensaje (el
+ * invisible dentro de una palabra o como separador).
  *
  * Qué NO garantiza: homóglifos de otros alfabetos (una «е» cirílica evita un término), sinónimos, errores
  * ortográficos, preguntas parecidas pero no idénticas, ni negaciones: «no es una emergencia» deriva igual
- * (dirección segura). Tampoco decide si encender `carrilFijo` es prudente: eso exige una medición (pendiente).
+ * (dirección segura). Tampoco cubre guiones o puntuación dentro de una palabra («sui-cidio», «acci.dente»), formas
+ * pronominales («matarme»), leetspeak («acc1dente»), letras separadas por espacios ni palabras pegadas. La red de
+ * seguridad para las emergencias que el enrutador no detecte es el carril IA (H4). Tampoco decide si encender
+ * `carrilFijo` es prudente: eso exige una medición (pendiente).
  */
 import type { Enrutador } from '../configuracion/esquema.js';
 import type { BancoRespuestas, MotivoDerivacion, Riesgo } from './esquema.js';
-import { normalizarParaTerminos, normalizarPregunta } from './esquema.js';
+import { normalizarParaTerminos, normalizarParaTerminosSeparado, normalizarPregunta } from './esquema.js';
 
 export const CARRILES = ['fijo', 'derivacion', 'ia'] as const;
 export type Carril = (typeof CARRILES)[number];
@@ -56,44 +61,77 @@ export interface EstadoEnrutador {
   atencionHumanaSolicitada: boolean;
 }
 
+export interface TerminoIndexado {
+  /** Derivación (posición en `banco.derivaciones`) a la que pertenece el término. */
+  derivacion: number;
+  /** Orden en el banco: ante varias coincidencias deriva la primera. */
+  orden: number;
+}
+
 export interface IndiceEnrutador {
   banco: BancoRespuestas;
   preguntas: ReadonlyMap<string, { tipo: 'respuesta' | 'derivacion'; posicion: number }>;
-  /** `buscado` es el término normalizado y rodeado de espacios; `derivacion` es la posición en `banco.derivaciones`. */
-  terminos: ReadonlyArray<{ buscado: string; derivacion: number }>;
+  /** Términos por su texto normalizado (palabras separadas por un espacio). Si dos se repiten, queda el primero. */
+  terminos: ReadonlyMap<string, TerminoIndexado>;
+  /** Cantidades de palabras que tienen los términos (para buscar solo grupos de esos tamaños). */
+  longitudes: ReadonlyArray<number>;
 }
 
 export function prepararEnrutador(banco: BancoRespuestas): IndiceEnrutador {
   const preguntas = new Map<string, { tipo: 'respuesta' | 'derivacion'; posicion: number }>();
-  const terminos: { buscado: string; derivacion: number }[] = [];
+  const terminos = new Map<string, TerminoIndexado>();
+  const longitudes = new Set<number>();
   const registrar = (lista: readonly string[], tipo: 'respuesta' | 'derivacion', posicion: number) => {
     for (const p of lista) {
       const clave = normalizarPregunta(p);
       if (!preguntas.has(clave)) preguntas.set(clave, { tipo, posicion });
     }
   };
-  banco.respuestas.forEach((e, i) => registrar(e.preguntas, 'respuesta', i));
+  // Primero las derivaciones: ante una pregunta duplicada gana la derivación, como en el orden de decisión.
+  let orden = 0;
   banco.derivaciones.forEach((e, i) => {
     registrar(e.preguntas, 'derivacion', i);
     for (const t of e.terminos) {
       const n = normalizarParaTerminos(t);
-      if (n !== '') terminos.push({ buscado: ` ${n} `, derivacion: i });
+      if (n === '') continue;
+      if (!terminos.has(n)) terminos.set(n, { derivacion: i, orden });
+      orden++;
+      longitudes.add(n.split(' ').length);
     }
   });
-  return { banco, preguntas, terminos };
+  banco.respuestas.forEach((e, i) => registrar(e.preguntas, 'respuesta', i));
+  return { banco, preguntas, terminos, longitudes: [...longitudes].sort((x, y) => x - y) };
+}
+
+/**
+ * Término de emergencia que coincide, el primero según el orden del banco. Compara cada grupo de palabras
+ * consecutivas del mensaje (de los tamaños que existen en el banco) contra el mapa de términos: el costo crece
+ * con el largo del mensaje y no con la cantidad de términos.
+ */
+function buscarTermino(nt: string, indice: IndiceEnrutador): TerminoIndexado | null {
+  const palabras = nt.split(' ');
+  let mejor: TerminoIndexado | null = null;
+  for (const largo of indice.longitudes) {
+    for (let i = 0; i + largo <= palabras.length; i++) {
+      const t = indice.terminos.get(largo === 1 ? (palabras[i] ?? '') : palabras.slice(i, i + largo).join(' '));
+      if (t && (mejor === null || t.orden < mejor.orden)) mejor = t;
+    }
+  }
+  return mejor;
 }
 
 export function enrutar(texto: string, indice: IndiceEnrutador, config: Enrutador, estado: EstadoEnrutador): DecisionEnrutador {
   if (!config.activo) return { carril: 'ia', motivo: 'enrutador_apagado', entradaCandidata: null };
 
-  const nt = normalizarParaTerminos(texto);
-  if (nt === '') return { carril: 'ia', motivo: 'sin_contenido', entradaCandidata: null };
+  // Dos variantes: invisible dentro de una palabra (se borra) e invisible como separador (vale un espacio).
+  const dentro = normalizarParaTerminos(texto);
+  const separado = normalizarParaTerminosSeparado(texto);
+  if (dentro === '' && separado === '') return { carril: 'ia', motivo: 'sin_contenido', entradaCandidata: null };
 
-  // Filtro barato: un término solo puede coincidir si su primera palabra está entre las del mensaje.
-  const palabras = new Set(nt.split(' '));
-  const rodeado = ` ${nt} `;
-  for (const t of indice.terminos) {
-    if (!palabras.has(t.buscado.slice(1, t.buscado.indexOf(' ', 1))) || !rodeado.includes(t.buscado)) continue;
+  const a = dentro === '' ? null : buscarTermino(dentro, indice);
+  const b = separado === '' || separado === dentro ? null : buscarTermino(separado, indice);
+  const t = a !== null && b !== null ? (a.orden <= b.orden ? a : b) : (a ?? b);
+  if (t !== null) {
     const d = indice.banco.derivaciones[t.derivacion];
     if (d) return { carril: 'derivacion', motivo: d.motivo, origen: 'termino_emergencia', entradaId: d.id };
   }

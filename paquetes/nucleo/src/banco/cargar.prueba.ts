@@ -151,6 +151,11 @@ describe('cargarBanco', () => {
       for (const c of casos) expect(falla(texto(c), { admitirSintetico: false }).message).toBe('banco sintético fuera de pruebas');
     });
 
+    it.each(['ejemplo-sintetico', 'ejemplo_sintetico', 'sintetico', 'ejemplo sintetica'])('rechaza el aprobado_por «%s»', (marca) => {
+      const t = texto(real({ respuestas: [respuesta({ aprobado_por: marca })] }));
+      expect(falla(t, { admitirSintetico: false }).message).toBe('banco sintético fuera de pruebas');
+    });
+
     it('un banco con aprobadores reales carga sin la opción', () => {
       const t = texto(real({ derivaciones: [derivacion()] }));
       expect(cargarBanco(t).banco.respuestas).toHaveLength(1);

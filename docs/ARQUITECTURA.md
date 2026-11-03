@@ -455,9 +455,10 @@ respuesta fija, y una pregunta de derivación deriva aunque el carril fijo esté
   quita caracteres de formato invisibles (guion blando, ancho cero, controles BIDI) y marcas combinantes, y
   convierte todo lo que no sea letra o número en un espacio. Así «hola,termino.emergencia» coincide y
   «terminos» no coincide con «termino».
-- **Sin expresiones regulares construidas con datos.** Los términos se buscan con `includes` sobre el texto
-  normalizado y rodeado de espacios; una prueba estructural prohíbe `RegExp(`, `fetch` y `process.env` en el
-  archivo, y otra mide el tiempo con 4000 términos y entradas de 50 000 caracteres.
+- **Sin expresiones regulares construidas con datos.** Los grupos de palabras consecutivas del texto
+  normalizado se comparan contra un mapa de términos (el costo no crece con la cantidad de términos); una prueba estructural prohíbe `RegExp(`, `fetch` y `process.env` en el
+  archivo, y otras miden el tiempo con 4000 términos (incluido el peor caso, con la misma primera palabra) y entradas de
+  50 000 caracteres.
 - **Coincidencia exacta solamente.** Sin coincidencia parcial ni similitud.
 - **Sin texto de la persona.** La decisión y sus avisos (`avisosDecision`) llevan solo ids y valores enumerados.
 - **Sección `enrutador` de la configuración.** `{ activo, carrilFijo }`, ambos apagados por defecto, solo en la
@@ -471,7 +472,11 @@ respuesta fija, y una pregunta de derivación deriva aunque el carril fijo esté
 
 Qué NO garantiza: homóglifos de otros alfabetos (una «е» cirílica evita un término), sinónimos, errores
 ortográficos, preguntas parecidas pero no idénticas, ni negaciones («no es una emergencia» deriva igual, que es la
-dirección segura). Solo reconoce coincidencias exactas.
+dirección segura). Solo reconoce coincidencias exactas. Tampoco cubre guiones o puntuación dentro de una palabra
+(«sui-cidio», «acci.dente»), formas pronominales («matarme»), leetspeak («acc1dente»), letras separadas por
+espacios, palabras pegadas ni homóglifos. La red de seguridad para las emergencias que el enrutador no detecte es
+el carril IA (H4). Un invisible se prueba de dos formas (dentro de una palabra o como separador, con los rellenos
+Hangul incluidos), pero un mismo mensaje que mezcle ambos usos en un solo término no se reconoce.
 
 Pendientes y decisiones:
 
@@ -482,6 +487,8 @@ Pendientes y decisiones:
   `aclaracion`.
 - **D4**: encender `carrilFijo` es un booleano; falta decidir si exige una medición con confusión 0. H2 no lo hace
   cumplir.
+- **D5** (decide Andres, para H4): si una compuerta rechaza el texto fijo de una entrada con `riesgo: 'critico'`,
+  hoy `armarTextoFijo` pasa a `ia`; la alternativa es pasar a derivación. No se cambió ese comportamiento.
 - Los términos de emergencia y los textos de derivación reales los entrega Rodrigo (Legal); el banco versionado
   sigue siendo sintético.
 

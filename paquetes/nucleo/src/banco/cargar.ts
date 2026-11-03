@@ -49,15 +49,21 @@ function recorrerSecretos(valor: unknown, ruta: string, hallazgos: string[]): vo
   }
 }
 
+const SINTETICO = /\bsintetic[oa]s?\b/;
+
+/**
+ * Rechaza de MÁS a propósito (p. ej. «no incluye datos sintéticos» en la descripción): ante la duda, la dirección
+ * segura es no cargar el banco fuera de pruebas. La misma prueba vale para la descripción y para cada `aprobado_por`.
+ */
 function esSintetico(banco: BancoRespuestas): boolean {
-  if (/\bsintetic[oa]s?\b/.test(normalizarParaTerminos(banco.descripcion ?? ''))) return true;
+  if (SINTETICO.test(normalizarParaTerminos(banco.descripcion ?? ''))) return true;
   const aprobadores = [
     ...banco.respuestas.map((e) => e.aprobado_por),
     ...banco.derivaciones.map((e) => e.aprobado_por),
     ...banco.textos_derivacion.map((e) => e.aprobado_por),
     ...Object.values(banco.aclaraciones).flatMap((a) => (a ? [a.aprobado_por] : [])),
   ];
-  return aprobadores.some((x) => normalizarPregunta(x) === APROBADO_POR_SINTETICO);
+  return aprobadores.some((x) => normalizarPregunta(x) === APROBADO_POR_SINTETICO || SINTETICO.test(normalizarParaTerminos(x)));
 }
 
 export function cargarBanco(contenido: string, opciones: { sha256Esperado?: string; admitirSintetico?: boolean } = {}): BancoCargado {

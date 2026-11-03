@@ -137,6 +137,56 @@ describe('enrutador', () => {
     expect(JSON.stringify(BASE)).toBe(copia);
   });
 
+  it('un invisible que SEPARA palabras no evita el término', () => {
+    expect(ir('termino\u200bemergencia\u200bejemplo')).toMatchObject({ carril: 'derivacion', origen: 'termino_emergencia' });
+    expect(ir('hola\u2060termino emergencia ejemplo')).toMatchObject({ carril: 'derivacion' });
+  });
+
+  it('un relleno Hangul dentro de una palabra no evita el término', () => {
+    for (const r of ['\u115f', '\u1160', '\u3164', '\uffa0']) {
+      expect(ir(`ter${r}mino emergencia ejemplo`)).toMatchObject({ carril: 'derivacion', origen: 'termino_emergencia' });
+    }
+  });
+
+  it('las dos variantes dan la misma decisión: una por invisible interno y otra por invisible separador', () => {
+    const interno = ir('ter\u200bmino emergencia ejemplo');
+    const separador = ir('termino\u200bemergencia\u200bejemplo');
+    expect(interno).toMatchObject({ carril: 'derivacion', origen: 'termino_emergencia' });
+    expect(separador).toEqual(interno);
+  });
+
+  it('si coinciden términos de dos derivaciones, deriva la primera del banco', () => {
+    const banco = enLinea({
+      derivaciones: [
+        { id: 'd-uno', motivo: 'emergencia', terminos: ['palabra comun'], texto: 'Texto real.', aprobado_por: 'Rol Comercial' },
+        { id: 'd-dos', motivo: 'emergencia', terminos: ['palabra comun dos'], texto: 'Texto real.', aprobado_por: 'Rol Comercial' },
+      ],
+    });
+    expect(enrutar('palabra comun dos', prepararEnrutador(banco), ON, SIN_ATENCION)).toMatchObject({ entradaId: 'd-uno' });
+  });
+
+  it('una pregunta duplicada entre derivación y respuesta gana la derivación', () => {
+    const banco: BancoRespuestas = {
+      ...BASE,
+      derivaciones: [{ ...BASE.derivaciones[1]!, preguntas: ['pregunta sintetica de precio uno'] }],
+    };
+    expect(enrutar('pregunta sintetica de precio uno', prepararEnrutador(banco), ON, SIN_ATENCION)).toMatchObject({
+      carril: 'derivacion',
+      origen: 'pregunta_derivacion',
+    });
+  });
+
+  it('límite conocido: guiones y leetspeak dentro de una palabra pasan a la IA', () => {
+    const banco = enLinea({
+      derivaciones: [{ id: 'd-uno', motivo: 'emergencia', terminos: ['suicidio', 'accidente'], texto: 'Texto real.', aprobado_por: 'Rol Comercial' }],
+    });
+    const indice = prepararEnrutador(banco);
+    for (const t of ['sui-cidio', 'acc1dente']) {
+      expect(enrutar(t, indice, ON, SIN_ATENCION)).toMatchObject({ carril: 'ia', motivo: 'sin_coincidencia' });
+    }
+    expect(enrutar('un accidente', indice, ON, SIN_ATENCION)).toMatchObject({ carril: 'derivacion' });
+  });
+
   it('si una pregunta se repite entre entradas conserva la primera', () => {
     const banco = { ...BASE, respuestas: [...BASE.respuestas, { ...BASE.respuestas[0]!, id: 'ejemplo-copia' }] };
     expect(enrutar('pregunta sintetica de precio uno', prepararEnrutador(banco), ON, SIN_ATENCION)).toMatchObject({ entradaId: 'ejemplo-precio-1' });
@@ -194,13 +244,32 @@ describe('tiempo y ReDoS', () => {
     const t0 = performance.now();
     const indice = prepararEnrutador(grande);
     expect(performance.now() - t0).toBeLessThan(1000);
-    expect(indice.terminos).toHaveLength(4000);
+    expect(indice.terminos.size).toBe(4000);
     for (const unidad of ['a', 'a ', '​', 'á', '¿', 'a,']) {
       const entrada = unidad.repeat(Math.ceil(50_000 / unidad.length)).slice(0, 50_000);
       const t1 = performance.now();
       enrutar(entrada, indice, ON, SIN_ATENCION);
       expect(performance.now() - t1).toBeLessThan(250);
     }
+  });
+});
+
+describe('peor caso de tiempo', () => {
+  it('4000 términos con la misma primera palabra y una entrada de 50 000 caracteres', () => {
+    const banco = enLinea({
+      derivaciones: Array.from({ length: 20 }, (_, i) => ({
+        id: `d-${i}`,
+        motivo: 'emergencia',
+        terminos: Array.from({ length: 200 }, (_, j) => `quiero numero ${i} item ${j}`),
+        texto: 'Texto real.',
+        aprobado_por: 'Rol Comercial',
+      })),
+    });
+    const indice = prepararEnrutador(banco);
+    const entrada = 'quiero '.repeat(Math.ceil(50_000 / 7)).slice(0, 50_000);
+    const t0 = performance.now();
+    enrutar(entrada, indice, ON, SIN_ATENCION);
+    expect(performance.now() - t0).toBeLessThan(250);
   });
 });
 
