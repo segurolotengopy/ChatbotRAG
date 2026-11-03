@@ -14,6 +14,14 @@
 import type { VariablePlantilla } from './esquema.js';
 import { VARIABLES_PLANTILLA } from './esquema.js';
 
+/** Error de rellenado. Su mensaje nunca incluye el valor resuelto ni el texto de la plantilla. */
+export class ErrorPlantilla extends Error {
+  constructor() {
+    super('plantilla sin rellenar');
+    this.name = 'ErrorPlantilla';
+  }
+}
+
 export type ResolverVariables = (v: VariablePlantilla) => string | null;
 
 // Acotada: nombre solo en minúsculas y guion bajo; sin cuantificadores anidados.
@@ -43,7 +51,7 @@ export function rellenarPlantilla(
 ): { ok: true; texto: string } | { ok: false; faltantes: VariablePlantilla[] } {
   const faltantes: VariablePlantilla[] = [];
   const texto = plantilla.replace(PATRON_VARIABLE, (_coincidencia, nombre: string) => {
-    if (!esConocida(nombre)) throw new Error('plantilla sin rellenar');
+    if (!esConocida(nombre)) throw new ErrorPlantilla();
     const valor = resolver(nombre);
     if (valor === null || valor === '') {
       if (!faltantes.includes(nombre)) faltantes.push(nombre);
@@ -52,6 +60,6 @@ export function rellenarPlantilla(
     return valor;
   });
   if (faltantes.length > 0) return { ok: false, faltantes };
-  if (/[{}]/.test(texto)) throw new Error('plantilla sin rellenar');
+  if (/[{}]/.test(texto)) throw new ErrorPlantilla();
   return { ok: true, texto };
 }
