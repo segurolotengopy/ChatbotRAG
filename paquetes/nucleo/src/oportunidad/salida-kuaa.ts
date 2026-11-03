@@ -82,11 +82,10 @@ export function interpretarSalidaModelo(texto: string): SalidaOportunidad | null
  * minúsculas y sin tildes. Solo sirve para comparar; jamás se devuelve a la persona.
  */
 function paraDetectar(texto: string): string {
-  return normalizarEntradaKuaa(texto)
-    .normalize('NFD')
-    .replace(/\p{Mn}/gu, '')
-    .toLowerCase();
+  return sinTildes(normalizarEntradaKuaa(texto)).toLowerCase();
 }
+
+const sinTildes = (t: string): string => t.normalize('NFD').replace(/\p{Mn}/gu, '');
 
 const NUMERO_EN_PALABRAS =
   '(?:un|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|quince|veinte|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa|cien|ciento|doscientos|trescientos|cuatrocientos|quinientos|seiscientos|setecientos|ochocientos|novecientos|medio)';
@@ -120,8 +119,9 @@ const PATRONES_ENLACE_O_PRECIO: readonly (readonly [string, RegExp])[] = [
   // El marcador «§» lo deja `quitarPermitidos` donde había un importe permitido: un multiplicador o una moneda ajena
   // junto a él cambia la cifra («390.000 millones», «US$ 390.000») y no está respaldado.
   ['importe_permitido_alterado', /§\s*(?:mil\b|millon|millones|%|usd\b|u\$s|dolar|lucas)|(?:usd|u\$s|us\$|\$)\.?\s*§/],
-  // «¶» lo deja `quitarPermitidos` cuando el texto repite la dirección permitida con otro número.
-  ['direccion_alterada', /¶/],
+  // U+E000 (uso privado) lo deja `quitarPermitidos` cuando el texto repite la dirección permitida con otro número;
+  // `patronEnlaceOPrecio` lo elimina del texto del modelo antes de detectar, así que nadie puede dispararlo a mano.
+  ['direccion_alterada', /\uE000/],
   ['numero_en_palabras', new RegExp(`\\b${NUMERO_EN_PALABRAS}\\b(?:\\s+[a-z]+){0,3}?\\s+(?:mil|millon|millones|guarani|guaranies|dolar|dolares|lucas)\\b`)],
 ];
 
@@ -161,7 +161,34 @@ export function permitidosDe(plataforma: Plataforma | undefined): Permitidos | u
   };
 }
 
+/**
+ * Límites de LISTA BLANCA para correos y dominios permitidos (bandera `u`): una lista negra de caracteres vecinos deja
+ * pasar letras de otros alfabetos pegadas («øinterseguros360.com»). Qué NO garantiza: que lo que sigue a un espacio sea
+ * inocuo; solo que el texto permitido no es parte de una palabra o dirección mayor.
+ */
+const LIMITE_ANTES = '(?<=^|[\\s(«"\'¿¡])';
+const LIMITE_DESPUES = '(?=$|[\\s)»"\',;!?]|:(?:\\s|$)|\\.(?:\\s|$))';
+
 const escaparRe = (t: string): string => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Retira correos y dominios permitidos sobre el texto CON tildes (solo NFKC y minúsculas): «ínterseguros360.com» no es
+ * el dominio permitido aunque, sin tildes, lo parezca. Qué NO garantiza: nada sobre lo que rodea al permitido más allá
+ * de los límites de lista blanca.
+ */
+function quitarContactos(t: string, p: Permitidos): string {
+  let r = t;
+  for (const c of p.correos) {
+    r = r.replace(new RegExp(`${LIMITE_ANTES}${escaparRe(c.toLowerCase())}${LIMITE_DESPUES}`, 'gu'), '§');
+  }
+  // Dominio (sitio web): solo el texto suelto, con los mismos límites de lista blanca que el correo. Antes solo puede
+  // haber inicio, espacio o un signo de apertura; después, fin, espacio, un signo de cierre o puntuación de frase. Todo lo
+  // demás (letras de otros alfabetos pegadas, «&x=1», «](url)», «/ruta», otro rótulo) deja el dominio visible a los patrones.
+  for (const d of p.dominios) {
+    r = r.replace(new RegExp(`${LIMITE_ANTES}${escaparRe(d)}${LIMITE_DESPUES}`, 'gu'), '§');
+  }
+  return r;
+}
 
 /**
  * Quita del texto (ya normalizado por `paraDetectar`) las apariciones EXACTAS de lo permitido, para que los
@@ -179,23 +206,14 @@ function quitarPermitidos(t: string, p: Permitidos): string {
   for (const tel of p.telefonos) {
     for (const f of [tel, formatearTelefono(tel)]) r = r.replace(new RegExp(`${escaparRe(f)}(?!\\d)`, 'g'), '§');
   }
-  for (const c of p.correos) {
-    r = r.replace(new RegExp(`(?<![a-z0-9._%+-])${escaparRe(c.toLowerCase())}(?![a-z0-9_-]|\\.[a-z0-9])`, 'g'), '§');
-  }
-  // Dominio (sitio web): solo el texto suelto. No puede ir pegado a algo anterior (otro rótulo, «.», «@», «/», «-») ni
-  // seguido de otro rótulo, ruta, puerto, consulta o «%»: «x.interseguros360.com», «interseguros360.com.evil.com» o
-  // «interseguros360.com/ruta» siguen visibles y los patrones los bloquean. Un punto final de oración sí se admite.
-  for (const d of p.dominios) {
-    r = r.replace(new RegExp(`(?<![a-z0-9._%+@/:-])${escaparRe(d)}(?![a-z0-9_@/:?#%-]|\\.[a-z0-9])`, 'g'), '§');
-  }
   // Dirección: frase completa, sin letra ni número pegados ni «.dd» o «,dd» detrás. Si no está completa pero el texto
-  // trae la misma frase con otro número («Av X 1235» por «Av X 1234»), queda el marcador «¶» y el detector la bloquea.
+  // trae la misma frase con otro número («Av X 1235» por «Av X 1234»), queda el marcador privado U+E000 y el detector la bloquea.
   for (const dir of p.direcciones) {
     const cuerpo = escaparRe(dir);
     r = r.replace(new RegExp(`(?<![\\p{L}\\p{N}])${cuerpo}(?![\\p{L}\\p{N}]|[.,]\\d)`, 'gu'), '§');
     if (/\d/.test(dir)) {
       const comodin = cuerpo.replace(/\d+/g, '\\d{1,9}');
-      r = r.replace(new RegExp(`(?<![\\p{L}\\p{N}])${comodin}(?![\\p{L}\\p{N}])`, 'gu'), '¶');
+      r = r.replace(new RegExp(`(?<![\\p{L}\\p{N}])${comodin}(?![\\p{L}\\p{N}])`, 'gu'), '\uE000');
     }
   }
   return r;
@@ -209,8 +227,9 @@ function quitarPermitidos(t: string, p: Permitidos): string {
  * patrones se retiran las apariciones exactas de esos importes, teléfonos y correos; cualquier otra cosa sigue bloqueada.
  */
 export function patronEnlaceOPrecio(texto: string, permitidos?: Permitidos): string | null {
-  const base = paraDetectar(texto);
-  const t = permitidos ? quitarPermitidos(base, permitidos) : base;
+  // Los puntos ideográficos («。», «．», «｡») valen como «.»; el marcador privado U+E000 es del detector, no del modelo.
+  const conTildes = normalizarEntradaKuaa(texto).toLowerCase().replace(/[。．｡]/g, '.').replace(/\uE000/g, '');
+  const t = permitidos ? quitarPermitidos(sinTildes(quitarContactos(conTildes, permitidos)), permitidos) : sinTildes(conTildes);
   return PATRONES_ENLACE_O_PRECIO.find(([, re]) => re.test(t))?.[0] ?? null;
 }
 

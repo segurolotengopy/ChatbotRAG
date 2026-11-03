@@ -346,12 +346,22 @@ otra cifra sigue bloqueada. El bloque no se guarda en la memoria ni en la bitác
 No garantiza que los datos sean correctos (los fija SLT) ni que el modelo los use en el contexto adecuado.
 
 `contacto` admite además dos campos opcionales que SLT envía ya saneados. `direccion` es la dirección de Interseguros
-(5 a 200 caracteres; solo letras, números, espacio y `. + -`, sin comas ni «º») y Kuaa puede darla tal cual, como frase
-completa. `sitio_web` es el sitio de Interseguros como dominio suelto en minúsculas (sin esquema, ruta ni puerto) y es
-la única excepción a la prohibición de enlaces. No garantizan: no se admite ningún otro dato de contacto (otra dirección,
-redes, otros dominios); el sitio web solo se permite escrito como dominio suelto (`interseguros360.com`, no
-`https://…`, ni con ruta, ni como parte de un dominio más largo) y la dirección solo completa; la misma frase con otro
-número se bloquea. Sin estos campos el comportamiento es idéntico al anterior.
+(5 a 120 caracteres; solo letras, números, espacio y `. + -`, sin comas ni «º»; el esquema rechaza la que dispare el
+detector de enlaces, teléfonos o cifras, o tenga un grupo de más de 5 dígitos) y Kuaa puede darla tal cual, como frase
+completa; la misma frase con otro número se bloquea. `sitio_web` es el sitio de Interseguros como dominio suelto en
+minúsculas (sin esquema, ruta ni puerto) y es la única excepción a la prohibición de enlaces: solo cuenta escrito suelto,
+precedido de inicio, espacio o signo de apertura y seguido de fin, espacio, signo de cierre o puntuación de frase (lista
+blanca; los correos permitidos usan el mismo límite). No cuenta con letras pegadas de otro alfabeto o con tilde, con
+`https://`, ruta, puerto, otro rótulo ni como destino de un enlace Markdown. Sin estos campos el detector se comporta como
+antes, salvo que los límites de lista blanca de los correos permitidos son más estrictos que la versión anterior.
+
+`sitio_web` y `direccion` son datos de confianza: `/v1/kuaa/mensaje` se llama de servidor a servidor con la clave en el
+backend de SLT, y el cliente Kuaa no debe tener `origenes` CORS (un navegador no debe poder enviar estos campos).
+No se admite ningún otro dato de contacto (otra dirección, redes, otros dominios).
+
+Límites conocidos (frente aparte; decide Andres): «interseguros360 punto com» no se bloquea; el patrón de dominio solo
+cubre unos pocos TLD (`.tk`, `.xyz` pasan); y `patronEnlaceOPrecio` tiene costo cuadrático con entradas largas y
+repetitivas (acotado por el tope de 4000 caracteres del texto del modelo).
 
 1. **Entrada.** Normaliza localmente (NFKC, sin caracteres de formato, marcas combinantes ni rellenos,
    homóglifos cirílicos y griegos plegados) ANTES de las compuertas y de enviar al modelo; el modelo recibe

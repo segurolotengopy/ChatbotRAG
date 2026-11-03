@@ -430,6 +430,10 @@ describe('dirección y sitio web del contacto', () => {
       expect(Plataforma.safeParse(plataforma()).success).toBe(true);
       expect(entrada({ plataforma: conCampos() }).plataforma?.contacto.sitio_web).toBe(DOMINIO);
     });
+    it('acepta direcciones largas y normales', () => {
+      for (const direccion of ['Avda. Aviadores del Chaco 2351 Campos Cervera Edificio Plaza Center 7 piso Asuncion', 'Av. Mariscal Lopez 1234 esq. Peru'])
+        expect(Plataforma.safeParse(plataforma({ contacto: { direccion } })).success).toBe(true);
+    });
     it.each([
       ['dirección con coma', { direccion: 'Av. Lopez 1234, Asuncion' }],
       ['dirección con símbolo extraño', { direccion: 'Av. Lopez 1234 n°5' }],
@@ -443,6 +447,10 @@ describe('dirección y sitio web del contacto', () => {
       ['dominio con espacio', { sitio_web: 'interseguros360 .com' }],
       ['dominio sin punto', { sitio_web: 'interseguros360' }],
       ['dominio con puerto', { sitio_web: 'interseguros360.com:8080' }],
+      ['dirección con forma de dominio', { direccion: 'pago-seguro.com' }],
+      ['dirección con forma de teléfono', { direccion: 'Llame 0981 123 456' }],
+      ['dirección con un grupo de más de 5 dígitos', { direccion: 'Av. Lopez 123456' }],
+      ['dirección de 121 caracteres', { direccion: 'a'.repeat(121) }],
     ])('rechaza %s', (_n, contacto) => {
       expect(Plataforma.safeParse(plataforma({ contacto })).success).toBe(false);
     });
@@ -452,7 +460,7 @@ describe('dirección y sitio web del contacto', () => {
     const config = resolverConfiguracion(cargarConfiguracionDesdeJson(JSON_KUAA), null);
     it('incluye las dos líneas solo si existen', () => {
       const con = armarPromptKuaa(config, entrada({ plataforma: conCampos() }), [], AHORA);
-      expect(con).toContain(`- Dirección de Interseguros: ${DIRECCION}.`);
+      expect(con).toContain(`- Dirección de Interseguros: «${DIRECCION}».`);
       expect(con).toContain(`- Sitio web de Interseguros: ${DOMINIO}.`);
       const sin = armarPromptKuaa(config, entrada({ plataforma: plataforma() }), [], AHORA);
       expect(sin).not.toContain('Dirección de Interseguros');
@@ -490,8 +498,19 @@ describe('dirección y sitio web del contacto', () => {
       ['con ruta', 'Visite interseguros360.com/ruta?x'],
       ['con puerto', 'Visite interseguros360.com:8080'],
       ['en un correo ajeno', 'Escriba a ventas@interseguros360.com'],
-      ['otro número en la dirección', 'Estamos en Av. Mariscal Lopez 1235 esq. Peru'],
-      ['número más largo en la dirección', 'Estamos en Av. Mariscal Lopez 12345 esq. Peru'],
+      ['frase completa de la dirección con otro número (una parte suelta no se bloquea, como antes)', 'Estamos en Av. Mariscal Lopez 1235 esq. Peru'],
+      ['frase completa de la dirección con un número más largo', 'Estamos en Av. Mariscal Lopez 12345 esq. Peru'],
+      ['letra o con tilde pegada antes (í)', 'Visite ínterseguros360.com'],
+      ['letra ø pegada antes', 'Visite øinterseguros360.com'],
+      ['letra ł pegada antes', 'Visite łinterseguros360.com'],
+      ['letra ß pegada antes', 'Visite ßinterseguros360.com'],
+      ['letra ø pegada después', 'Visite interseguros360.comø'],
+      ['rótulo con letra ø después', 'Visite interseguros360.com.øx'],
+      ['parámetro con &', 'Visite interseguros360.com&x=1'],
+      ['enlace de markdown a otro destino', 'Visite [interseguros360.com](evil.tk)'],
+      ['punto ideográfico y otro dominio', 'Visite interseguros360.com。ru'],
+      ['punto de ancho completo y otro dominio', 'Visite interseguros360.com．evil.com'],
+      ['correo de otro alfabeto', 'Escriba a ventas@ínterseguros360.com'],
     ])('sigue bloqueado: %s', (_n, texto) => {
       expect(patronEnlaceOPrecio(texto, perm)).not.toBeNull();
     });
@@ -501,6 +520,34 @@ describe('dirección y sitio web del contacto', () => {
       expect(patronEnlaceOPrecio('Visite interseguros360[.]com', perm)).not.toBeNull();
       expect(patronEnlaceOPrecio('Visite interseguros360(.)com', perm)).not.toBeNull();
       expect(patronEnlaceOPrecio('Visite interseguros360 [dot] com', perm)).not.toBeNull();
+    });
+    it('pasan el dominio entre signos de pregunta o seguido de dos puntos (sin falso positivo)', () => {
+      expect(patronEnlaceOPrecio('¿Conoce interseguros360.com?', perm)).toBeNull();
+      expect(patronEnlaceOPrecio('Web: interseguros360.com: lunes a viernes', perm)).toBeNull();
+      expect(patronEnlaceOPrecio('(interseguros360.com)', perm)).toBeNull();
+      expect(patronEnlaceOPrecio('Es «interseguros360.com».', perm)).toBeNull();
+    });
+    it('el correo permitido sigue pasando entre puntuación', () => {
+      expect(patronEnlaceOPrecio('Escriba a derechos@ejemplo.com.py.', permSin)).toBeNull();
+      expect(patronEnlaceOPrecio('(derechos@ejemplo.com.py)', permSin)).toBeNull();
+      expect(patronEnlaceOPrecio('Escriba a derechos@ejemplo.com.pyø', permSin)).not.toBeNull();
+    });
+    it('un carácter de formato invisible dentro del dominio se quita al normalizar; una marca combinante lo invalida', () => {
+      expect(patronEnlaceOPrecio('Visite interseguros\u200b360.com', perm)).toBeNull();
+      expect(patronEnlaceOPrecio('Visite interseguros\u0301360.com', perm)).not.toBeNull();
+      expect(patronEnlaceOPrecio('Visite interseguros\u0301360.com.evil.com', perm)).not.toBeNull();
+    });
+    it('un «¶» del modelo no dispara nada sin permitidos ni con ellos, y U+E000 tampoco', () => {
+      expect(patronEnlaceOPrecio('texto con ¶ pilcrow')).toBeNull();
+      expect(patronEnlaceOPrecio('texto con ¶ pilcrow', perm)).toBeNull();
+      expect(patronEnlaceOPrecio('texto con \uE000 privado', perm)).toBeNull();
+    });
+    it('el detector con 4000 caracteres tarda menos de 250 ms', () => {
+      for (const t of ['a'.repeat(4000), '1'.repeat(4000), 'interseguros360.com '.repeat(200), 'a.'.repeat(2000)]) {
+        const inicio = performance.now();
+        patronEnlaceOPrecio(t, perm);
+        expect(performance.now() - inicio).toBeLessThan(250);
+      }
     });
     it('el resto sigue bloqueado con los campos presentes', () => {
       expect(patronEnlaceOPrecio('Visite interseguros360.com y también https://otro.com', perm)).not.toBeNull();

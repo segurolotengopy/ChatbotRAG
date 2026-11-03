@@ -67,7 +67,7 @@ export function seccionPlataforma(p: Plataforma): string {
   }
   if (p.contacto.whatsapp_e164 !== undefined) lineas.push(`WhatsApp de atención: ${formatearTelefono(p.contacto.whatsapp_e164)}.`);
   if (p.contacto.canal !== undefined) lineas.push(`Canal de atención: «${p.contacto.canal}».`);
-  if (p.contacto.direccion !== undefined) lineas.push(`Dirección de Interseguros: ${p.contacto.direccion}.`);
+  if (p.contacto.direccion !== undefined) lineas.push(`Dirección de Interseguros: «${p.contacto.direccion}».`);
   if (p.contacto.sitio_web !== undefined) lineas.push(`Sitio web de Interseguros: ${p.contacto.sitio_web}.`);
   if (p.contacto.correo_derechos !== undefined) lineas.push(`Correo ${p.contacto.correo_derechos}: solo para retracto y derechos sobre datos personales; no es un canal de atención general.`);
   return `DATOS DE LA PLATAFORMA (los fija el sistema; mandan sobre el respaldo documental para planes, premios, coberturas, contacto y catálogo)\n${lineas.map((l) => `- ${l}`).join('\n')}`;
