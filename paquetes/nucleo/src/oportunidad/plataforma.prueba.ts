@@ -413,6 +413,8 @@ describe('respaldos de la corrida de SLT del 3-nov', () => {
   });
   it.each(['Tu póliza fue emitida correctamente.', 'La póliza ya está activada.'])('«%s» sigue bloqueándose sin estado emitido', (t) => {
     expect(afirmaHechoNoRespaldado(t, ESTADOS_OPERATIVOS_DESCONOCIDOS)).toBe('poliza');
+  });
+});
 
 describe('dirección y sitio web del contacto', () => {
   const DIRECCION = 'Av. Mariscal Lopez 1234 esq. Peru';
