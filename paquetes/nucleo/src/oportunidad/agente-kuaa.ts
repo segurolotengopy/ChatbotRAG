@@ -43,7 +43,7 @@ import type { FragmentoRecuperado } from '../puertos/indice-conocimiento.js';
 import { EntradaKuaa, SalidaOportunidad, filtrarBotonesSalida } from './esquemas.js';
 import { normalizarEntradaKuaa } from './normalizar-entrada.js';
 import { armarPromptKuaa } from './prompt-kuaa.js';
-import { afirmaHechoNoRespaldado, afirmaTratamientoTributario, quitarFrases, quitarPromesasDeEntrega, retirarNumerosDeRegistro, salidaTributaria, patronEnlaceOPrecio, permitidosDe, analizarSalida, filtraPrompt, retirarCodigosInternos, salidaFallback, salidaSinCifras } from './salida-kuaa.js';
+import { afirmaHechoNoRespaldado, afirmaTratamientoTributario, quitarFrases, salvarQuitandoBloqueado, quitarPromesasDeEntrega, retirarNumerosDeRegistro, salidaTributaria, patronEnlaceOPrecio, permitidosDe, analizarSalida, filtraPrompt, retirarCodigosInternos, salidaFallback, salidaSinCifras } from './salida-kuaa.js';
 
 export interface ResultadoKuaa {
   salida: SalidaOportunidad;
@@ -182,15 +182,15 @@ export class AgenteKuaa {
     // El detector mira el texto del modelo tal cual y también el ya limpio: el retiro nunca debe esconderle nada.
     const permitidos = permitidosDe(entrada.plataforma);
     let patron = patronEnlaceOPrecio(textoBase, permitidos) ?? patronEnlaceOPrecio(textoSaneado, permitidos);
-    // Un dominio suelto («segurolotengo.com.py» al explicar qué es el sitio) no justifica perder toda la respuesta: se
-    // quita la frase que lo lleva y se revisa de nuevo lo que queda; si aún hay algo bloqueado, se responde sin cifras.
-    if (patron === 'dominio') {
-      const sinDominio = quitarFrases(textoBase, (f) => patronEnlaceOPrecio(f, permitidos) !== null);
-      if (sinDominio.length >= RESTO_MINIMO && patronEnlaceOPrecio(sinDominio, permitidos) === null) {
-        textoBase = sinDominio;
-        textoSaneado = retirarCodigosInternos(sinDominio);
+    // Un valor suelto (un dominio, o «diez mil» al desmentir un precio) no justifica perder toda la respuesta: se quita
+    // lo que lo lleva y se revisa de nuevo lo que queda; si aún hay algo bloqueado o queda poco, se responde sin cifras.
+    if (patron) {
+      const salvado = salvarQuitandoBloqueado(textoBase, (f) => patronEnlaceOPrecio(f, permitidos) !== null, RESTO_MINIMO);
+      if (salvado !== null) {
+        textoBase = salvado;
+        textoSaneado = retirarCodigosInternos(salvado);
         patron = patronEnlaceOPrecio(textoSaneado, permitidos);
-        avisos.push('frase_con_dominio_retirada');
+        avisos.push('frase_con_valor_retirada');
       }
     }
     if (patron) return cierre({ salida: salidaSinCifras(etapa, entrada.plataforma?.contacto.whatsapp_e164), avisos: [...avisos, `patron_bloqueado:${patron}`, 'enlace_o_precio'] });
