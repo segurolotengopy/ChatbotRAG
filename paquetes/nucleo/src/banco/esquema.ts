@@ -72,6 +72,21 @@ export function normalizarPregunta(texto: string): string {
     .replace(/\s+/g, ' ')
     .trim();
 }
+/**
+ * Texto comparable para buscar términos por palabra completa: `normalizar()`, sin caracteres de formato
+ * invisibles (guion blando, ancho cero, controles BIDI) ni marcas combinantes, y con todo lo que no sea letra o
+ * número convertido en un espacio. No sustituye a `normalizarPregunta` (cambiarla rompería la unicidad de H1).
+ */
+export function normalizarParaTerminos(texto: string): string {
+  return normalizar(texto)
+    .replace(/[\p{Cf}\p{M}]/gu, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+/** Valor de `aprobado_por` que marca un banco sintético (de pruebas); un banco así no se carga fuera de pruebas. */
+export const APROBADO_POR_SINTETICO = 'ejemplo sintetico';
+
 /** Pregunta con contenido: tras normalizar debe quedar algo (una pregunta vacía calzaría con cualquier mensaje). */
 const PREGUNTA = (max: number) =>
   z
