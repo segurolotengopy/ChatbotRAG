@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { cargarConfiguracionDesdeJson, validarConfiguracion } from './cargar.js';
+import { resolverConfiguracion } from './perfiles.js';
 import { CONFIG_PRUEBA } from '../pruebas/configuracion-prueba.js';
 
 const RAIZ = fileURLToPath(new URL('../../../../configuraciones/', import.meta.url));
@@ -50,5 +51,42 @@ describe('conocimiento.paquete', () => {
     expect(detalles(() => validarConfiguracion({ ...CONFIG_PRUEBA, conocimiento: { ...CONFIG_PRUEBA.conocimiento, coleccion: 'kuaa--paquete' } }))).toMatch(/--paquete/);
     expect(detalles(() => validarConfiguracion({ ...CONFIG_PRUEBA, perfiles: { PA: { nombre: 'A', conocimiento: { coleccion: 'otra--paquete' } } } }))).toMatch(/--paquete/);
     expect(validarConfiguracion({ ...CONFIG_PRUEBA, conocimiento: { ...CONFIG_PRUEBA.conocimiento, coleccion: 'kuaa-paquete' } }).conocimiento.coleccion).toBe('kuaa-paquete');
+  });
+});
+
+describe('enrutador', () => {
+  const con = (enrutador: unknown) => ({ ...CONFIG_PRUEBA, enrutador });
+  it('está apagado por defecto en la validación y en la configuración efectiva', () => {
+    const c = validarConfiguracion(CONFIG_PRUEBA);
+    expect(c.enrutador).toEqual({ activo: false, carrilFijo: false });
+    expect(resolverConfiguracion(c, null).enrutador).toEqual({ activo: false, carrilFijo: false });
+  });
+  it('admite activo y activo con carrilFijo', () => {
+    expect(validarConfiguracion(con({ activo: true })).enrutador).toEqual({ activo: true, carrilFijo: false });
+    expect(validarConfiguracion(con({ activo: true, carrilFijo: true })).enrutador).toEqual({ activo: true, carrilFijo: true });
+  });
+  it('carrilFijo sin activo falla', () => {
+    expect(detalles(() => validarConfiguracion(con({ carrilFijo: true })))).toMatch(/enrutador\.carrilFijo exige enrutador\.activo/);
+  });
+  it('rechaza claves extra y valores que no son booleanos', () => {
+    expect(() => validarConfiguracion(con({ activo: true, extra: 1 }))).toThrow();
+    expect(() => validarConfiguracion(con({ activo: 'true' }))).toThrow();
+  });
+  it('un perfil no puede definirlo', () => {
+    expect(() => validarConfiguracion({ ...CONFIG_PRUEBA, perfiles: { PA: { nombre: 'A', enrutador: { activo: true } } } })).toThrow();
+  });
+  it('las configuraciones de ejemplo cargan con el enrutador apagado', () => {
+    for (const f of ['segurolotengo.json', 'comercio-agendamiento.json', 'kuaa.json']) {
+      const c = cargarConfiguracionDesdeJson(readFileSync(RAIZ + f, 'utf8'));
+      expect(c.enrutador.activo).toBe(false);
+      expect(c.enrutador.carrilFijo).toBe(false);
+    }
+  });
+  it('el JSON Schema declara los valores por defecto en false', () => {
+    const esquema = JSON.parse(readFileSync(fileURLToPath(new URL('../../esquemas/configuracion-agente.schema.json', import.meta.url)), 'utf8')) as {
+      properties: { enrutador: { properties: Record<string, { default: boolean }> } };
+    };
+    expect(esquema.properties.enrutador.properties['activo']?.default).toBe(false);
+    expect(esquema.properties.enrutador.properties['carrilFijo']?.default).toBe(false);
   });
 });
