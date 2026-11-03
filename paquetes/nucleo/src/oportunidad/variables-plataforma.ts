@@ -12,11 +12,14 @@
  * quien rellena decide qué hacer (derivar), nunca se inventa un valor.
  */
 import type { ResolverVariables } from '../banco/plantillas.js';
-import type { VariablePlantilla } from '../banco/esquema.js';
+import { VARIABLES_DE_PLAN, type VariablePlantilla } from '../banco/esquema.js';
 import type { Plataforma, PlanPlataforma, ResumenOportunidad } from './esquemas.js';
 import { formatearGs, formatearTelefono } from './formato-plataforma.js';
 
-const DE_PLAN: Record<string, (p: PlanPlataforma) => string> = {
+type VariableDePlan = Extract<VariablePlantilla, `${string}_plan`>;
+
+// Tipado exhaustivo: agregar una variable `_plan` sin su resolutor no compila.
+const DE_PLAN: Record<VariableDePlan, (p: PlanPlataforma) => string> = {
   nombre_plan: (p) => p.nombre,
   premio_plan: (p) => formatearGs(p.premio_anual_gs),
   capital_fallecimiento_plan: (p) => formatearGs(p.capital_fallecimiento_gs),
@@ -29,11 +32,10 @@ const DE_PLAN: Record<string, (p: PlanPlataforma) => string> = {
 export function resolverVariablesPlataforma(plataforma: Plataforma | undefined, plan: ResumenOportunidad['plan']): ResolverVariables {
   return (v: VariablePlantilla): string | null => {
     if (!plataforma) return null;
-    const deplan = DE_PLAN[v];
-    if (deplan) {
+    if (VARIABLES_DE_PLAN.has(v)) {
       if (plan === 'ninguno') return null;
       const elegido = plataforma.planes.find((p) => p.plan === plan);
-      return elegido ? deplan(elegido) : null;
+      return elegido ? DE_PLAN[v as VariableDePlan](elegido) : null;
     }
     const { whatsapp_e164: tel, canal, correo_derechos: correo } = plataforma.contacto;
     switch (v) {

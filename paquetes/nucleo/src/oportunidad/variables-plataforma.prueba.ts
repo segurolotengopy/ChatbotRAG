@@ -70,7 +70,7 @@ describe('resolverVariablesPlataforma', () => {
     const plantilla =
       '{{nombre_plan}}: {{premio_plan}} al año; {{capital_fallecimiento_plan}}; {{indemnizacion_cancer_plan}}; ' +
       '{{renta_hospitalaria_dia_plan}} por día hasta {{renta_dias_max_plan}} días; {{gastos_medicos_accidente_plan}}. ' +
-      'Escriba al {{whatsapp}} o a {{correo_derechos}}.';
+      'Escriba al {{whatsapp}} por {{canal_contacto}} o a {{correo_derechos}}.';
     const r = rellenarPlantilla(plantilla, resolverVariablesPlataforma(p, 'CONFIO'));
     expect(r.ok).toBe(true);
     if (r.ok) expect(patronEnlaceOPrecio(r.texto, permitidosDe(p))).toBeNull();
