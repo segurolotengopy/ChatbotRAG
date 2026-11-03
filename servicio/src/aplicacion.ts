@@ -21,7 +21,8 @@
  *
  * LÍMITES: por IP (global) y por cliente (`limitePorMinuto`, ventana fija de 60 s que
  * comparten todos los usuarios de esa clave). El rechazo por límite no consume LLM y
- * el del cliente incluye `Retry-After` (segundos); el del plugin de IP también.
+ * el del cliente incluye `Retry-After` (segundos); el del plugin de IP también lo trae. Las cabeceras
+ * `x-ratelimit-*` del plugin se refieren a la IP, no al cupo del cliente.
  *
  * ERRORES: 400 forma, 401 sin clave válida, 404 conversación/perfil, 413 texto
  * largo, 429 límite, 500 genérico SIN detalle interno. Ningún error devuelve el
@@ -88,7 +89,9 @@ export async function crearAplicacion(opciones: OpcionesAplicacion): Promise<Fas
     max: entorno.CHATBOTRAG_LIMITE_IP_MINUTO,
     timeWindow: '1 minute',
     keyGenerator: (p) => p.ip,
-    errorResponseBuilder: () => ({ ok: false, motivo: 'LIMITE_EXCEDIDO' }),
+    // Sin `statusCode` el plugin lanza este objeto y el manejador de errores lo toma por un 500: con el cupo por IP
+    // agotado el servicio respondía ERROR_INTERNO en vez de 429 (y quien reintenta solo ante 429 no reintentaba).
+    errorResponseBuilder: () => ({ statusCode: 429, ok: false, motivo: 'LIMITE_EXCEDIDO' }),
   });
 
   // Cabeceras de seguridad para una API JSON.
@@ -124,7 +127,7 @@ export async function crearAplicacion(opciones: OpcionesAplicacion): Promise<Fas
       cupoClientes.set(c.id, { inicio: ahora, n: 1 });
       return null;
     }
-    if (v.n >= c.limitePorMinuto) return Math.max(1, Math.ceil((60_000 - (ahora - v.inicio)) / 1000));
+    if (v.n >= c.limitePorMinuto) return Math.min(60, Math.max(1, Math.ceil((60_000 - (ahora - v.inicio)) / 1000)));
     v.n++;
     return null;
   };
