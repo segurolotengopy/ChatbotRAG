@@ -233,3 +233,35 @@ describe('EjecutorHerramientasHttp', () => {
     await expect(impaciente.ejecutar('consultar_disponibilidad', {}, { config, conversacionId: 'conv_secreta_0001', canal: 'web', ahora: new Date() })).rejects.toThrow(/abortado/);
   });
 });
+
+describe('cupo por cliente agotado', () => {
+  let app: FastifyInstance;
+  const auth = { authorization: `Bearer ${CLAVE}` };
+
+  beforeAll(async () => {
+    const dir = await prepararDirectorio();
+    const entorno = leerEntorno({
+      CHATBOTRAG_DIR_CONFIGURACIONES: dir,
+      CHATBOTRAG_PROVEEDOR_FORZADO: 'simulado',
+      CHATBOTRAG_CLIENTES: JSON.stringify([{ id: 'web', agenteId: 'tienda-prueba', claveSha256: CLAVE_HASH, limitePorMinuto: 2 }]),
+      CHATBOTRAG_LIMITE_IP_MINUTO: '1000',
+    });
+    app = await crearAplicacion({ entorno, agentes: await armarAgentes(entorno, {}), registrar: false });
+  });
+  afterAll(async () => app.close());
+
+  it('responde 429 con Retry-After en segundos y sin texto del usuario, y solo con el cupo agotado', async () => {
+    const pedir = () => app.inject({ method: 'GET', url: '/v1/agente', headers: auth });
+    const primera = await pedir();
+    expect(primera.statusCode).toBe(200);
+    expect(primera.headers['retry-after']).toBeUndefined();
+    expect((await pedir()).statusCode).toBe(200);
+    const agotada = await pedir();
+    expect(agotada.statusCode).toBe(429);
+    expect(agotada.json()).toEqual({ ok: false, motivo: 'LIMITE_EXCEDIDO' });
+    const espera = Number(agotada.headers['retry-after']);
+    expect(Number.isInteger(espera)).toBe(true);
+    expect(espera).toBeGreaterThanOrEqual(1);
+    expect(espera).toBeLessThanOrEqual(60);
+  });
+});

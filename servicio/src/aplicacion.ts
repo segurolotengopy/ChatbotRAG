@@ -19,15 +19,16 @@
  * clave contra los clientes configurados, en tiempo constante. El agente que
  * atiende es el del cliente; el cuerpo no puede elegir otro.
  *
- * LÍMITES: por IP (global) y por cliente (`limitePorMinuto`), ventana deslizante
- * del plugin. El rechazo por límite no consume LLM.
+ * LÍMITES: por IP (global) y por cliente (`limitePorMinuto`, ventana fija de 60 s que
+ * comparten todos los usuarios de esa clave). El rechazo por límite no consume LLM y
+ * el del cliente incluye `Retry-After` (segundos); el del plugin de IP también.
  *
  * ERRORES: 400 forma, 401 sin clave válida, 404 conversación/perfil, 413 texto
  * largo, 429 límite, 500 genérico SIN detalle interno. Ningún error devuelve el
  * texto del usuario.
  */
 import { createHash, timingSafeEqual } from 'node:crypto';
-import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import { EntradaKuaa, ErrorPeticion, esIdConversacionValido, listarPerfiles, resolverConfiguracion } from '@chatbotrag/nucleo';
@@ -113,18 +114,19 @@ export async function crearAplicacion(opciones: OpcionesAplicacion): Promise<Fas
     r.header('content-security-policy', "default-src 'none'; frame-ancestors 'none'");
   });
 
-  // Cupo por cliente, aparte del cupo por IP.
+  // Cupo por cliente, aparte del cupo por IP. Devuelve null si admite la petición o, si el cupo está agotado, los
+  // segundos que faltan para que la ventana de 60 s se renueve (se informan en `Retry-After`).
   const cupoClientes = new Map<string, { inicio: number; n: number }>();
-  const admitirCliente = (c: Cliente): boolean => {
+  const admitirCliente = (c: Cliente): number | null => {
     const ahora = Date.now();
     const v = cupoClientes.get(c.id);
     if (!v || ahora - v.inicio >= 60_000) {
       cupoClientes.set(c.id, { inicio: ahora, n: 1 });
-      return true;
+      return null;
     }
-    if (v.n >= c.limitePorMinuto) return false;
+    if (v.n >= c.limitePorMinuto) return Math.max(1, Math.ceil((60_000 - (ahora - v.inicio)) / 1000));
     v.n++;
-    return true;
+    return null;
   };
 
   // La ruta del dominio es `/salud`, como todo lo demás en español. `/health`
@@ -143,18 +145,26 @@ export async function crearAplicacion(opciones: OpcionesAplicacion): Promise<Fas
   app.get('/salud', salud);
   app.get('/health', salud);
 
-  const conCliente = async (p: FastifyRequest): Promise<{ cliente: Cliente; armado: AgenteArmado } | { error: number; motivo: string }> => {
+  const conCliente = async (p: FastifyRequest): Promise<{ cliente: Cliente; armado: AgenteArmado } | { error: number; motivo: string; reintentarEnS?: number }> => {
     const cliente = autenticar(p, entorno.clientes);
     if (!cliente) return { error: 401, motivo: 'NO_AUTORIZADO' };
     const armado = agentes.get(cliente.agenteId);
     if (!armado) return { error: 500, motivo: 'AGENTE_NO_DISPONIBLE' };
-    if (!admitirCliente(cliente)) return { error: 429, motivo: 'LIMITE_EXCEDIDO' };
+    const espera = admitirCliente(cliente);
+    if (espera !== null) return { error: 429, motivo: 'LIMITE_EXCEDIDO', reintentarEnS: espera };
     return { cliente, armado };
+  };
+
+  // Respuesta de rechazo de `conCliente`. Con el cupo agotado añade `Retry-After` (segundos) para que quien llama
+  // espere y reintente en vez de mostrar un error. No incluye texto del usuario.
+  const rechazar = (r: FastifyReply, acceso: { error: number; motivo: string; reintentarEnS?: number }) => {
+    if (acceso.reintentarEnS !== undefined) r.header('retry-after', String(acceso.reintentarEnS));
+    return r.code(acceso.error).send({ ok: false, motivo: acceso.motivo });
   };
 
   app.get('/v1/agente', async (p, r) => {
     const acceso = await conCliente(p);
-    if ('error' in acceso) return r.code(acceso.error).send({ ok: false, motivo: acceso.motivo });
+    if ('error' in acceso) return rechazar(r, acceso);
     const { config } = acceso.armado;
     const perfiles = listarPerfiles(config).map((perfil) => ({ ...perfil, bienvenida: resolverConfiguracion(config, perfil.id).mensajes.bienvenida }));
     return {
@@ -169,7 +179,7 @@ export async function crearAplicacion(opciones: OpcionesAplicacion): Promise<Fas
 
   app.post<{ Params: { conversacionId: string }; Body: CuerpoMensaje }>('/v1/conversaciones/:conversacionId/mensajes', async (p, r) => {
     const acceso = await conCliente(p);
-    if ('error' in acceso) return r.code(acceso.error).send({ ok: false, motivo: acceso.motivo });
+    if ('error' in acceso) return rechazar(r, acceso);
     if (acceso.armado.agenteKuaa) return r.code(404).send({ ok: false, motivo: 'AGENTE_KUAA' });
     const { conversacionId } = p.params;
     if (!esIdConversacionValido(conversacionId)) return r.code(400).send({ ok: false, motivo: 'CONVERSACION_INVALIDA' });
@@ -199,7 +209,7 @@ export async function crearAplicacion(opciones: OpcionesAplicacion): Promise<Fas
   // error los valores recibidos; la respuesta lleva las claves de `SalidaOportunidad` y, solo con perfil `pruebas` y paquete cargado, `validacion` y `version_paquete`.
   app.post('/v1/kuaa/mensaje', async (p, r) => {
     const acceso = await conCliente(p);
-    if ('error' in acceso) return r.code(acceso.error).send({ ok: false, motivo: acceso.motivo });
+    if ('error' in acceso) return rechazar(r, acceso);
     const kuaa = acceso.armado.agenteKuaa;
     if (!kuaa) return r.code(404).send({ ok: false, motivo: 'AGENTE_NO_KUAA' });
     const entrada = EntradaKuaa.safeParse(p.body);
@@ -219,7 +229,7 @@ export async function crearAplicacion(opciones: OpcionesAplicacion): Promise<Fas
 
   app.delete<{ Params: { conversacionId: string } }>('/v1/conversaciones/:conversacionId', async (p, r) => {
     const acceso = await conCliente(p);
-    if ('error' in acceso) return r.code(acceso.error).send({ ok: false, motivo: acceso.motivo });
+    if ('error' in acceso) return rechazar(r, acceso);
     if (acceso.armado.agenteKuaa) return r.code(404).send({ ok: false, motivo: 'AGENTE_KUAA' });
     if (!esIdConversacionValido(p.params.conversacionId)) return r.code(400).send({ ok: false, motivo: 'CONVERSACION_INVALIDA' });
     await acceso.armado.memoria.olvidar(p.params.conversacionId);
