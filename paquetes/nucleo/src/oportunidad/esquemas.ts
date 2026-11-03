@@ -16,7 +16,7 @@
  */
 import { z } from 'zod';
 import { ID_PAGINA } from '../configuracion/esquema.js';
-import { patronEnlaceOPrecio } from './salida-kuaa.js';
+import { patronEnlaceOPrecio } from './detector-enlace-precio.js';
 
 export const ETAPAS_VENTA = [
   'E01',
