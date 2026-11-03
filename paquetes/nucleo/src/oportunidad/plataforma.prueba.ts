@@ -15,10 +15,10 @@ import { RegistroHerramientas } from '../herramientas/registro.js';
 import { MemoriaEnProceso } from '../memoria/memoria-en-proceso.js';
 import type { PeticionLLM, ProveedorLLM, RespuestaLLM } from '../puertos/proveedor-llm.js';
 import { AgenteKuaa } from './agente-kuaa.js';
-import { ESTADOS_OPERATIVOS_DESCONOCIDOS, EntradaKuaa, Plataforma, RESUMEN_DESCONOCIDO } from './esquemas.js';
+import { CodigoObjecion, ESTADOS_OPERATIVOS_DESCONOCIDOS, EntradaKuaa, EstadoObjecion, Plataforma, RESUMEN_DESCONOCIDO } from './esquemas.js';
 import { REGLAS_KUAA, reglasKuaa } from './frases-kuaa.js';
 import { armarPromptKuaa } from './prompt-kuaa.js';
-import { afirmaTratamientoTributario, analizarSalida, patronEnlaceOPrecio, quitarPromesasDeEntrega, retirarNumerosDeRegistro, permitidosDe, salidaSinCifras, salidaTributaria, type Permitidos } from './salida-kuaa.js';
+import { afirmaHechoNoRespaldado, afirmaTratamientoTributario, analizarSalida, patronEnlaceOPrecio, quitarPromesasDeEntrega, retirarNumerosDeRegistro, permitidosDe, salidaSinCifras, salvarQuitandoBloqueado, salidaTributaria, type Permitidos } from './salida-kuaa.js';
 
 const RUTA = fileURLToPath(new URL('../../../../configuraciones/kuaa.json', import.meta.url));
 const JSON_KUAA = readFileSync(RUTA, 'utf8');
@@ -331,6 +331,17 @@ describe('fallas de la batería de SLT', () => {
     expect(r.salida.texto).toBe(`El premio publicado es de ${premio} por año.`);
     expect(r.avisos).toContain('frase_con_valor_retirada');
   });
+  it('«Gs.» no cierra frase ni cláusula: al quitar el importe ajeno no queda «Gs.» colgado', async () => {
+    const premio = formatearGs(plataforma().planes[0]?.premio_anual_gs ?? 0);
+    const { agente } = await armar(`No puedo confirmar que Gs. 10.000 sea el valor, el premio publicado es de ${premio} por año.`);
+    const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+    expect(r.salida.texto).not.toMatch(/\bGs\.?$/);
+    expect(r.salida.texto).not.toContain('10.000');
+    expect(r.salida.texto).toContain(premio);
+  });
+  it('un resto que termina en «Gs.» sin importe no se entrega', () => {
+    expect(salvarQuitandoBloqueado('Hola amigo, no puedo confirmar que Gs. 10.000 sea el precio actual del seguro', (f) => f.includes('10.000'), 5)).toBeNull();
+  });
   it('si solo queda el valor ajeno, sigue sin cifras', async () => {
     const { agente } = await armar('La web dice diez mil guaraníes.');
     const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
@@ -383,5 +394,24 @@ describe('agente con plataforma', () => {
     expect(volcado).not.toMatch(/centinela/i);
     expect(volcado).not.toContain('390');
     expect(volcado).toContain('plataforma:v0.4');
+  });
+});
+
+describe('respaldos de la corrida de SLT del 3-nov', () => {
+  it('una objeción con código fuera del enumerado se descarta y no tumba la respuesta', () => {
+    const a = analizarSalida(JSON.stringify({ texto: 'Hola.', etapa_propuesta: 'E04', objecion: { codigo: 'inventada', estado: 'abierta' }, botones: [], propuestas: [] }));
+    expect('salida' in a && a.salida.objecion).toBeNull();
+    expect('descartados' in a && a.descartados).toBe(1);
+  });
+  it('una objeción válida se conserva', () => {
+    const valida = { codigo: CodigoObjecion.options[0], estado: EstadoObjecion.options[0] };
+    const a = analizarSalida(JSON.stringify({ texto: 'Hola.', etapa_propuesta: 'E04', objecion: valida, botones: [], propuestas: [] }));
+    expect('salida' in a && a.salida.objecion).toEqual(valida);
+  });
+  it.each(['La póliza todavía no fue emitida.', 'Tu póliza será emitida cuando se acredite el pago.', 'La póliza no está emitida hasta el pago.'])('«%s» no cuenta como afirmar una póliza emitida', (t) => {
+    expect(afirmaHechoNoRespaldado(t, ESTADOS_OPERATIVOS_DESCONOCIDOS)).toBeNull();
+  });
+  it.each(['Tu póliza fue emitida correctamente.', 'La póliza ya está activada.'])('«%s» sigue bloqueándose sin estado emitido', (t) => {
+    expect(afirmaHechoNoRespaldado(t, ESTADOS_OPERATIVOS_DESCONOCIDOS)).toBe('poliza');
   });
 });

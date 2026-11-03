@@ -12,7 +12,7 @@
  */
 import type { ConfiguracionEfectiva } from '../configuracion/esquema.js';
 import { normalizarEntradaKuaa } from './normalizar-entrada.js';
-import { BotonSalida, PropuestaSalida, SalidaOportunidad, type EstadosOperativos, type EtapaVenta, type Plataforma } from './esquemas.js';
+import { BotonSalida, ObjecionSalida, PropuestaSalida, SalidaOportunidad, type EstadosOperativos, type EtapaVenta, type Plataforma } from './esquemas.js';
 import { formatearGs, formatearTelefono } from './formato-plataforma.js';
 
 const RE_BLOQUE = /^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```$/i;
@@ -45,6 +45,12 @@ export function analizarSalida(texto: string): { salida: SalidaOportunidad; desc
       }
     }
     if (o['objecion'] === undefined) o['objecion'] = null;
+    // Una objeción con código o estado fuera del enumerado tampoco tumba la respuesta (`esquema:objecion.codigo` en la
+    // corrida de SLT del 3-nov): se toma como «sin objeción» y se cuenta, sin guardar el valor.
+    else if (o['objecion'] !== null && !ObjecionSalida.safeParse(o['objecion']).success) {
+      o['objecion'] = null;
+      descartados += 1;
+    }
     for (const [clave, permitido] of [['botones', BotonSalida.options], ['propuestas', PropuestaSalida.options]] as const) {
       const lista = o[clave];
       // Un campo ausente o nulo equivale a «sin botones/propuestas»: el modelo suele omitirlo cuando no propone nada, y
@@ -200,7 +206,9 @@ export function afirmaHechoNoRespaldado(texto: string, estados: EstadosOperativo
     if (/\b(?:cobramos|acreditamos|recibimos\s+(?:tu|su)\s+pago)\b/.test(t)) return 'pago';
   }
   if (estados.poliza !== 'emitida') {
-    if (/\bpoliza\b[^.!?]{0,40}\b(?:emitid[oa]|activad[oa])\b/.test(t)) return 'poliza';
+    // «La póliza todavía no fue emitida» o «será emitida» no afirman un hecho: se ignoran los tramos con negación o futuro.
+    const m = /\bpoliza\b([^.!?]{0,40})\b(?:emitid[oa]|activad[oa])\b/.exec(t);
+    if (m && !/\b(?:no|ni|nunca|todavia|aun|sera|seran|cuando|una\s+vez|despues)\b/.test(m[1] ?? '')) return 'poliza';
     if (/\b(?:emitimos|activamos)\b/.test(t)) return 'poliza';
   }
   if (/\bqued(?:o|aron)\s+(?:ya\s+)?(?:agendad|programad|activad)/.test(t)) return 'agenda_o_traspaso';
@@ -252,7 +260,7 @@ export function quitarPromesasDeEntrega(texto: string): string {
  */
 export function quitarFrases(texto: string, debeQuitarse: (frase: string) => boolean): string {
   return texto
-    .split(/(?<=[.!?])\s+/)
+    .split(/(?<!\bGs)(?<=[.!?])\s+/)
     .filter((frase) => !debeQuitarse(frase))
     .join(' ')
     .trim();
@@ -266,10 +274,12 @@ export function quitarFrases(texto: string, debeQuitarse: (frase: string) => boo
  * modelo quería decir; solo que no contiene lo bloqueado.
  */
 export function salvarQuitandoBloqueado(texto: string, bloqueado: (fragmento: string) => boolean, minimo: number): string | null {
-  const ok = (t: string): boolean => t.length >= minimo && !bloqueado(t);
+  // Un resto que termina en «Gs.» o «Gs» quedó sin su importe: no se entrega.
+  const ok = (t: string): boolean => t.length >= minimo && !bloqueado(t) && !/\bGs\.?$/i.test(t);
   const porFrases = quitarFrases(texto, bloqueado);
   if (ok(porFrases)) return porFrases;
-  const clausulas = texto.split(/(?<=[.!?;,])\s{1,8}|\s{1,8}pero\s{1,8}/);
+  // «Gs.» (guaraníes) lleva punto pero no cierra frase: cortar ahí dejaba «...confirmar que Gs.» sin el importe.
+  const clausulas = texto.split(/(?<!\bGs)(?<=[.!?;,])\s{1,8}|\s{1,8}pero\s{1,8}/);
   const resto = clausulas.filter((c) => !bloqueado(c)).join(' ').replace(/[,;]\s*$/, '.').trim();
   return ok(resto) ? resto : null;
 }

@@ -81,8 +81,12 @@ describe('interpretarSalidaModelo', () => {
     ['botones que no son una lista', salidaJson({ botones: 'pagar_ya' })],
     ['texto vacío', salidaJson({ texto: '' })],
     ['texto enorme', salidaJson({ texto: 'a'.repeat(4001) })],
-    ['objecion con código inválido', salidaJson({ objecion: { codigo: 'O99', estado: 'detectada' } })],
   ])('rechaza %s', (_n, texto) => expect(interpretarSalidaModelo(texto)).toBeNull());
+  it('una objeción con código inválido se descarta (queda nula) en vez de rechazar la salida', () => {
+    const s = interpretarSalidaModelo(salidaJson({ objecion: { codigo: 'O99', estado: 'detectada' } }));
+    expect(s).not.toBeNull();
+    expect(s?.objecion).toBeNull();
+  });
   it('descarta una clave desconocida de la raíz y toma la objeción ausente como nula, sin rechazar la salida', () => {
     const o = JSON.parse(salidaJson({ razonamiento: 'x' })) as Record<string, unknown>;
     delete o['objecion'];
