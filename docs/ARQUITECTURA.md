@@ -379,6 +379,35 @@ detectores dan falsos positivos a propósito (por ejemplo «10.000 personas») y
 pago acreditado, `afirma_cobro_real` sigue llevando al fallback; no se detectan correos ni teléfonos de la
 persona en la entrada; no se sabe cómo obedece el modelo real al formato JSON.
 
+### Banco de respuestas (modelo híbrido, H1)
+
+El modelo híbrido contesta las preguntas frecuentes y los casos que exigen derivación con textos aprobados por una
+persona, no generados por el modelo. Esta primera entrega (H1) solo define y carga el banco; el enrutador que lo
+consulta llega en una entrega posterior. Todo vive en el núcleo (`paquetes/nucleo/src/banco/`), de modo que
+sirve a cualquier agente de ChatbotRAG y no solo a Kuaa.
+
+- **Forma.** Un JSON con `formato` (1), `version`, `respuestas` (pregunta, plantilla, tema, riesgo y condiciones
+  de derivación), `derivaciones` (motivo, preguntas o términos, texto), `textos_derivacion` (un texto por motivo)
+  y `aclaraciones`. El esquema (`banco/esquema.ts`) es estricto: una clave de más, un riesgo fuera de lista, un id
+  repetido o una pregunta repetida se rechazan.
+- **Responsable obligatorio.** Cada texto lleva `aprobado_por` (nombre o rol, texto corto, sin fecha), sin valor
+  por defecto. Ese campo nunca va a la bitácora.
+- **Dónde vive.** En un bucket, nunca en el repositorio. El único banco versionado es
+  `banco/banco-ejemplo.json`, sintético y fuera de `configuraciones/` para que la imagen no lo copie.
+- **Variables.** Las plantillas usan `{{variable}}` de una lista cerrada (`VARIABLES_PLANTILLA`): datos del plan
+  elegido y de contacto. `resolverVariablesPlataforma` las rellena con las mismas funciones de formato que arman
+  el prompt, así que el detector de la salida reconoce las cifras como permitidas. Una variable fuera de la lista,
+  o llaves mal formadas, impiden cargar el banco.
+- **Integridad.** `cargarBanco` calcula el SHA-256 del texto y, si se le entrega uno esperado, rechaza cualquier
+  diferencia sin mostrar ningún hash. También rechaza valores con forma de secreto. No hace red ni lee archivos:
+  recibe el texto.
+- **Nunca sale una plantilla sin rellenar.** `rellenarPlantilla` hace una sola pasada; si un dato falta, informa
+  los faltantes para que quien llama derive, y si aun así quedan llaves, lanza un error. Un valor que contenga
+  `{{...}}` no se reinterpreta.
+
+Qué NO garantiza: que la respuesta sea correcta, completa o conveniente. Eso lo da quien figura en `aprobado_por`;
+el código solo asegura la forma, la integridad del archivo y que ningún marcador llegue al cliente.
+
 ## 7. Aplicación a segurolotengo-demo
 
 El demo (Next.js 15 en AWS Amplify) **no embebe** el núcleo: consume el servicio por
