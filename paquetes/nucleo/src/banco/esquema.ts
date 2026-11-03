@@ -58,7 +58,20 @@ export type Riesgo = z.infer<typeof Riesgo>;
 export const ID_ENTRADA = /^[A-Za-z0-9][A-Za-z0-9_.-]{1,63}$/;
 export const TEMA = /^[a-z0-9_]{2,40}$/;
 
-const APROBADO_POR = z.string().regex(/^[\p{L}\p{N} ,._-]{2,80}$/u);
+/** Nombre o rol con al menos una letra; sin fecha (decisión de Andres). */
+const APROBADO_POR = z
+  .string()
+  .trim()
+  .regex(/^(?=.*\p{L})[\p{L}\p{N} ,._-]{2,80}$/u)
+  .refine((v) => !/\d{4}-\d{2}-\d{2}/.test(v), { message: 'aprobado_por no lleva fecha' });
+
+/** Pregunta comparable: `normalizar()` más sin signos de puntuación y con espacios colapsados. */
+export function normalizarPregunta(texto: string): string {
+  return normalizar(texto)
+    .replace(/[^\p{L}\p{N} ]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 const TEXTO = (max: number) => z.string().trim().min(1).max(max);
 
 export const EntradaRespuesta = z
@@ -69,7 +82,11 @@ export const EntradaRespuesta = z
     plantilla: TEXTO(1500),
     aprobado_por: APROBADO_POR,
     riesgo: Riesgo,
-    derivar_cuando: z.array(CondicionDerivacion).max(3).default([]),
+    derivar_cuando: z
+      .array(CondicionDerivacion)
+      .max(3)
+      .refine((a) => new Set(a).size === a.length, { message: 'condición repetida' })
+      .default([]),
   })
   .strict();
 export type EntradaRespuesta = z.infer<typeof EntradaRespuesta>;
@@ -79,7 +96,11 @@ export const EntradaDerivacion = z
     id: z.string().regex(ID_ENTRADA),
     motivo: MotivoDerivacion.exclude(['atencion_humana_ya_solicitada', 'contenido_pendiente']),
     preguntas: z.array(TEXTO(300)).max(60).default([]),
-    terminos: z.array(z.string().regex(/^[\p{L}\p{N} ]{3,40}$/u)).max(200).default([]),
+    terminos: z
+      .array(z.string().trim().regex(/^(?=.*\p{L})[\p{L}\p{N} ]{3,40}$/u))
+      .max(200)
+      .refine((t) => new Set(t.map(normalizarPregunta)).size === t.length, { message: 'término repetido' })
+      .default([]),
     texto: TEXTO(600),
     aprobado_por: APROBADO_POR,
   })
@@ -135,12 +156,13 @@ export const BancoRespuestas = z
       motivos.add(t.motivo);
     });
 
-    const sinRepetir = (preguntas: string[], ruta: (string | number)[]) => {
-      const normalizadas = new Set<string>();
-      preguntas.forEach((p, j) => {
-        const n = normalizar(p);
-        if (normalizadas.has(n)) ctx.addIssue({ code: 'custom', message: 'pregunta repetida', path: [...ruta, j] });
-        normalizadas.add(n);
+    // Preguntas repetidas en todo el banco: dos entradas con la misma pregunta darían respuestas ambiguas.
+    const preguntas = new Set<string>();
+    const sinRepetir = (lista: string[], ruta: (string | number)[]) => {
+      lista.forEach((p, j) => {
+        const n = normalizarPregunta(p);
+        if (preguntas.has(n)) ctx.addIssue({ code: 'custom', message: 'pregunta repetida', path: [...ruta, j] });
+        preguntas.add(n);
       });
     };
     banco.respuestas.forEach((e, i) => sinRepetir(e.preguntas, ['respuestas', i, 'preguntas']));

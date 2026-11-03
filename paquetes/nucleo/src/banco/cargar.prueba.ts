@@ -98,7 +98,7 @@ describe('cargarBanco', () => {
     const e = falla(
       texto(
         banco({
-          respuestas: [respuesta({ plantilla: '{{inventada}}' }), respuesta({ id: 'r-dos', plantilla: '{{premio_plan' })],
+          respuestas: [respuesta({ plantilla: '{{inventada}}' }), respuesta({ id: 'r-dos', preguntas: ['pregunta sintetica dos'], plantilla: '{{premio_plan' })],
         }),
       ),
     );

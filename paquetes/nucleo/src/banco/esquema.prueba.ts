@@ -1,6 +1,6 @@
 /** Pruebas del esquema del banco de respuestas. Datos sintéticos. */
 import { describe, expect, it } from 'vitest';
-import { BancoRespuestas, EntradaDerivacion, EntradaRespuesta } from './esquema.js';
+import { Aclaraciones, BancoRespuestas, EntradaDerivacion, EntradaRespuesta, TextoMotivo, normalizarPregunta } from './esquema.js';
 
 const respuesta = (cambios: Record<string, unknown> = {}) => ({
   id: 'r-uno',
@@ -63,5 +63,48 @@ describe('esquema del banco de respuestas', () => {
     expect(BancoRespuestas.safeParse(banco({ respuestas: [respuesta({ preguntas: ['Cuánto  cuesta', 'cuanto cuesta'] })] })).success).toBe(false);
     const t = { motivo: 'emergencia', texto: 'Texto', aprobado_por: 'ejemplo sintetico' };
     expect(BancoRespuestas.safeParse(banco({ textos_derivacion: [t, t] })).success).toBe(false);
+  });
+
+  it.each(['   ', '--', ', ', '2026-11-02', 'Ana 2026-11-02', '12345'])('rechaza aprobado_por inválido %j en todas las apariciones', (v) => {
+    expect(EntradaRespuesta.safeParse(respuesta({ aprobado_por: v })).success).toBe(false);
+    expect(EntradaDerivacion.safeParse({ id: 'd-uno', motivo: 'emergencia', texto: 'T', aprobado_por: v }).success).toBe(false);
+    expect(TextoMotivo.safeParse({ motivo: 'emergencia', texto: 'T', aprobado_por: v }).success).toBe(false);
+    expect(Aclaraciones.safeParse({ ambigua: { texto: 'T', aprobado_por: v } }).success).toBe(false);
+    expect(Aclaraciones.safeParse({ falta_plan: { texto: 'T', aprobado_por: v } }).success).toBe(false);
+  });
+
+  it('acepta aprobado_por con nombre o rol y lo recorta', () => {
+    expect(EntradaRespuesta.parse(respuesta({ aprobado_por: '  Responsable comercial  ' })).aprobado_por).toBe('Responsable comercial');
+  });
+
+  it('rechaza términos de solo espacios o sin letras, y términos repetidos', () => {
+    const base = { id: 'd-uno', motivo: 'emergencia', texto: 'T', aprobado_por: 'ejemplo sintetico' };
+    expect(EntradaDerivacion.safeParse({ ...base, terminos: ['     '] }).success).toBe(false);
+    expect(EntradaDerivacion.safeParse({ ...base, terminos: ['12345'] }).success).toBe(false);
+    expect(EntradaDerivacion.safeParse({ ...base, terminos: ['Término uno', 'termino  uno'] }).success).toBe(false);
+    expect(EntradaDerivacion.safeParse({ ...base, terminos: ['termino uno', 'termino dos'] }).success).toBe(true);
+  });
+
+  it('rechaza preguntas repetidas entre entradas, ignorando puntuación y tildes', () => {
+    const otra = respuesta({ id: 'r-dos', preguntas: ['cuanto cuesta'] });
+    const primera = respuesta({ preguntas: ['¿Cuánto cuesta?'] });
+    expect(BancoRespuestas.safeParse(banco({ respuestas: [primera, otra] })).success).toBe(false);
+    const deriv = { id: 'd-uno', motivo: 'siniestro_particular', preguntas: ['CUANTO   cuesta!'], texto: 'T', aprobado_por: 'ejemplo sintetico' };
+    expect(BancoRespuestas.safeParse(banco({ respuestas: [primera], derivaciones: [deriv] })).success).toBe(false);
+  });
+
+  it('normalizarPregunta quita puntuación y colapsa espacios', () => {
+    expect(normalizarPregunta('¿Cuánto   cuesta?')).toBe('cuanto cuesta');
+  });
+
+  it('rechaza derivar_cuando con valores repetidos', () => {
+    expect(EntradaRespuesta.safeParse(respuesta({ derivar_cuando: ['sin_dato', 'sin_dato'] })).success).toBe(false);
+  });
+
+  it('rechaza listas por encima de su máximo y un formato distinto de 1', () => {
+    expect(EntradaRespuesta.safeParse(respuesta({ derivar_cuando: ['sin_dato', 'contenido_pendiente', 'atencion_humana_solicitada', 'sin_dato'] })).success).toBe(false);
+    const muchas = Array.from({ length: 31 }, (_, i) => `pregunta numero ${i}`);
+    expect(EntradaRespuesta.safeParse(respuesta({ preguntas: muchas })).success).toBe(false);
+    expect(BancoRespuestas.safeParse(banco({ formato: 2 })).success).toBe(false);
   });
 });
