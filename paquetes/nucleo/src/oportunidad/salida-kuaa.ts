@@ -247,18 +247,21 @@ export function salidaTributaria(etapa: EtapaVenta): SalidaOportunidad {
  * Quita el «¡Hola!» con que el modelo abre una respuesta cuando la persona NO saludó (o cuando ya hubo mensajes antes):
  * la regla del prompt lo pide («saludar solo en el primer mensaje») pero el modelo la ignora (12 de 135 respuestas en la
  * corrida de SLT del 4-nov), así que se hace de forma determinista. Solo quita un saludo EXACTO al inicio: «Hola» como
- * palabra completa seguida de «!», «,» o «.» (o fin de texto), con o sin un nombre propio de hasta tres palabras
+ * palabra completa seguida de «!», «,» o «.» (o fin de texto; «Hola.» solo vale si lo sigue un espacio: «Hola.com», «Hola...» y «Hola._x» no se tocan), con o sin un nombre propio de hasta tres palabras
  * antes del cierre («¡Hola, Juan!», «¡Hola, María José!»); y solo si queda una respuesta de al menos `minimo`
- * caracteres. En cualquier otro caso devuelve el texto sin tocar («Holanda…», «Hola.com», «Hola cómo estás…»).
+ * caracteres; si lo sigue «¿Cómo estás?» y queda un resto suficiente, también lo quita. En cualquier otro caso devuelve el texto sin tocar («Holanda…», «Hola.com», «Hola cómo estás…»).
  * Qué NO garantiza: otros saludos («Buen día»), ni uno a mitad de texto.
  */
 export function quitarSaludoInicial(texto: string, mensajePersona: string, hayHistorial: boolean, minimo: number): string {
   const personaSaluda = /\b(?:hola|buen\s{1,3}dia|buen[oa]s|saludos|hey|que\s{1,3}tal|mba'?eichapa)\b/.test(paraDetectar(mensajePersona));
   if (personaSaluda && !hayHistorial) return texto;
-  const saludo = /^\s*¡?[Hh]ola(?![\p{L}\p{M}\p{N}.])(?:,?\s+\p{Lu}\p{L}{1,14}(?:\s+\p{Lu}\p{L}{1,14}){0,2}(?=\s*[!.,])|(?=\s*[!,.]|\s*$))\s*[!,.]\s*/u;
+  const saludo = /^\s*¡?[Hh]ola(?![\p{L}\p{M}\p{N}]|\.(?!\s|$))(?:,?\s+\p{Lu}\p{L}{1,14}(?:\s+\p{Lu}\p{L}{1,14}){0,2}(?=\s*[!.,])|(?=\s*[!,.]|\s*$))\s*[!,.]\s*/u;
   const m = saludo.exec(texto);
   if (!m) return texto;
-  const resto = texto.slice(m[0].length).trimStart();
+  let resto = texto.slice(m[0].length).trimStart();
+  // «¡Hola! ¿Cómo estás? Es una ilustración…»: la fórmula de cortesía que sigue al saludo tampoco responde nada.
+  const sinCortesia = resto.replace(/^¿\s*[Cc]ómo\s+(?:estás|está|andás|anda|te\s+va|le\s+va)\s*\?\s*/u, '');
+  if (sinCortesia.length >= minimo) resto = sinCortesia;
   if (resto.length < minimo) return texto;
   return resto.charAt(0).toLocaleUpperCase('es') + resto.slice(1);
 }

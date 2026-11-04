@@ -256,6 +256,10 @@ describe('tratamiento tributario (C14 pendiente)', () => {
       ['¡Hola, Juan! ' + largo, '¿Cuánto cuesta?', false],
       ['¡Hola, María José! ' + largo, '¿Cuánto cuesta?', false],
       ['¡Hola Juan! ' + largo, '¿Cuánto cuesta?', false],
+      ['Hola. ' + largo, '¿Cuánto cuesta?', false],
+      ['Hola. ' + largo, 'Tengo 64 años, ¿puedo solicitarlo?', false],
+      ['¡Hola! ¿Cómo estás? ' + largo, '¿Cuánto cuesta?', false],
+      ['Hola, ¿cómo te va? ' + largo, '¿Cuánto cuesta?', false],
       ['¡Hola, Juan. ' + largo, '¿Cuánto cuesta?', false],
       ['¡Hola! ' + largo, 'hola, ¿cuánto cuesta?', true],
     ])('«%s» se quita si la persona no saludó o ya hubo mensajes', (texto, mensaje, hayHistorial) => {
@@ -276,6 +280,12 @@ describe('tratamiento tributario (C14 pendiente)', () => {
       'Hol\u00e1, ' + largo,
       'Hola\u0301, ' + largo,
       'Hola.com es el sitio donde se ven los planes de la aseguradora.',
+      'Hola.Com es el sitio donde se ven los planes de la aseguradora.',
+      'Hola... ' + largo,
+      'Hola.\u200bcom es el sitio donde se ven los planes de la aseguradora.',
+      'Hola._x es el sitio donde se ven los planes de la aseguradora.',
+      'Hola.-com es el sitio donde se ven los planes de la aseguradora.',
+      'Hola.\u0301 ' + largo,
       'Hola cómo estás, ' + largo,
     ])('no toca «%s»', (texto) => {
       expect(quitarSaludoInicial(texto, '¿Cuánto cuesta?', false, 30)).toBe(texto);
