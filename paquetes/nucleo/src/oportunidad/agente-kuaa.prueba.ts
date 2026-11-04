@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { BitacoraEnMemoria } from '../bitacora/bitacora-consola.js';
 import { cargarConfiguracionDesdeJson } from '../configuracion/cargar.js';
 import type { ConfiguracionAgente } from '../configuracion/esquema.js';
@@ -304,6 +304,91 @@ describe('AgenteKuaa', () => {
       const { salida, avisos } = await resp(agente, entrada());
       expect(salida.texto).toBe(config.mensajes.errorTemporal);
       expect(avisos).toContain('error_modelo');
+    });
+  });
+
+  describe('reintento ante una salida que no es JSON legible', () => {
+    const secuencia = (...salidas: (string | Partial<RespuestaLLM>)[]) => {
+      let i = 0;
+      return () => salidas[Math.min(i++, salidas.length - 1)]!;
+    };
+    it('un JSON roto seguido de uno válido entrega la respuesta válida, con dos llamadas y los tokens sumados', async () => {
+      const { agente, proveedor, bitacora } = await armar(secuencia('{"texto": a}', salidaJson({ texto: 'Respuesta válida del segundo intento.' })), true);
+      const { salida, avisos } = await resp(agente, entrada());
+      expect(salida.texto).toBe('Respuesta válida del segundo intento.');
+      expect(proveedor.peticiones).toHaveLength(2);
+      expect(avisos).toContain('reintento_formato');
+      expect(avisos).not.toContain('salida_invalida');
+      expect(bitacora.eventos.find((e) => e.tipo === 'mensaje_atendido')).toMatchObject({ tokensEntrada: 20, tokensSalida: 10 });
+    });
+    it('un texto sin objeto JSON también se reintenta', async () => {
+      const { agente, proveedor } = await armar(secuencia('Hola, soy una respuesta sin JSON.', salidaJson()), true);
+      const { avisos } = await resp(agente, entrada());
+      expect(proveedor.peticiones).toHaveLength(2);
+      expect(avisos).toContain('reintento_formato');
+      expect(avisos).not.toContain('salida_invalida');
+    });
+    it('si el segundo intento también es JSON roto, cae al error temporal tras exactamente dos llamadas', async () => {
+      const { agente, proveedor, config } = await armar(secuencia('{"texto": a}'), true);
+      const { salida, avisos } = await resp(agente, entrada());
+      expect(proveedor.peticiones).toHaveLength(2);
+      expect(salida.texto).toBe(config.mensajes.errorTemporal);
+      expect(avisos).toContain('salida_invalida');
+      expect(avisos).toContain('causa_salida:json_roto');
+      expect(avisos.filter((a) => a === 'reintento_formato')).toHaveLength(1);
+    });
+    it.each([
+      ['un error de esquema (botones que no son lista)', salidaJson({ botones: 'pagar_ya' })],
+      ['un corte por max_tokens', { texto: '{"texto": "a"', motivoFin: 'max_tokens' } as Partial<RespuestaLLM>],
+    ])('%s no se reintenta', async (_n, respuesta) => {
+      const { agente, proveedor } = await armar(() => respuesta, true);
+      await resp(agente, entrada());
+      expect(proveedor.peticiones).toHaveLength(1);
+    });
+    it('un error del proveedor no se reintenta aquí (el proveedor ya tiene el suyo)', async () => {
+      const { agente, proveedor } = await armar(() => {
+        throw new Error('falla');
+      });
+      await resp(agente, entrada());
+      expect(proveedor.peticiones).toHaveLength(1);
+    });
+    it('si desde que llegó la petición pasaron más de 3 s no se reintenta, para reducir el riesgo de pasar el tope de 20 s del sitio', async () => {
+      const ahora = vi.spyOn(performance, 'now');
+      let t = 0;
+      ahora.mockImplementation(() => (t += 3001));
+      try {
+        const { agente, proveedor } = await armar(secuencia('{"texto": a}', salidaJson()), true);
+        const { avisos } = await resp(agente, entrada());
+        expect(proveedor.peticiones).toHaveLength(1);
+        expect(avisos).toContain('salida_invalida');
+        expect(avisos).not.toContain('reintento_formato');
+      } finally {
+        ahora.mockRestore();
+      }
+    });
+    it('un bloqueo de seguridad del proveedor (texto vacío) no se reintenta', async () => {
+      const { agente, proveedor } = await armar(() => ({ texto: '', motivoFin: 'seguridad' }), true);
+      await resp(agente, entrada());
+      expect(proveedor.peticiones).toHaveLength(1);
+    });
+    it('si la segunda llamada lanza un error, se registra error_modelo con 2 iteraciones y los tokens de la primera', async () => {
+      let n = 0;
+      const { agente, proveedor, bitacora, config } = await armar(() => {
+        if (n++ === 0) return '{"texto": a}';
+        throw new Error('falla');
+      }, true);
+      const { salida, avisos } = await resp(agente, entrada());
+      expect(proveedor.peticiones).toHaveLength(2);
+      expect(salida.texto).toBe(config.mensajes.errorTemporal);
+      expect(avisos).toContain('error_modelo');
+      expect(bitacora.eventos.find((e) => e.tipo === 'error_modelo')).toMatchObject({ iteraciones: 2, tokensEntrada: 10, tokensSalida: 5 });
+    });
+    it('si la segunda llamada se corta por max_tokens, responde respuesta_incompleta con los tokens de ambas', async () => {
+      const { agente, bitacora } = await armar(secuencia('{"texto": a}', { texto: '{"texto": "a"', motivoFin: 'max_tokens' }), true);
+      const { avisos } = await resp(agente, entrada());
+      expect(avisos).toContain('respuesta_incompleta');
+      expect(avisos).toContain('reintento_formato');
+      expect(bitacora.eventos.find((e) => e.tipo === 'mensaje_atendido')).toMatchObject({ iteraciones: 2, tokensEntrada: 20, tokensSalida: 10 });
     });
   });
 
