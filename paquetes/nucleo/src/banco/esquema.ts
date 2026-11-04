@@ -72,6 +72,35 @@ export function normalizarPregunta(texto: string): string {
     .replace(/\s+/g, ' ')
     .trim();
 }
+/** Caracteres de formato y rellenos Hangul invisibles: pueden esconderse dentro de una palabra o separar dos. */
+const INVISIBLES = /[\p{Cf}\u115f\u1160\u3164\uffa0]/gu;
+
+/**
+ * Texto comparable para buscar términos por palabra completa: `normalizar()`, sin caracteres de formato
+ * invisibles (guion blando, ancho cero, controles BIDI, rellenos Hangul) ni marcas combinantes, y con todo lo que
+ * no sea letra o número convertido en un espacio. Es la variante «el invisible está DENTRO de una palabra». No
+ * sustituye a `normalizarPregunta` (cambiarla rompería la unicidad de H1).
+ */
+export function normalizarParaTerminos(texto: string): string {
+  return normalizar(texto)
+    .replace(INVISIBLES, '')
+    .replace(/\p{M}/gu, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+/** Variante «el invisible SEPARA palabras»: igual que `normalizarParaTerminos`, pero cada invisible vale un espacio. */
+export function normalizarParaTerminosSeparado(texto: string): string {
+  return normalizar(texto)
+    .replace(INVISIBLES, ' ')
+    .replace(/\p{M}/gu, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+/** Valor de `aprobado_por` que marca un banco sintético (de pruebas); un banco así no se carga fuera de pruebas. */
+export const APROBADO_POR_SINTETICO = 'ejemplo sintetico';
+
 /** Pregunta con contenido: tras normalizar debe quedar algo (una pregunta vacía calzaría con cualquier mensaje). */
 const PREGUNTA = (max: number) =>
   z

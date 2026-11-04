@@ -1,6 +1,6 @@
 /** Pruebas del esquema del banco de respuestas. Datos sintéticos. */
 import { describe, expect, it } from 'vitest';
-import { Aclaraciones, BancoRespuestas, EntradaDerivacion, EntradaRespuesta, TextoMotivo, normalizarPregunta } from './esquema.js';
+import { Aclaraciones, BancoRespuestas, EntradaDerivacion, EntradaRespuesta, TextoMotivo, normalizarParaTerminos, normalizarPregunta } from './esquema.js';
 
 const respuesta = (cambios: Record<string, unknown> = {}) => ({
   id: 'r-uno',
@@ -115,5 +115,27 @@ describe('esquema del banco de respuestas', () => {
 
   it.each(['02-11-2026', '2.11.26', 'Ana 02-11-2026'])('rechaza aprobado_por con fecha %j', (v) => {
     expect(EntradaRespuesta.safeParse(respuesta({ aprobado_por: v })).success).toBe(false);
+  });
+});
+
+describe('normalizarParaTerminos', () => {
+  it('separa por puntuación y quita acentos y mayúsculas', () => {
+    expect(normalizarParaTerminos('Hola,TÉRMINO.emergencia!')).toBe('hola termino emergencia');
+  });
+  it('quita guion blando y ancho cero dentro de una palabra', () => {
+    expect(normalizarParaTerminos('ter\u00admi\u200bno')).toBe('termino');
+  });
+  it('quita controles BIDI y el unidor de palabras', () => {
+    expect(normalizarParaTerminos('ter\u202emino\u2060 x')).toBe('termino x');
+  });
+  it('lleva el ancho completo a su forma normal', () => {
+    expect(normalizarParaTerminos('ｔｅｒｍｉｎｏ')).toBe('termino');
+  });
+  it('quita marcas combinantes', () => {
+    expect(normalizarParaTerminos('te\u0301rmino')).toBe('termino');
+  });
+  it('devuelve vacío sin contenido', () => {
+    expect(normalizarParaTerminos('')).toBe('');
+    expect(normalizarParaTerminos('\u200b\u2060 ¿?!… ')).toBe('');
   });
 });

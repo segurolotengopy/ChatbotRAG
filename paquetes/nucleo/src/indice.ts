@@ -31,4 +31,6 @@ export * from './oportunidad/agente-kuaa.js';
 export * from './banco/esquema.js';
 export * from './banco/plantillas.js';
 export * from './banco/cargar.js';
+export * from './banco/enrutador.js';
+export * from './banco/texto-fijo.js';
 export * from './oportunidad/variables-plataforma.js';

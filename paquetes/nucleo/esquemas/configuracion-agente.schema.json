@@ -684,6 +684,21 @@
       },
       "additionalProperties": false
     },
+    "enrutador": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "activo": {
+          "default": false,
+          "type": "boolean"
+        },
+        "carrilFijo": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
     "mensajes": {
       "type": "object",
       "properties": {

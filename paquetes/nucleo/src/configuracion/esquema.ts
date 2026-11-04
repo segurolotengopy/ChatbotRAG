@@ -371,6 +371,19 @@ function sinDefectos(objeto: z.ZodObject<z.ZodRawShape>): z.ZodObject<z.ZodRawSh
 
 type Parcial<T extends z.ZodObject<z.ZodRawShape>> = ReturnType<T['partial']>;
 
+/**
+ * Enrutador del modelo híbrido (H2). Apagado por defecto y SIN efecto hasta H4, que es quien lo conecta al agente.
+ * Vive solo en la base: un perfil no lo superpone (el esquema de perfil es estricto y lo rechaza), porque un
+ * perfil no debe encender un carril de respuestas fijas que la base no autorizó. Son booleanos y jamás texto:
+ * lo que se le dice al cliente sale del banco aprobado, no de la configuración.
+ */
+export const esquemaEnrutador = z
+  .object({
+    activo: z.boolean().default(false),
+    carrilFijo: z.boolean().default(false),
+  })
+  .strict();
+
 /** Secciones que un perfil puede superponer. Todas opcionales y parciales, SIN defaults. */
 export const esquemaPerfil = z
   .object({
@@ -410,6 +423,7 @@ export const esquemaConfiguracionAgente = z
     seguridad: esquemaSeguridad.prefault({}),
     herramientas: z.array(esquemaHerramienta).max(12).default([]),
     orientacion: esquemaOrientacion.prefault({}),
+    enrutador: esquemaEnrutador.prefault({}),
     mensajes: esquemaMensajes,
     modelo: esquemaModelo,
     perfiles: z.record(z.string().regex(ID_PERFIL), esquemaPerfil).prefault({}),
@@ -420,6 +434,10 @@ export const esquemaConfiguracionAgente = z
   .refine((c) => c.operacion.contactoHumano.modo !== 'canal' || Boolean(c.operacion.contactoHumano.whatsapp ?? c.operacion.contactoHumano.correo ?? c.operacion.contactoHumano.telefono), {
     message: 'operacion.contactoHumano.modo «canal» exige al menos una vía de contacto (whatsapp, correo o telefono)',
     path: ['operacion', 'contactoHumano'],
+  })
+  .refine((c) => !c.enrutador.carrilFijo || c.enrutador.activo, {
+    message: 'enrutador.carrilFijo exige enrutador.activo',
+    path: ['enrutador', 'carrilFijo'],
   })
   .refine((c) => c.tipoAgente === 'kuaa' || !c.conocimiento.paquete.habilitado, {
     message: 'conocimiento.paquete.habilitado solo se admite con tipoAgente «kuaa»',
@@ -456,6 +474,7 @@ export type Fuente = z.infer<typeof esquemaFuente>;
 export type Pagina = z.infer<typeof esquemaPagina>;
 export type Seguridad = z.infer<typeof esquemaSeguridad>;
 export type Herramienta = z.infer<typeof esquemaHerramienta>;
+export type Enrutador = z.infer<typeof esquemaEnrutador>;
 export type Orientacion = z.infer<typeof esquemaOrientacion>;
 export type Mensajes = z.infer<typeof esquemaMensajes>;
 export type Modelo = z.infer<typeof esquemaModelo>;

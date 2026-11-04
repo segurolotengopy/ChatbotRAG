@@ -435,12 +435,62 @@ sirve a cualquier agente de ChatbotRAG y no solo a Kuaa.
   los faltantes para que quien llama derive, y si aun así quedan llaves, lanza un error. Un valor que contenga
   `{{...}}` no se reinterpreta.
 
-Pendiente para H2: el texto armado de una plantilla debe pasar siempre por las compuertas de salida, y se
-recomienda validar el banco rellenándolo con la plataforma vigente antes de publicarlo. Fuera de las pruebas, un
-banco cuya `descripcion` diga «SINTÉTICO» o cuyo `aprobado_por` sea el reservado «ejemplo sintetico» debe rechazarse.
+Resuelto en H2: el texto armado pasa siempre por las compuertas de salida (`banco/texto-fijo.ts`:
+`armarTextoFijo` y `verificarBanco`), y `cargarBanco` rechaza el banco sintético fuera de pruebas (opción
+`admitirSintetico`) y las llaves en los textos de derivación y las aclaraciones.
 
 Qué NO garantiza: que la respuesta sea correcta, completa o conveniente. Eso lo da quien figura en `aprobado_por`;
 el código solo asegura la forma, la integridad del archivo y que ningún marcador llegue al cliente.
+
+### Enrutador (modelo híbrido, H2)
+
+`banco/enrutador.ts` decide, sin modelo y sin red, por cuál de tres carriles sigue un mensaje: `fijo` (respuesta
+aprobada), `derivacion` (texto aprobado que pasa la conversación a una persona) o `ia` (el agente de siempre).
+El orden es fijo: (a) enrutador apagado, (b) mensaje sin contenido, (c) término de emergencia, (d) pregunta
+conocida del banco, (e) sin coincidencia. La derivación va primero: un término de emergencia gana sobre cualquier
+respuesta fija, y una pregunta de derivación deriva aunque el carril fijo esté apagado.
+
+- **Dos normalizaciones, a propósito.** `normalizarPregunta` (de H1) compara preguntas completas y fija la unicidad
+  del banco; no se cambió para no romperla. `normalizarParaTerminos` busca términos por palabra completa: además
+  quita caracteres de formato invisibles (guion blando, ancho cero, controles BIDI) y marcas combinantes, y
+  convierte todo lo que no sea letra o número en un espacio. Así «hola,termino.emergencia» coincide y
+  «terminos» no coincide con «termino».
+- **Sin expresiones regulares construidas con datos.** Los grupos de palabras consecutivas del texto
+  normalizado se comparan contra un mapa de términos (el costo no crece con la cantidad de términos); una prueba estructural prohíbe `RegExp(`, `fetch` y `process.env` en el
+  archivo, y otras miden el tiempo con 4000 términos (incluido el peor caso, con la misma primera palabra) y entradas de
+  50 000 caracteres.
+- **Coincidencia exacta solamente.** Sin coincidencia parcial ni similitud.
+- **Sin texto de la persona.** La decisión y sus avisos (`avisosDecision`) llevan solo ids y valores enumerados.
+- **Sección `enrutador` de la configuración.** `{ activo, carrilFijo }`, ambos apagados por defecto, solo en la
+  base (un perfil que la defina se rechaza) y sin efecto hasta H4, que conectará el enrutador al agente; `carrilFijo`
+  exige `activo`. H2 no se conecta al orquestador ni a `agente-kuaa.ts` ni carga el banco desde el bucket.
+- **Texto verificado.** `armarTextoFijo` rellena la plantilla (o toma el texto de derivación), lo pasa por
+  `aplicarCompuertasSalida` y lo descarta, sin corregirlo, si una compuerta lo cambia o avisa; un
+  `VerificadorAdicional` permite detectores propios de un agente. Los resultados de falla nunca llevan texto,
+  valores resueltos ni `aprobado_por`. `verificarBanco` aplica lo mismo a todo el banco y devuelve solo los
+  fallos, para validarlo antes de publicarlo.
+
+Qué NO garantiza: homóglifos de otros alfabetos (una «е» cirílica evita un término), sinónimos, errores
+ortográficos, preguntas parecidas pero no idénticas, ni negaciones («no es una emergencia» deriva igual, que es la
+dirección segura). Solo reconoce coincidencias exactas. Tampoco cubre guiones o puntuación dentro de una palabra
+(«sui-cidio», «acci.dente»), formas pronominales («matarme»), leetspeak («acc1dente»), letras separadas por
+espacios, palabras pegadas ni homóglifos. La red de seguridad para las emergencias que el enrutador no detecte es
+el carril IA (H4). Un invisible se prueba de dos formas (dentro de una palabra o como separador, con los rellenos
+Hangul incluidos), pero un mismo mensaje que mezcle ambos usos en un solo término no se reconoce.
+
+Pendientes y decisiones:
+
+- **D1** (decide Andres): con `carrilFijo` apagado, las condiciones de entrada (`contenido_pendiente`,
+  `atencion_humana_solicitada`) no derivan; solo derivan las preguntas de derivación y los términos de emergencia.
+- **D2** (decide Rodrigo): un dato faltante con la condición `sin_dato` deriva con el motivo `contenido_pendiente`.
+- **D3** (decide Andres): la aclaración «¿sobre qué plan?» queda fuera de H2; decidir en H4 si hay un carril
+  `aclaracion`.
+- **D4**: encender `carrilFijo` es un booleano; falta decidir si exige una medición con confusión 0. H2 no lo hace
+  cumplir.
+- **D5** (decide Andres, para H4): si una compuerta rechaza el texto fijo de una entrada con `riesgo: 'critico'`,
+  hoy `armarTextoFijo` pasa a `ia`; la alternativa es pasar a derivación. No se cambió ese comportamiento.
+- Los términos de emergencia y los textos de derivación reales los entrega Rodrigo (Legal); el banco versionado
+  sigue siendo sintético.
 
 ## 7. Aplicación a segurolotengo-demo
 
