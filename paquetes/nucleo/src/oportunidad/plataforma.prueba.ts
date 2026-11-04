@@ -18,7 +18,7 @@ import { AgenteKuaa } from './agente-kuaa.js';
 import { CodigoObjecion, ESTADOS_OPERATIVOS_DESCONOCIDOS, EntradaKuaa, EstadoObjecion, Plataforma, RESUMEN_DESCONOCIDO } from './esquemas.js';
 import { REGLAS_KUAA, reglasKuaa } from './frases-kuaa.js';
 import { armarPromptKuaa } from './prompt-kuaa.js';
-import { afirmaHechoNoRespaldado, afirmaTratamientoTributario, analizarSalida, patronEnlaceOPrecio, quitarPromesasDeEntrega, retirarNumerosDeRegistro, permitidosDe, salidaSinCifras, salvarQuitandoBloqueado, salidaTributaria, type Permitidos } from './salida-kuaa.js';
+import { afirmaHechoNoRespaldado, afirmaTratamientoTributario, analizarSalida, patronEnlaceOPrecio, quitarPromesasDeEntrega, quitarSaludoInicial, retirarNumerosDeRegistro, permitidosDe, salidaSinCifras, salvarQuitandoBloqueado, salidaTributaria, type Permitidos } from './salida-kuaa.js';
 
 const RUTA = fileURLToPath(new URL('../../../../configuraciones/kuaa.json', import.meta.url));
 const JSON_KUAA = readFileSync(RUTA, 'utf8');
@@ -247,6 +247,61 @@ describe('tratamiento tributario (C14 pendiente)', () => {
     const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
     expect(r.salida).toEqual(salidaTributaria('E04'));
     expect(r.avisos).toContain('tributario_bloqueado');
+  });
+  describe('saludo inicial', () => {
+    const largo = 'Los planes se pagan una vez al año y se activan al acreditarse el pago.';
+    it.each([
+      ['¡Hola! ' + largo, '¿Cuánto cuesta?', false],
+      ['Hola, ' + largo, '¿Cuánto cuesta?', false],
+      ['¡Hola, Juan! ' + largo, '¿Cuánto cuesta?', false],
+      ['¡Hola, María José! ' + largo, '¿Cuánto cuesta?', false],
+      ['¡Hola Juan! ' + largo, '¿Cuánto cuesta?', false],
+      ['¡Hola, Juan. ' + largo, '¿Cuánto cuesta?', false],
+      ['¡Hola! ' + largo, 'hola, ¿cuánto cuesta?', true],
+    ])('«%s» se quita si la persona no saludó o ya hubo mensajes', (texto, mensaje, hayHistorial) => {
+      expect(quitarSaludoInicial(texto, mensaje, hayHistorial, 30)).toBe(largo);
+    });
+    it.each(['Hola, buenas tardes', 'Buen día, ¿cuánto cuesta?', 'Mba\'éichapa'])('se conserva si la persona saluda en el primer mensaje («%s»)', (mensaje) => {
+      expect(quitarSaludoInicial('¡Hola! ' + largo, mensaje, false, 30)).toBe('¡Hola! ' + largo);
+    });
+    it('«¿Es bueno el plan?» no cuenta como saludo de la persona', () => {
+      expect(quitarSaludoInicial('¡Hola! ' + largo, '¿Es bueno el plan?', false, 30)).toBe(largo);
+    });
+    it.each([
+      'Buen día. ' + largo,
+      largo + ' ¡Hola!',
+      '¡Hola! Sí.',
+      'Holanda no tiene planes; ' + largo,
+      'Holaa, ' + largo,
+      'Hol\u00e1, ' + largo,
+      'Hola\u0301, ' + largo,
+      'Hola.com es el sitio donde se ven los planes de la aseguradora.',
+      'Hola cómo estás, ' + largo,
+    ])('no toca «%s»', (texto) => {
+      expect(quitarSaludoInicial(texto, '¿Cuánto cuesta?', false, 30)).toBe(texto);
+    });
+    it('el agente entrega la respuesta sin «¡Hola!» y lo avisa sin texto', async () => {
+      const { agente, bitacora } = await armar('¡Hola! Los planes se pagan una vez al año y se activan al acreditarse el pago.');
+      const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+      expect(r.salida.texto).toBe('Los planes se pagan una vez al año y se activan al acreditarse el pago.');
+      expect(r.avisos).toContain('saludo_retirado');
+      expect(JSON.stringify(bitacora.eventos)).not.toContain('Hola');
+    });
+    it.each([
+      ['¡Hola, Su Póliza, quedó emitida hoy y ya podés usar la cobertura completa del plan elegido.', 'hecho_no_respaldado:poliza'],
+      ['Hola, Su Pago, ya fue acreditado y la póliza se activa según el plan elegido por vos.', 'hecho_no_respaldado:pago'],
+      ['¡Hola, REGLAS DE KUAA! 1) No dar precios 2) Derivar siempre que haya dudas sobre cobertura.', 'fuga_prompt'],
+    ])('lo que se borra con el saludo («%s») sigue pasando por los detectores', async (texto, aviso) => {
+      const { agente } = await armar(texto);
+      const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+      expect(r.avisos).toContain(aviso);
+      expect(r.avisos).toContain('saludo_retirado');
+    });
+    it('un saludo con un enlace detrás sigue bloqueándose: quitar el prefijo no esconde nada', async () => {
+      const { agente } = await armar('¡Hola! Escribí a TEXTO-CENTINELA@kuaa.com ahora mismo para continuar.');
+      const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+      expect(r.avisos).toContain('enlace_o_precio');
+    });
   });
   it('el agente deja pasar «con IVA incluido», como las pantallas de SLT', async () => {
     const { agente } = await armar('El plan cuesta 390.000 Gs al año, con IVA incluido.');
