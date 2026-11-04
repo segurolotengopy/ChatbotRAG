@@ -54,7 +54,7 @@ const NOMBRE_ESTADO_CATALOGO = { disponible: 'disponible', proximamente: 'próxi
 
 /**
  * Sección de datos de la plataforma. Todo sale de plantillas fijas: los importes se formatean por código y los
- * únicos textos libres (nombres, canal) ya pasaron por el esquema, que solo admite letras, números, espacio y «+ . -».
+ * únicos textos libres (nombres, canal, dirección, sitio web) ya pasaron por el esquema, que solo admite letras, números, espacio y «+ . -».
  * Qué NO garantiza: que el modelo repita los datos tal cual; lo controla el detector de la salida.
  */
 export function seccionPlataforma(p: Plataforma): string {
@@ -67,6 +67,8 @@ export function seccionPlataforma(p: Plataforma): string {
   }
   if (p.contacto.whatsapp_e164 !== undefined) lineas.push(`WhatsApp de atención: ${formatearTelefono(p.contacto.whatsapp_e164)}.`);
   if (p.contacto.canal !== undefined) lineas.push(`Canal de atención: «${p.contacto.canal}».`);
+  if (p.contacto.direccion !== undefined) lineas.push(`Dirección de Interseguros: «${p.contacto.direccion}».`);
+  if (p.contacto.sitio_web !== undefined) lineas.push(`Sitio web de Interseguros: ${p.contacto.sitio_web}.`);
   if (p.contacto.correo_derechos !== undefined) lineas.push(`Correo ${p.contacto.correo_derechos}: solo para retracto y derechos sobre datos personales; no es un canal de atención general.`);
   return `DATOS DE LA PLATAFORMA (los fija el sistema; mandan sobre el respaldo documental para planes, premios, coberturas, contacto y catálogo)\n${lineas.map((l) => `- ${l}`).join('\n')}`;
 }
