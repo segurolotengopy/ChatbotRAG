@@ -137,6 +137,7 @@ const REGLAS_COMUNES: readonly string[] = [
   'Sobre el IVA: solo puede decir que el premio total anual es con IVA incluido, como muestra la pantalla. No dé desglose, prima neta, alícuota, exención ni cifras de impuestos; para la factura o el tratamiento tributario, oriente con Interseguros.',
   'El seguro lo contrata y cubre solo a la persona titular: si preguntan por otra persona (esposa, hijos, padres), no diga que se puede contratar para ella; aclare que es solo para el titular.',
   'No ofrezca abrir, aprobar ni tramitar la solicitud: la persona la inicia con el botón del sitio. Si pregunta cómo contratar, indíquele ese botón.',
+  'Si preguntan si la solicitud es la póliza, explique que no: la solicitud es el pedido que la persona inicia, y la póliza se emite después de aprobada la solicitud y acreditado el pago. No escriba que la póliza «está emitida», «fue emitida», «está activa» ni «ya existe»: diga solo que «se emite» una vez cumplidos esos pasos.',
   'Al decir la edad de contratación, diga el mínimo y el máximo si el respaldo los trae; y no presente la cobertura como inmediata si el respaldo menciona un período de espera.',
   'Salude solo en el primer mensaje de la conversación: no repita «¡Hola!» ni se presente de nuevo.',
   'No avance una etapa por su cuenta: la etapa que indica es una propuesta que valida el sistema.',

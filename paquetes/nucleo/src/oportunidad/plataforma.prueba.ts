@@ -353,6 +353,11 @@ describe('fallas de la batería de SLT', () => {
     expect(r.salida.texto).toBe('El plazo para el envío de la póliza es de 24 horas desde la acreditación del pago.');
     expect(r.avisos).toContain('frase_con_hecho_retirada');
   });
+  it('el prompt lleva la regla de solicitud frente a póliza, sin afirmar que la póliza está emitida (TCV062)', () => {
+    const reglas = REGLAS_KUAA.join(' ');
+    expect(reglas).toContain('Si preguntan si la solicitud es la póliza');
+    expect(reglas).toContain('«se emite»');
+  });
   it('el prompt lleva las reglas de titular, solicitud y saludo', () => {
     const reglas = REGLAS_KUAA.join(' ');
     expect(reglas).toContain('solo a la persona titular');
