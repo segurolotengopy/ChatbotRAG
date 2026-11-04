@@ -43,7 +43,7 @@ import type { FragmentoRecuperado } from '../puertos/indice-conocimiento.js';
 import { EntradaKuaa, SalidaOportunidad, filtrarBotonesSalida } from './esquemas.js';
 import { normalizarEntradaKuaa } from './normalizar-entrada.js';
 import { armarPromptKuaa } from './prompt-kuaa.js';
-import { afirmaHechoNoRespaldado, afirmaTratamientoTributario, quitarFrases, salvarQuitandoBloqueado, quitarPromesasDeEntrega, retirarNumerosDeRegistro, salidaTributaria, patronEnlaceOPrecio, permitidosDe, analizarSalida, filtraPrompt, retirarCodigosInternos, salidaFallback, salidaSinCifras } from './salida-kuaa.js';
+import { afirmaHechoNoRespaldado, afirmaTratamientoTributario, quitarFrases, salvarQuitandoBloqueado, quitarPromesasDeEntrega, quitarSaludoInicial, retirarNumerosDeRegistro, salidaTributaria, patronEnlaceOPrecio, permitidosDe, analizarSalida, filtraPrompt, retirarCodigosInternos, salidaFallback, salidaSinCifras } from './salida-kuaa.js';
 
 export interface ResultadoKuaa {
   salida: SalidaOportunidad;
@@ -196,13 +196,17 @@ export class AgenteKuaa {
     if (sinPromesas !== interpretada.texto.trim()) avisos.push('promesa_entrega_retirada');
     const sinRegistro = retirarNumerosDeRegistro(sinPromesas === '' ? interpretada.texto : sinPromesas);
     if (sinRegistro !== (sinPromesas === '' ? interpretada.texto : sinPromesas).trim()) avisos.push('registro_retirado');
-    let textoBase = sanearTexto(sinRegistro === '' ? interpretada.texto : sinRegistro, 4000);
+    const conSaludo = sanearTexto(sinRegistro === '' ? interpretada.texto : sinRegistro, 4000);
+    let textoBase = quitarSaludoInicial(conSaludo, texto, historial.length > 0, RESTO_MINIMO);
+    const saludoQuitado = textoBase !== conSaludo;
+    if (saludoQuitado) avisos.push('saludo_retirado');
     let textoSaneado = retirarCodigosInternos(textoBase);
     if (textoSaneado !== textoBase) avisos.push('codigo_interno_retirado');
     if (textoSaneado === '') return cierre(fallback([...avisos, 'causa_salida:vacia_tras_sanear'], 'salida_invalida'));
     // El detector mira el texto del modelo tal cual y también el ya limpio: el retiro nunca debe esconderle nada.
     const permitidos = permitidosDe(entrada.plataforma);
-    let patron = patronEnlaceOPrecio(textoBase, permitidos) ?? patronEnlaceOPrecio(textoSaneado, permitidos);
+    // También se mira el texto con el saludo: quitar un prefijo nunca debe esconderle nada al detector.
+    let patron = patronEnlaceOPrecio(textoBase, permitidos) ?? patronEnlaceOPrecio(textoSaneado, permitidos) ?? patronEnlaceOPrecio(conSaludo, permitidos);
     // Un valor suelto (un dominio, o «diez mil» al desmentir un precio) no justifica perder toda la respuesta: se quita
     // lo que lo lleva y se revisa de nuevo lo que queda; si aún hay algo bloqueado o queda poco, se responde sin cifras.
     if (patron) {
@@ -215,10 +219,15 @@ export class AgenteKuaa {
       }
     }
     if (patron) return cierre({ salida: salidaSinCifras(etapa, entrada.plataforma?.contacto.whatsapp_e164), avisos: [...avisos, `patron_bloqueado:${patron}`, 'enlace_o_precio'] });
-    if (afirmaTratamientoTributario(textoBase) || afirmaTratamientoTributario(textoSaneado)) {
+    if (afirmaTratamientoTributario(textoBase) || afirmaTratamientoTributario(textoSaneado) || afirmaTratamientoTributario(conSaludo)) {
       return cierre({ salida: salidaTributaria(etapa), avisos: [...avisos, 'tributario_bloqueado'] });
     }
+    // El nombre que se borra con el saludo («¡Hola, Su Póliza, quedó emitida…») tampoco debe esconderle un hecho al detector.
     let hecho = afirmaHechoNoRespaldado(textoSaneado, entrada.estados);
+    if (hecho === null && saludoQuitado) {
+      const hechoEnSaludo = afirmaHechoNoRespaldado(conSaludo, entrada.estados);
+      if (hechoEnSaludo) return cierre(fallback(avisos, `hecho_no_respaldado:${hechoEnSaludo}`));
+    }
     // Igual que con el dominio: se quita la frase que afirma el hecho («tu pago fue acreditado») y se revisa el resto.
     if (hecho) {
       const sinHecho = quitarFrases(textoSaneado, (f) => afirmaHechoNoRespaldado(f, entrada.estados) !== null);
@@ -229,7 +238,7 @@ export class AgenteKuaa {
       }
     }
     if (hecho) return cierre(fallback(avisos, `hecho_no_respaldado:${hecho}`));
-    if (filtraPrompt(textoSaneado)) return cierre(fallback(avisos, 'fuga_prompt'));
+    if (filtraPrompt(textoSaneado) || filtraPrompt(conSaludo)) return cierre(fallback(avisos, 'fuga_prompt'));
 
     // Sin respaldo no se afirma nada, sea cual sea la forma del texto: no hay excepción por «pregunta».
     let salida: SalidaOportunidad = { ...interpretada, texto: textoSaneado };
