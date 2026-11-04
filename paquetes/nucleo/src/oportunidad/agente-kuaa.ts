@@ -58,6 +58,13 @@ export function claveMemoriaKuaa(clienteId: string, oportunidadId: string): stri
   return `kuaa:${clienteId}:${createHash('sha256').update(`${clienteId}\0${oportunidadId}`).digest('hex')}`;
 }
 
+/**
+ * Reintentos ante una salida que no es JSON legible: una llamada extra como máximo, y solo si desde que llegó la petición
+ * pasaron como mucho `TIEMPO_MAXIMO_PARA_REINTENTAR_MS` (búsqueda RAG incluida). Reduce la probabilidad de pasar el tope de
+ * 20 s del sitio; NO lo garantiza (ver docs/ARQUITECTURA.md).
+ */
+const REINTENTOS_FORMATO = 1;
+const TIEMPO_MAXIMO_PARA_REINTENTAR_MS = 3000;
 /** Lo que debe quedar de una respuesta tras quitarle una frase para seguir valiendo («¿Ok?» solo no ayuda a nadie). */
 const RESTO_MINIMO = 30;
 
@@ -78,6 +85,7 @@ export class AgenteKuaa {
   }
 
   async responder(crudo: EntradaKuaa, clienteId: string): Promise<ResultadoKuaa> {
+    const llegada = performance.now();
     const entrada = EntradaKuaa.parse(crudo);
     const config: ConfiguracionEfectiva = resolverConfiguracion(this.deps.config, null);
     const etapa = entrada.etapa_actual;
@@ -147,25 +155,38 @@ export class AgenteKuaa {
     const tokens = { tokensEntrada: 0, tokensSalida: 0 };
     let textoModelo = '';
     let cortado = false;
-    try {
-      const r = await this.deps.proveedor.generar({
-        sistema,
-        mensajes: [...historial.map((t) => ({ rol: t.rol, contenido: t.contenido })), { rol: 'usuario' as const, contenido: texto }],
-        herramientas: [],
-        parametros: { modelo: config.modelo.nombre, temperatura: config.modelo.temperatura, maxTokensSalida: config.modelo.maxTokensSalida, razonamiento: config.modelo.razonamiento },
-      });
-      tokens.tokensEntrada = r.uso.tokensEntrada;
-      tokens.tokensSalida = r.uso.tokensSalida;
-      textoModelo = r.texto;
-      cortado = r.motivoFin === 'max_tokens';
-    } catch {
-      this.deps.bitacora.registrar({ ...base, tipo: 'error_modelo', codigo: 'proveedor', iteraciones: 1 });
-      return fallback(avisos, 'error_modelo');
+    let motivoFin: string = 'fin';
+    // Una salida que no es JSON legible («json_roto», «sin_objeto») es un fallo aleatorio del formato, no del contenido: se
+    // reintenta UNA vez, y solo si la primera llamada fue rápida (el sitio corta a los 20 s). Los tokens de ambas se suman.
+    let intento = 0;
+    let analizada: ReturnType<typeof analizarSalida>;
+    for (;;) {
+      try {
+        const r = await this.deps.proveedor.generar({
+          sistema,
+          mensajes: [...historial.map((t) => ({ rol: t.rol, contenido: t.contenido })), { rol: 'usuario' as const, contenido: texto }],
+          herramientas: [],
+          parametros: { modelo: config.modelo.nombre, temperatura: config.modelo.temperatura, maxTokensSalida: config.modelo.maxTokensSalida, razonamiento: config.modelo.razonamiento },
+        });
+        tokens.tokensEntrada += r.uso.tokensEntrada;
+        tokens.tokensSalida += r.uso.tokensSalida;
+        textoModelo = r.texto;
+        cortado = r.motivoFin === 'max_tokens';
+        motivoFin = r.motivoFin;
+      } catch {
+        this.deps.bitacora.registrar({ ...base, tipo: 'error_modelo', codigo: 'proveedor', iteraciones: intento + 1, ...(intento > 0 ? tokens : {}) });
+        return fallback(avisos, 'error_modelo');
+      }
+      analizada = cortado ? { causa: 'json_roto' } : analizarSalida(textoModelo);
+      const formatoRoto = 'causa' in analizada && (analizada.causa === 'json_roto' || analizada.causa === 'sin_objeto');
+      // Solo una terminación normal: un bloqueo de seguridad del proveedor (texto vacío) es casi determinista y no se repite.
+      if (cortado || motivoFin !== 'fin' || !formatoRoto || intento >= REINTENTOS_FORMATO || performance.now() - llegada > TIEMPO_MAXIMO_PARA_REINTENTAR_MS) break;
+      intento += 1;
+      avisos.push('reintento_formato');
     }
 
-    const cierre = (r: ResultadoKuaa): ResultadoKuaa => this.cerrar(base, r, tokens, fragmentos);
+    const cierre = (r: ResultadoKuaa): ResultadoKuaa => this.cerrar(base, r, tokens, fragmentos, intento + 1);
     if (cortado) return cierre(fallback(avisos, 'respuesta_incompleta'));
-    const analizada = analizarSalida(textoModelo);
     if ('causa' in analizada) return cierre(fallback([...avisos, `causa_salida:${analizada.causa}`], 'salida_invalida'));
     const interpretada = analizada.salida;
     if (analizada.descartados > 0) avisos.push('valores_descartados');
@@ -242,11 +263,11 @@ export class AgenteKuaa {
     return cierre({ salida: final, avisos });
   }
 
-  private cerrar(base: BaseBitacora, resultado: ResultadoKuaa, tokens: { tokensEntrada: number; tokensSalida: number }, fragmentos: FragmentoRecuperado[]): ResultadoKuaa {
+  private cerrar(base: BaseBitacora, resultado: ResultadoKuaa, tokens: { tokensEntrada: number; tokensSalida: number }, fragmentos: FragmentoRecuperado[], iteraciones = 1): ResultadoKuaa {
     this.deps.bitacora.registrar({
       ...base,
       tipo: 'mensaje_atendido',
-      iteraciones: 1,
+      iteraciones,
       ...tokens,
       avisos: [`etapa:${resultado.salida.etapa_propuesta}`, ...resultado.avisos],
       fragmentos: fragmentos.map((f) => f.id),
