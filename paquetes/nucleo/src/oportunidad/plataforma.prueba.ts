@@ -416,6 +416,103 @@ describe('respaldos de la corrida de SLT del 3-nov', () => {
   it.each(['La póliza todavía no fue emitida.', 'Tu póliza será emitida cuando se acredite el pago.', 'La póliza no está emitida hasta el pago.'])('«%s» no cuenta como afirmar una póliza emitida', (t) => {
     expect(afirmaHechoNoRespaldado(t, ESTADOS_OPERATIVOS_DESCONOCIDOS)).toBeNull();
   });
+  it.each([
+    'Son documentos distintos. La solicitud reúne tu pedido; la póliza es emitida por la aseguradora y contiene las condiciones de tu contrato.',
+    'La solicitud es tu pedido y la póliza es emitida por la compañía aseguradora.',
+    'La solicitud reúne tus declaraciones, mientras que la póliza es emitida por la aseguradora y contiene las condiciones aplicables.',
+    'LA SOLICITUD ES TU PEDIDO Y LA PÓLIZA ES EMITIDA POR LA ASEGURADORA.',
+    'No. La solicitud es tu pedido; la póliza es emitida por la aseguradora una vez aprobada la solicitud y acreditado el pago.',
+    'La solicitud es tu pedido, y la póliza es emitida por la aseguradora y contiene las condiciones del contrato.',
+  ])('«%s» describe qué es una póliza y pasa (TCV062)', (t) => {
+    expect(afirmaHechoNoRespaldado(t, ESTADOS_OPERATIVOS_DESCONOCIDOS)).toBeNull();
+  });
+  it.each([
+    'Tu póliza es emitida por la aseguradora.',
+    'Su póliza es emitida por la aseguradora.',
+    'La póliza ya es emitida por la aseguradora.',
+    'La póliza es emitida correctamente.',
+    'La póliza es emitida por Interseguros.',
+    'La póliza está emitida por la aseguradora.',
+    'La póliza fue emitida por la aseguradora.',
+    'La póliza es emitida por la aseguradoraX.',
+    'Esta póliza es emitida por la aseguradora.',
+    'La póliza es emitida por la aseguradora y ya está activada.',
+    'La póliza es emitida por la compañía aseguradora y quedó emitida para vos.',
+    'Tu póliza; ya quedó emitida.',
+    'Tu póliza ya está; la póliza es emitida por la aseguradora.',
+    'La póliza es activada por la aseguradora.',
+    'La póliza es emitido por la aseguradora.',
+    'La póliza es emitida por la aseguradora-Interseguros.',
+    'La póliza es emitida por la aseguradora_Interseguros.',
+    'Hoy la póliza es emitida por la aseguradora.',
+    'Ya está: la póliza es emitida por la aseguradora y te llega al correo hoy.',
+    'La póliza es emitida por la aseguradora y está emitida para vos.',
+    'La solicitud es tu pedido y la póliza es emitida por la aseguradora con éxito.',
+    'La solicitud es tu pedido y la póliza es emitida por la aseguradora con número 4471-22.',
+    'La solicitud es tu pedido y la póliza es emitida por la aseguradora, que te la mandó al correo.',
+    'La solicitud es tu pedido y la póliza es emitida por la aseguradora y contiene tu número de póliza N-123.',
+    'La solicitud es tu pedido y la póliza es emitida por la aseguradora y contiene las condiciones; entra en vigor mañana.',
+    'Ya pagaste... La solicitud es tu pedido y la póliza es emitida por la aseguradora.',
+    'Ya pagaste!! La solicitud es tu pedido y la póliza es emitida por la aseguradora.',
+    'Ya pagaste. Gracias. La solicitud es tu pedido y la póliza es emitida por la aseguradora.',
+    'La solicitud es tu pedido y la póliza es emitida por la aseguradora. Ya la tenés en tu correo.',
+    'La póliza es emitida por la aseguradora, una vez aprobada la solicitud.',
+    'La solicitud es tu pedido y la póliza es emitida por la aseguradora y contiene las condiciones y esta activa desde el lunes.',
+    'La solicitud es tu pedido y la póliza es emitida por la aseguradora y contiene las condiciones, te llega al correo mañana.',
+    'La solicitud es tu pedido y la póliza es emitida por la aseguradora y contiene las condiciones, entra en vigor el lunes.',
+    'La solicitud es tu pedido y la póliza es emitida por la aseguradora y contiene las condiciones\nTe la enviamos al correo.',
+    'Tu solicitud fue aprobada y la póliza es emitida por la aseguradora.',
+    'Recibimos tu solicitud y la póliza es emitida por la aseguradora.',
+    'La solicitud se aprobó: la póliza es emitida por la aseguradora.',
+    'Con tu solicitud aprobada, la póliza es emitida por la aseguradora y contiene tu nombre y tus coberturas.',
+    'La solicitud fue completada y pagada, y la póliza es emitida por la aseguradora.',
+    'Pagaste la cuota, tu solicitud se aprobó y la póliza es emitida por la aseguradora.',
+    'Solicitud: aprobada; póliza: la póliza es emitida por la aseguradora.',
+    'La solicitud es tu pedido y la póliza es emitida por la aseguradora y contiene tu cobertura activa desde el lunes.',
+    'La solicitud es tu pedido y la póliza es emitida por la aseguradora y contiene tu número de póliza.',
+    'La solicitud es tu pedido y la póliza es emitida por la aseguradora. La póliza no fue emitida antes. La póliza está emitida.',
+    'La solicitud es tu pedido y la póliza es emitida por la aseguradora y contiene las condiciones del contrato? Sí: está emitida.',
+    'La solicitud es tu pedido y la póliza es emitida por la aseguradora. En tu caso, fue emitida el lunes.',
+    'La solicitud es tu pedido y la póliza es emitida por la aseguradora. La tuya está emitida.',
+    'La solicitud es tu pedido y la póliza es emitida por la aseguradora. En este momento está activa.',
+    'La solicitud es tu pedido y la póliza es emitida por la aseguradora! Emitida hace una hora.',
+    'La solicitud es tu pedido y la póliza es emitida por la aseguradora y contiene las condiciones aplicables a tu contrato. Fue emitida.',
+    'La póliza es emitida por la aseguradora, no por nosotros, y está activada.',
+    'La póliza es emitida por la aseguradora, nunca por Kuaa, y quedó emitida.',
+    'La póliza es emitida por la aseguradora y no la solicitud: está activada.',
+    'La póliza es emitida por la aseguradora, sin demoras, y después de eso está activada.',
+    'Vuestra póliza: la póliza es emitida por la aseguradora y no hace falta más, está activada.',
+    'La póliza es emitida por la aseguradora: te llegó al correo.',
+    'La póliza es emitida por la aseguradora y está vigente desde el lunes.',
+    'La póliza es emitida por la aseguradora a tu nombre.',
+    'La póliza es emitida por la aseguradora y entra en vigor mañana.',
+    'La póliza es emitida por la aseguradora y la tenés disponible.',
+    'La póliza es emitida por la aseguradora y está activa.',
+    'La póliza es emitida por la aseguradora para vos.',
+    'Perfecto, Juan. La póliza es emitida por la aseguradora y te llega al correo.',
+    'Ya pagaste. La póliza es emitida por la aseguradora y te la enviamos.',
+    'Ya pagaste. La póliza es emitida por la aseguradora.',
+    'LA PÓLIZA ES EMITIDA POR LA ASEGURADORA Y ESTÁ ACTIVADA.',
+    'La póliza es emitida\npor la aseguradora y ya está activada.',
+  ])('«%s» sigue bloqueándose', (t) => {
+    expect(afirmaHechoNoRespaldado(t, ESTADOS_OPERATIVOS_DESCONOCIDOS)).toBe('poliza');
+  });
+  it.each([
+    'La póliza todavía no fue emitida; la póliza quedará activada al acreditarse el pago.',
+    'La póliza no está emitida ni la póliza activada.',
+  ])('«%s» pasa igual que en main (sin afirmar una póliza emitida)', (t) => {
+    expect(afirmaHechoNoRespaldado(t, ESTADOS_OPERATIVOS_DESCONOCIDOS)).toBeNull();
+  });
+  it('la explicación solicitud frente a póliza de TCV062 llega entera por el agente, sin respaldo ni retiro de frases', async () => {
+    const texto = 'Son documentos distintos. La solicitud reúne tu pedido y tus declaraciones; la póliza es emitida por la aseguradora y contiene las condiciones aplicables a tu contrato.';
+    const { agente } = await armar(texto);
+    const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+    expect(r.salida.texto).toBe(texto);
+    expect(r.avisos.some((a) => a.startsWith('hecho_no_respaldado') || a === 'frase_con_hecho_retirada')).toBe(false);
+  });
+  it('con la póliza informada como emitida por SLT, la mención pasa', () => {
+    expect(afirmaHechoNoRespaldado('Tu póliza fue emitida correctamente.', { ...ESTADOS_OPERATIVOS_DESCONOCIDOS, poliza: 'emitida' })).toBeNull();
+  });
   it.each(['Tu póliza fue emitida correctamente.', 'La póliza ya está activada.'])('«%s» sigue bloqueándose sin estado emitido', (t) => {
     expect(afirmaHechoNoRespaldado(t, ESTADOS_OPERATIVOS_DESCONOCIDOS)).toBe('poliza');
   });

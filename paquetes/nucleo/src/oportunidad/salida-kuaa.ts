@@ -79,6 +79,41 @@ export function interpretarSalidaModelo(texto: string): SalidaOportunidad | null
   return 'salida' in a ? a.salida : null;
 }
 
+const MARCA_DE_CASO = /\b(?:(?:tu|tus|su|sus|mi|vuestra|esta|esa|nuestra)\s{1,3}poliza|ya|hoy|ahora|ayer|recien|listo|lista|vigente|para\s{1,3}(?:vos|ti|usted)|a\s{1,3}(?:tu|su)\s{1,3}nombre|(?:te|le)\s{1,3}llego)\b/;
+const PEDIDO = '(?:tu|su|el)\\s{1,3}pedido(?:\\s{1,3}y\\s{1,3}(?:tus|sus|las)\\s{1,3}declaraciones)?|(?:tus|sus|las)\\s{1,3}declaraciones';
+const CONDICIONES = '(?:las\\s{1,3})?condiciones(?:\\s{1,3}(?:aplicables(?:\\s{1,3}a\\s{1,3}(?:tu|su)\\s{1,3}contrato)?|del\\s{1,3}contrato|de\\s{1,3}(?:tu|su)\\s{1,3}contrato))?';
+const EMITE = 'es\\s{1,3}emitida\\s{1,3}por\\s{1,3}(?:la\\s{1,3})?(?:aseguradora|compania(?:\\s{1,3}aseguradora)?)';
+// Plazo cerrado que da el modelo al explicar cuándo se emite: «una vez aprobada la solicitud y acreditado el pago».
+const PLAZO = '(?:\\s{1,3}(?:una\\s{1,3}vez|despues\\s{1,3}de)\\s{1,3}aprobada\\s{1,3}la\\s{1,3}solicitud(?:\\s{1,3}y\\s{1,3}acreditado\\s{1,3}el\\s{1,3}pago)?)?';
+const ORACION_PERMITIDA = new RegExp(
+  `^\\s*(?:no,?\\s{1,3})?(?:la|una)\\s{1,3}solicitud\\s{1,3}(?:es|reune|incluye)\\s{1,3}(?:${PEDIDO})(?:\\s{0,3}[,;:]\\s{0,3}(?:mientras\\s{1,3}que\\s{1,3}|y\\s{1,3})?|\\s{1,3}y\\s{1,3})(?:la|una)\\s{1,3}poliza\\s{1,3}${EMITE}${PLAZO}(?:\\s{1,3}y\\s{1,3}contiene\\s{1,3}${CONDICIONES})?\\s{0,3}[.!]{0,3}\\s{0,3}$`,
+);
+const FRASE_DE_EMISION = new RegExp(`(?<=poliza\\s{1,3})${EMITE}`);
+const DICE_EMISION = /\b(?:emitid[oa]s?|activad[oa]s?|activa|emitieron)\b/;
+
+/**
+ * «La póliza es emitida por la aseguradora» describe qué es una póliza (quién la emite), no afirma que la de esta
+ * persona ya exista: así lo dice el modelo al explicar la diferencia con la solicitud (TCV062). Es una LISTA DE
+ * PERMITIDOS cerrada: la frase se quita solo si la oración COMPLETA tiene la forma «[No,] la solicitud
+ * (es|reúne|incluye) <tu pedido [y tus declaraciones]> (, | ; | : | y | , mientras que) la póliza es emitida por
+ * (la) aseguradora [una vez aprobada la solicitud y acreditado el pago] [y contiene (las) condiciones [aplicables / del contrato]]»; y, además, en TODO el texto no hay
+ * marca de caso («tu/su/mi/esta póliza», «ya», «hoy», «ahora», «vigente», «para vos», «a tu nombre», «te llegó»…).
+ * Cualquier otra oración, aunque diga lo mismo con otras palabras, se juzga con la lógica de siempre (bloquea como
+ * antes). Se deja la palabra «póliza» para que lo que siga se lea como antes. Qué NO garantiza: aceptar otras
+ * redacciones legítimas (quedan bloqueadas, que es el lado seguro) ni que la frase, dicha de una persona concreta sin
+ * ninguna marca, no sea en su contexto una afirmación. Si tras quitarla el texto aún dice «emitida» o «activada» en
+ * cualquier otra oración, no se quita nada.
+ */
+function quitarDescripcionGeneralDePoliza(t: string): string {
+  if (!t.includes('es emitida por') || MARCA_DE_CASO.test(t)) return t;
+  const sinFrase = t
+    .split(/(?<=[.!?])/)
+    .map((oracion) => (ORACION_PERMITIDA.test(oracion) ? oracion.replace(FRASE_DE_EMISION, '') : oracion))
+    .join('');
+  // Si, sin la frase, el texto aún habla de emisión o activación (otra oración: «En tu caso, fue emitida»), rige main.
+  return DICE_EMISION.test(sinFrase) ? t : sinFrase;
+}
+
 export type MotivoHecho = 'pago' | 'poliza' | 'agenda_o_traspaso' | 'cobertura' | 'indemnizacion';
 
 /**
@@ -95,7 +130,7 @@ export function afirmaHechoNoRespaldado(texto: string, estados: EstadosOperativo
   }
   if (estados.poliza !== 'emitida') {
     // «La póliza todavía no fue emitida» o «será emitida» no afirman un hecho: se ignoran los tramos con negación o futuro.
-    const m = /\bpoliza\b([^.!?]{0,40})\b(?:emitid[oa]|activad[oa])\b/.exec(t);
+    const m = /\bpoliza\b([^.!?]{0,40})\b(?:emitid[oa]|activad[oa])\b/.exec(quitarDescripcionGeneralDePoliza(t));
     if (m && !/\b(?:no|ni|nunca|todavia|aun|sera|seran|cuando|una\s+vez|despues)\b/.test(m[1] ?? '')) return 'poliza';
     if (/\b(?:emitimos|activamos)\b/.test(t)) return 'poliza';
   }
