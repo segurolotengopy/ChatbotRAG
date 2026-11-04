@@ -16,6 +16,7 @@
  */
 import { z } from 'zod';
 import { ID_PAGINA } from '../configuracion/esquema.js';
+import { patronEnlaceOPrecio } from './detector-enlace-precio.js';
 
 export const ETAPAS_VENTA = [
   'E01',
@@ -185,6 +186,29 @@ export const Plataforma = z
         whatsapp_e164: z.string().regex(/^\+[0-9]{8,15}$/).optional(),
         canal: TEXTO_PLATAFORMA(60).optional(),
         correo_derechos: z.string().max(80).regex(/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/).optional(),
+        /**
+         * Dirección de Interseguros, tal como la envía SLT ya saneada: solo letras, números, espacio y «. + -» (sin comas
+         * ni «º»). Es dato, no instrucción: el alfabeto cerrado impide comillas, saltos de línea y símbolos de control.
+         * Qué NO garantiza: que la dirección sea verdadera; es la que SLT declara.
+         */
+        direccion: z.string().trim().min(5)
+          .max(120)
+          .regex(/^[\p{L}\p{N} .+-]+$/u)
+          // Una dirección que ya parece un enlace, un teléfono o un precio no es una dirección: se rechaza antes de que
+          // la regla del prompt la deje decir. Qué NO garantiza: detectar toda cifra disfrazada de número de puerta.
+          .refine((d) => patronEnlaceOPrecio(d) === null, { message: 'dirección con forma de enlace, teléfono o cifra' })
+          .optional(),
+        /**
+         * Sitio web de Interseguros como dominio suelto, en minúsculas: sin esquema, sin ruta, sin puerto. Así el único
+         * texto que el detector deja pasar es el dominio mismo. Qué NO garantiza: que el dominio sea el correcto.
+         */
+        sitio_web: z
+          .string()
+          .max(100)
+          .regex(/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?){0,2}\.[a-z]{2,63}$/)
+          // Sin punycode (`xn--`): no hay un uso previsto y un dominio así se ve como otro.
+          .refine((d) => !d.includes('xn--'), { message: 'dominio punycode no admitido' })
+          .optional(),
       })
       .strict(),
   })
