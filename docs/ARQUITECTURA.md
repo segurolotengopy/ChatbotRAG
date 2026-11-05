@@ -492,6 +492,73 @@ Pendientes y decisiones:
 - Los términos de emergencia y los textos de derivación reales los entrega Rodrigo (Legal); el banco versionado
   sigue siendo sintético.
 
+### Calibración (modelo híbrido, H3)
+
+H3 mide cuánto se parece una pregunta nueva a las del banco y cómo fijar, con datos, desde qué parecido conviene
+proponer una entrada. Son tres módulos del núcleo (`banco/similitud.ts`, `banco/evaluacion.ts`, `banco/medir.ts`),
+un script (`scripts/medir-umbral-banco.mts`) y un ejemplo sintético (`banco/evaluacion-ejemplo.json`).
+
+- **D6: la semántica se SUMA a la exacta.** La coincidencia exacta de H2 sigue yendo primero y `enrutar()` no
+  cambió. `prepararIndiceSemantico` embebe las preguntas de respuestas y derivaciones; `emparejarSemantico` propone
+  una entrada solo si su mejor puntaje (coseno) alcanza el umbral de SU tipo y se distancia al menos `margen` del
+  mejor puntaje de cualquier OTRA entrada. Si una derivación y una respuesta empatan, el orden pone primero a la
+  derivación (con margen mayor que cero el empate da nulo: hay duda y va a la IA).
+- **Regla B: derivar de más es la dirección segura.** Una respuesta «bajo umbral» es la que no alcanza
+  `umbralFijo`: no puede proponerse y no compite por el margen de una derivación. Si la mejor entrada (la
+  «líder») es una respuesta bajo umbral, gana la mejor derivación solo si (1) alcanza `umbralDerivacion`, (2) está
+  casi empatada con la líder (`líder - derivación <= margen`) y (3) se distancia al menos `margen` de la mejor de
+  las demás entradas, excluyendo solo a la líder. Simétricamente, si la mejor entrada es una derivación y la
+  segunda es una respuesta bajo umbral, el margen de la derivación se mide contra la mejor entrada excluyendo esa
+  respuesta. Si la mejor entrada es una derivación bajo su umbral, el resultado es nulo. Las comparaciones de
+  umbral y de margen toleran `EPSILON = 1e-9` (el redondeo de la coma flotante no deja fuera un borde exacto).
+  El `margen` devuelto es la distancia real a la siguiente mejor entrada que compite; cuando la única otra es la
+  respuesta excluida (o la líder) puede ser MENOR que el margen pedido, así que H4 no debe suponer ese invariante.
+  Con `umbralFijo` 0,80, `umbralDerivacion` 0,70 y margen 0,05, una respuesta en 0,79 con una derivación en 0,79,
+  0,80 o 0,84 deriva. No-monotonía que queda: en cuanto la respuesta alcanza `umbralFijo` (p. ej. 0,81 con la
+  derivación en 0,79), ambas pasan a ser propuestas casi empatadas y el resultado es nulo (va a la IA) por falta de
+  margen, aunque con 0,79 se derivaba.
+- **D7: dos umbrales asimétricos más margen.** `umbralFijo` y `umbralDerivacion` (la derivación puede exigir menos:
+  derivar de más es la dirección segura) y `margen`.
+- **D8: mínimos por partición.** En CADA partición (calibración y control): al menos 5 casos por entrada del
+  índice y al menos 30 casos «ninguna». Si la calibración no los cumple, `elegirUmbral` devuelve `null` (sin datos
+  suficientes, un umbral de 0,50 «sin errores» sería un espejismo; nunca se usa el piso del barrido como valor por
+  defecto). Si el control no los cumple, la calibración queda inválida (`minimos_insuficientes`).
+- **D9: el umbral NO va en el código.** Vive en el bucket junto al banco, ligado a modelo, dimensión y SHA-256 del
+  banco; si cambia cualquiera de los tres, se vuelve a medir. El script imprime esos tres datos más el SHA-256 de
+  la evaluación.
+- **Evaluación** (`evaluacion.ts`): `{formato: 1, version, casos: [{id, texto, esperado: {tipo, entradaId?},
+  particion}]}`, estricta; cada `entradaId` debe existir en el banco con el tipo declarado y «ninguna» no lleva
+  `entradaId`. Vive en el bucket; el archivo versionado es un ejemplo inventado.
+- **Medición** (`medir.ts`): `medir` cuenta aciertos, confusiones (la entrada X tomada por Y; D4 exige 0), falsos
+  positivos sobre «ninguna», falsos negativos (debía responder o derivar y fue a la IA) y cobertura.
+  `barrerUmbrales` recorre de 0,50 a 0,99 en pasos de 0,01 con los vectores ya calculados (sin llamadas nuevas).
+  `elegirUmbral` toma el MENOR umbral con cero confusiones y cero falsos positivos «ninguna» en calibración,
+  informa el control, devuelve `null` si no hay umbral factible o la calibración no cumple D8 (nunca un valor por
+  defecto) y marca inválida la calibración si el control tiene alguna confusión (`confusion_en_control`), algún
+  falso positivo «ninguna» (`falso_positivo_en_control`) o no cumple los mínimos (`minimos_insuficientes`).
+  `barrerUmbrales` valida `margen` y `diferenciaDerivacion` al entrar.
+- **Script.** `--banco` y `--evaluacion` deben estar fuera del repositorio (si no, sale con código 1); imprime solo
+  conteos, umbrales, margen, modelo, dimensión y SHA-256, nunca texto. El banco sintético solo se admite con
+  `--proveedor=simulado`; `--proveedor=vertex` exige `--sha256` y `--sha256-evaluacion` y llama al servicio de embeddings (con costo). Lee
+  cada archivo por su ruta real desde un descriptor abierto (`fstat` del mismo descriptor, sin carrera entre
+  comprobar y leer), solo si es regular y pesa hasta 20 MiB; informa `resultado=minimos_calibracion_insuficientes`
+  (distinto de `sin_umbral_factible`) y `umbral_en_piso=true` si el umbral fijo elegido es el piso 0,50 o el de
+  derivación queda bajo él; abre con `O_NONBLOCK` para que un FIFO no bloquee (se rechaza como no regular); `pnpm tipos`
+  también verifica los tipos de `scripts/*.mts` (`scripts/tsconfig.json`); rechaza valores vacíos de `--margen` y
+  `--diferencia-derivacion`; la evaluación rechaza textos con forma de secreto; y ante un error ajeno al banco, la
+  evaluación o la similitud imprime solo el nombre y el código de sistema, nunca el mensaje.
+
+**Qué NO garantiza.**
+
+- Un banco o una evaluación sintéticos NO fijan un umbral real: el proveedor simulado (hashing de palabras) no
+  tiene semántica, así que su resultado solo prueba que la mecánica funciona.
+- H3 no conecta nada: ni el orquestador, ni `agente-kuaa.ts`, ni el enrutador. La conexión del emparejamiento
+  semántico al agente es de H4.
+- Encender `carrilFijo` exige un informe de calibración válido con confusión 0 en el control, medido con el banco
+  y el modelo reales; este código no lo hace cumplir (D4 sigue siendo una condición de proceso).
+- Un umbral medido con pocos casos o poco variados se sobreestima, y el control solo sirve si es independiente de
+  la calibración (lo decide quien arma el conjunto). El paso de 0,01 es una rejilla, no un óptimo demostrado.
+
 ## 7. Aplicación a segurolotengo-demo
 
 El demo (Next.js 15 en AWS Amplify) **no embebe** el núcleo: consume el servicio por
