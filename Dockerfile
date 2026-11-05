@@ -32,8 +32,8 @@ FROM node@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a01797839
 ENV NODE_ENV=production PUERTO=8080
 WORKDIR /app
 
-# Dos correcciones de la imagen base, medidas con Trivy el 2026-10-10 sobre el
-# digest de arriba. Las dos van ANTES de `USER node` porque necesitan root.
+# Tres correcciones de la imagen base, medidas con Trivy sobre el digest de
+# arriba (las dos primeras el 2026-10-10, la tercera el 2026-11-05). Las dos van ANTES de `USER node` porque necesitan root.
 #
 # (1) `perl-base` viene en 5.36.0-7+deb12u3 y arrastra 3 CRITICAL y 4 HIGH
 #     (travesía de rutas en Archive-Tar, desbordamiento de heap, proceso
@@ -47,6 +47,13 @@ WORKDIR /app
 #     comportamiento preferible: una falla ruidosa que obliga a revisar el
 #     parche, en lugar de una deriva silenciosa.
 #
+# (3) `apt` y `libapt-pkg6.0` vienen en 2.6.1 con CVE-2026-109518 (HIGH: un
+#     atacante en la ruta de red puede alterar la descarga de paquetes). El
+#     parche está en 2.6.2, en bookworm-security (verificado el 2026-11-05 sobre
+#     este digest); la imagen base aún no lo incorpora. Mismo costo que (1):
+#     cuando Debian publique otra versión y retire esta, la construcción falla
+#     de forma ruidosa y obliga a revisar.
+#
 # (2) El `npm` que trae la imagen aporta 10 hallazgos más por sus propias
 #     dependencias (brace-expansion, ip-address, pacote, picomatch, sigstore).
 #     Esta etapa no lo usa: el árbol de ejecución lo produce `pnpm deploy` y el
@@ -54,7 +61,7 @@ WORKDIR /app
 #     menos superficie y una imagen más chica. Corepack vive aparte y solo se
 #     usa en las etapas de construcción, que conservan su npm.
 RUN apt-get update \
- && apt-get install --no-install-recommends -y perl-base=5.36.0-7+deb12u4 \
+ && apt-get install --no-install-recommends -y perl-base=5.36.0-7+deb12u4 apt=2.6.2 libapt-pkg6.0=2.6.2 \
  && rm -rf /var/lib/apt/lists/* \
  && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
