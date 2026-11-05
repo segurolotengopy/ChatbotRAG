@@ -9,6 +9,10 @@
  * Los detectores (`contieneEnlaceOPrecio`, `afirmaHechoNoRespaldado`, `filtraPrompt`) son deterministas y
  * conservadores: prefieren descartar a dejar pasar. Qué NO garantizan: atrapar toda paráfrasis; dan falsos
  * positivos a propósito (por ejemplo, un número con separador de miles que no es un precio).
+ *
+ * El detector tributario (`afirmaTratamientoTributario`) tiene un riesgo residual declarado y aceptado por Andres:
+ * limitaciones por sentido, ironía o instrucciones al lector que acompañen a «el precio incluye IVA» y que ninguna
+ * lista cierra. Es defensa en profundidad, no reemplaza la regla del prompt ni la bitácora. Detalle en su comentario.
  */
 import type { ConfiguracionEfectiva } from '../configuracion/esquema.js';
 import { BotonSalida, ObjecionSalida, PropuestaSalida, SalidaOportunidad, type EstadosOperativos, type EtapaVenta } from './esquemas.js';
@@ -227,16 +231,131 @@ export function retirarNumerosDeRegistro(texto: string): string {
  */
 export const TEXTO_TRIBUTARIO = 'Puedo informar el premio total publicado; para el tratamiento tributario y la factura te orientamos con Interseguros.';
 
+const PATRON_TRIBUTACION = /\biva\b|\bimpuestos?\b|\bexent[oa]s?\b|\bgravad[oa]s?\b|\bimponible|\bdesglose|\bprima\s+neta|\balicuota|\bpor\s+ciento/;
+
+/**
+ * ORACIÓN COMPLETA permitida (lista permitida cerrada, sin lista de denegación): sobre el texto ya pasado por
+ * `paraDetectar`, la oración debe ser EXACTAMENTE [«sí,»|«así es,»|«exacto,»|«claro,»|«correcto,»] + determinante
+ * (el, la, los, las, tu, tus, su, sus, este, esta, estos, estas, ese, esa, esos, esas) + sustantivo (precio, premio,
+ * monto, importe, valor, total, costo, cuota, tarifa, en singular o plural) + adjetivos (total, anual, mensual,
+ * cobrado, publicado, final) + [«ya»] + «incluye|incluyen» + [«el»] + «IVA». Nada antes ni después dentro de la
+ * oración: ni coma, ni «y/e», ni paréntesis, ni «¿». Solo se toleran, antes, viñetas o prefijos de formato
+ * («- », «• », «* », «> », «#», «**») y, después, «**». Ningún emoji o símbolo genérico: «❌», «🚫», «👎», «≠»… cambian
+ * el sentido y no se pueden enumerar como prohibidos.
+ */
+const ORACION_IVA_INCLUIDO = new RegExp(
+  '^[\\s\\-\u2022*>#_]*' +
+    '(?:(?:si|asi\\s{1,3}es|exacto|claro|correcto)\\s{0,3},\\s{1,3})?' +
+    '(?:el|la|los|las|tu|tus|su|sus|este|esta|estos|estas|ese|esa|esos|esas)\\s{1,3}' +
+    '(?:precios?|premios?|montos?|importes?|valor(?:es)?|total(?:es)?|costos?|cuotas?|tarifas?)' +
+    '(?:\\s{1,3}(?:total(?:es)?|anual(?:es)?|mensual(?:es)?|cobrad[oa]s?|publicad[oa]s?|finales|final))*' +
+    '\\s{1,3}(?:ya\\s{1,3})?(?:incluye|incluyen)\\s{1,3}(?:el\\s{1,3})?iva[\\s*_]*$',
+  'u',
+);
+/** Lo único que puede seguir a la oración permitida: punto, admiración, espacios, saltos, «*»/«_» (validados aparte: solo en pares o como cierre de su apertura) y emojis POSITIVOS de lista cerrada. */
+const COLA_PERMITIDA = /^(?:[.!\s*_]|\u{1F60A}|\u{1F642}|\u{1F44D}|\u2705|\u2714|\ufe0f)*$/u;
+
+/**
+ * Números en palabras que BLOQUEAN el resto del texto (constante propia). Quedan fuera «un», «uno» y «medio» sueltos
+ * («un plan», «Plan Medio»); «uno y medio» y «y medio» se bloquean aparte. Incluye ordinales y fracciones
+ * («décimo», «décima parte», «centésimo»). Un número solo se tolera pegado a moneda o a una unidad neutra
+ * (`UNIDAD_NEUTRA`): «390.000 Gs», «dos planes», «hasta treinta días», «en dos cuotas», «tres beneficiarios».
+ */
+const NUMERO_PALABRA =
+  'cero|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|dieciseis|diecisiete|dieciocho|diecinueve|veinte|veintiun[oa]?|veintidos|veintitres|veinticuatro|veinticinco|veintiseis|veintisiete|veintiocho|veintinueve|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa|cien|ciento|doscientos|trescientos|cuatrocientos|quinientos|seiscientos|setecientos|ochocientos|novecientos|decim[oa]s?|centesim[oa]s?|vigesim[oa]s?';
+const TOKEN_NUMERO = `(?:\\d+(?:[.,]\\d+)*|\\b(?:${NUMERO_PALABRA})\\b)`;
+const SECUENCIA_NUMERICA = new RegExp(`${TOKEN_NUMERO}(?:\\s{1,3}(?:(?:y|a|e|o|hasta|-)\\s{1,3})?${TOKEN_NUMERO})*`, 'g');
+const UNIDAD_NEUTRA = /\s{0,3}(?:de\s{1,3})?(?:gs|guarani(?:es)?|usd|dolar(?:es)?|anos?|mes(?:es)?|dias?|semanas?|horas?|minutos?|cuotas?|pagos?|planes?|beneficiari[oa]s?|coberturas?|pasos?|personas?|veces|opciones|productos?|mil|millon(?:es)?)\b|\s{0,3}\u20b2/y;
+const MONEDA_ANTES = /(?:gs|\u20b2|guarani(?:es)?|usd|us\$|\$)\.?\s{0,3}$/;
+/** Negación, limitación o salvedad en cualquier otra oración. «no», «solo», «sin», «cargo»… sobre-bloquean a propósito. */
+const MARCADORES_DE_LIMITACION =
+  /[?\u00bf\u274c\u{1F6AB}\u2717\u2718\u{1F44E}\u{1F925}\u2260\u00ac]|~~|tribut|\b(?:dnit|valor\s{1,3}(?:agregado|anadido)|deduc\w*|comput\w*|credito\w*|regimen(?:es)?|contribuyentes?|retien\w*|exceptu\w*|exclu\w*|fuera|encima|extra|plus|net[oa]s?|gobierno\w*|diezmo|a\s{1,3}parte|mas|anad\w*|libres?|liberad\w*|si|cuando|distint\w*|diferentes?|cambia\w*|otr[oa]s?|broma|inexact\w*|engan\w*|vat|tax|not|excluding|de\s{1,3}los\s{1,3}cuales|van\s{1,3}(?:al|a)|corresponde(?:n)?|porcion|parte\s{1,3}de|no|nunca|ni|tampoco|jamas|sin|salvo|excepto|solo|unicamente|pero|aunque|depende|segun|falso|falsa|mentira|incorrecto|incorrecta|errores?|error|aparte|separad[oa]s?|adicional\w*|excluid\w*|devolv\w*|descont\w*|absorb\w*|asum\w*|bonificad\w*|rebaj\w*|rest(?:ar|a)|suma(?:n|s)?|agrega(?:n)?|recargos?|cargos?|cobra(?:n|mos)?|devuelv\w*|descuent\w*|declaracion|discrimin\w*|lamentablemente|realidad|uno\s{1,3}y\s{1,3}medio|y\s{1,3}medio)\b/u;
+const ENTES_TRIBUTARIOS_BASICOS =
+  /\btasas?\b|tribut|\bdnit\b|\bvalor\s{1,3}(?:agregado|anadido)|\bcontribuyente|\bretien|\bgobierno|\bdiezmo|\b(?:vat|tax)\b|\bdeduc|\bcomput|\bexim|\bdesgrav|impositiv|\berario|\bsobretasa|\bsaldo\s{1,3}a\s{1,3}favor|\bimput|\bdebitos?\b|\breembols|\bcompensa|\bpercepcion|\brecaud|\bporcentaj|\bfiscal|\bfisco\b|\bhacienda\b|\bgravamen|\barancel|\bdeducib|\bexoner|\bretenc|\bisc\b|\birp\b|\bit\b|\bsellad|\breintegr|\blo\s{1,3}paga\b|\bi[\s.]{1,4}v[\s.]{1,4}a\b/;
+const ENTES_TRIBUTARIOS = new RegExp(`${ENTES_TRIBUTARIOS_BASICOS.source}|\\bset\\b|\\bestado\\b`);
+
+/** ¿Hay en `t` algún número (en cifras o palabras) que no esté pegado a una moneda o unidad neutra? */
+function hayNumeroSuelto(t: string): boolean {
+  for (const m of t.matchAll(SECUENCIA_NUMERICA)) {
+    const ini = m.index;
+    const fin = ini + m[0].length;
+    if (MONEDA_ANTES.test(t.slice(Math.max(0, ini - 12), ini))) continue;
+    UNIDAD_NEUTRA.lastIndex = fin;
+    if (!UNIDAD_NEUTRA.test(t)) return true;
+  }
+  return false;
+}
+
+function restoBloqueado(resto: string): boolean {
+  return MARCADORES_DE_LIMITACION.test(resto) || ENTES_TRIBUTARIOS.test(resto) || hayNumeroSuelto(resto);
+}
+
+/**
+ * Si la ÚLTIMA oración con letras del texto es la oración permitida, devuelve lo que la antecede. Una sola pasada
+ * lineal hacia atrás. No la acepta si: termina en «?» o «:» o lleva algo no permitido después (`COLA_PERMITIDA`); la
+ * oración anterior terminó en «:» («Falso: …», «Solo para empresas: …»); o no coincide EXACTAMENTE con
+ * `ORACION_IVA_INCLUIDO`. Límites de oración: «. ! ? \n :» (un «.» seguido de dígito o letra no corta: «390.000»).
+ */
+function separarOracionPermitida(t: string): string | null {
+  let fin = t.length - 1;
+  while (fin >= 0 && !/\p{L}/u.test(t[fin] ?? '')) fin--;
+  const cola = fin < 0 ? '' : t.slice(fin + 1);
+  if (fin < 0 || !COLA_PERMITIDA.test(cola)) return null;
+  let ini = fin;
+  while (ini > 0) {
+    const c = t[ini - 1];
+    if (c === '!' || c === '?' || c === '\n' || c === ':' || (c === '.' && !/[0-9a-z]/.test(t[ini] ?? ''))) break;
+    ini--;
+  }
+  const cuerpo = t.slice(ini, fin + 1);
+  if (!ORACION_IVA_INCLUIDO.test(cuerpo)) return null;
+  // «*» y «_» finales solo en pares («**», «__») o si el texto abrió con el mismo marcador («*…*»).
+  const cierre = cola.replace(/[^*_]/g, '');
+  const apertura = /^[\s\-\u2022>#]*([*_]+)/.exec(cuerpo)?.[1] ?? '';
+  if (cierre !== '' && !/^(?:\*\*|__)+$/.test(cierre) && cierre !== apertura) return null;
+  let k = ini;
+  while (k > 0 && /[.!?\n:\s\u2026]/.test(t[k - 1] ?? '')) {
+    if (t[k - 1] === ':') return null;
+    k--;
+  }
+  return t.slice(0, ini);
+}
+
 /**
  * Detecta afirmaciones tributarias que no están respaldadas: «más IVA», «sin IVA», exento, gravado, impuestos,
- * desglose, prima neta, alícuota o «por ciento». La ÚNICA frase permitida es «IVA incluido» (con o sin «con»),
- * que es lo que las pantallas de SLT ya muestran al lado del premio total; el desglose sigue pendiente
- * (contradicción C14). Una negación antes («sin», «no», «más») la vuelve a bloquear. Qué NO garantiza: paráfrasis
- * sin esas palabras («ya trae todo»).
+ * desglose, prima neta, alícuota o «por ciento». Se permiten DOS formas, ambas cerradas: «IVA incluido» (con o sin
+ * «con»), que es lo que las pantallas de SLT ya muestran al lado del premio total, y la ORACIÓN COMPLETA y afirmativa
+ * «el precio cobrado (ya) incluye (el) IVA» con la gramática de `ORACION_IVA_INCLUIDO`, que además debe ser la ÚLTIMA
+ * oración del texto, terminar en «.», «!» o fin de texto, y no seguir a un «:». Motivo: Andres, dueño del negocio,
+ * decidió que «el precio cobrado incluye IVA»; antes, respuestas correctas con esa redacción se bloqueaban y salía
+ * `TEXTO_TRIBUTARIO` en lugar de los precios. Cuando se acepta la oración, TODO el resto del texto se bloquea si
+ * trae negación o limitación («no», «solo», «salvo», «pero», «cargo»…), preguntas, entes o tributos (fisco, tasa,
+ * estado…) o un número que no esté pegado a moneda o unidad neutra; «tasa» y «estado» sobre-bloquean a propósito
+ * («la tasa de aprobación»). Donde se quitó «IVA incluido», el resto solo pasa por el vocabulario de entes y tributos
+ * básico (no por negaciones ni números, para no bloquear textos que main deja pasar). Después rige el detector de
+ * siempre. El desglose sigue pendiente (contradicción C14). Qué NO garantiza: que el monto sea correcto ni que el IVA
+ * esté realmente incluido (es decisión de negocio, ya registrada), ni detectar paráfrasis sin esas palabras («ya trae
+ * todo»), ni aceptar otras redacciones legítimas (quedan bloqueadas, que es el lado seguro).
+ *
+ * RIESGO RESIDUAL ACEPTADO POR ANDRES: una limitación por SENTIDO que ninguna lista cierra (por ejemplo «Vale para
+ * personas físicas.», «Es broma.», «Ignorá la última frase.», ironía o instrucciones al lector, paráfrasis sin
+ * ninguna palabra de las listas) puede acompañar a la oración permitida y pasar. Este control es defensa en
+ * profundidad: NO reemplaza la regla del prompt ni la bitácora (`tributario_bloqueado`). En este cambio NO se relajó
+ * nada más de lo que main bloqueaba; lo que sigue bloqueándose de más a propósito (preguntas de seguimiento,
+ * «no requiere examen médico», fechas y números sueltos) queda para un PR posterior.
  */
 export function afirmaTratamientoTributario(texto: string): boolean {
-  const t = paraDetectar(texto).replace(/(?<!\b(?:sin|no|mas)\s{1,3}(?:(?:es|esta|viene|va|con)\s{1,3})?)\b(?:con\s+)?iva\s+incluido\b/g, ' ');
-  return /\biva\b|\bimpuestos?\b|\bexent[oa]s?\b|\bgravad[oa]s?\b|\bimponible|\bdesglose|\bprima\s+neta|\balicuota|\bpor\s+ciento/.test(t);
+  const original = paraDetectar(texto);
+  const resto = separarOracionPermitida(original);
+  if (resto !== null && restoBloqueado(resto)) return true;
+  const base = resto ?? original;
+  let quitado = false;
+  const t = base.replace(/(?<!\b(?:sin|no|mas)\s{1,3}(?:(?:es|esta|viene|va|con)\s{1,3})?)\b(?:con\s+)?iva\s+incluido\b/g, () => {
+    quitado = true;
+    return ' ';
+  });
+  if (quitado && ENTES_TRIBUTARIOS_BASICOS.test(t)) return true;
+  return PATRON_TRIBUTACION.test(t);
 }
 
 export function salidaTributaria(etapa: EtapaVenta): SalidaOportunidad {
