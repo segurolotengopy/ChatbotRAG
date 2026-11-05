@@ -7,6 +7,9 @@
  * misma regla que en NovuChat (T-25): una bitácora con texto es la puerta trasera
  * a la confidencialidad, además de una copia sin control de retención.
  */
+import type { MotivoIa } from '../banco/enrutador.js';
+import type { MotivoDerivacion } from '../banco/esquema.js';
+
 export type TipoEvento =
   | 'mensaje_atendido'
   | 'entrada_bloqueada'
@@ -19,7 +22,8 @@ export type TipoEvento =
   | 'configuracion_cargada'
   | 'corpus_indexado'
   | 'paquete_no_cargado'
-  | 'respuesta_no_validada';
+  | 'respuesta_no_validada'
+  | 'enrutador';
 
 export interface EventoBitacora {
   tipo: TipoEvento;
@@ -28,6 +32,7 @@ export interface EventoBitacora {
   /** SHA-256 truncado del conversacionId: correlaciona sin identificar. */
   conversacionHash: string;
   canal: string;
+  /** Milisegundos, siempre finitos y no negativos (quien arma el evento sustituye lo inválido por 0). */
   latenciaMs?: number;
   tokensEntrada?: number;
   tokensSalida?: number;
@@ -39,6 +44,14 @@ export interface EventoBitacora {
   pagina?: string;
   herramienta?: string;
   codigo?: string;
+  /** Evento `enrutador` (H4a): carril elegido. Solo enumerados; jamás el texto ni el término que coincidió. */
+  carril?: 'fijo' | 'derivacion' | 'ia';
+  /** Evento `enrutador`: vía que decidió. */
+  via?: 'exacta' | 'semantica';
+  /** Evento `enrutador`: puntaje de similitud redondeado a milésimas, solo si hubo propuesta semántica. */
+  similitud?: number;
+  /** Evento `enrutador`: motivo enumerado de la derivación o de la caída a la IA (no es texto libre). */
+  motivo?: MotivoIa | MotivoDerivacion;
   /** Detalle técnico corto, SIN texto del usuario. Tope 200. */
   detalle?: string;
 }

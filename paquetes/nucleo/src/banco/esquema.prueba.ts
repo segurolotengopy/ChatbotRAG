@@ -47,10 +47,16 @@ describe('esquema del banco de respuestas', () => {
     expect(BancoRespuestas.safeParse(banco({ respuestas: [respuesta(), respuesta()] })).success).toBe(false);
   });
 
-  it('rechaza términos en un motivo distinto de emergencia', () => {
+  it('admite términos con cualquier motivo de derivación admitido (H4a) y sigue admitiendo los de emergencia', () => {
     const base = { id: 'd-uno', texto: 'Texto', aprobado_por: 'ejemplo sintetico', terminos: ['termino de prueba'] };
-    expect(EntradaDerivacion.safeParse({ ...base, motivo: 'siniestro_particular' }).success).toBe(false);
-    expect(EntradaDerivacion.safeParse({ ...base, motivo: 'emergencia' }).success).toBe(true);
+    for (const motivo of ['emergencia', 'siniestro_particular', 'pago_o_expediente', 'evaluacion_individual']) {
+      expect(EntradaDerivacion.safeParse({ ...base, motivo }).success).toBe(true);
+    }
+    // Compatibilidad hacia atrás: una derivación sin términos, o de emergencia con ellos, sigue siendo válida.
+    expect(EntradaDerivacion.safeParse({ id: 'd-dos', motivo: 'siniestro_particular', texto: 'T', aprobado_por: 'ejemplo sintetico' }).success).toBe(true);
+    // Las reglas de forma de los términos no cambian con el motivo.
+    expect(EntradaDerivacion.safeParse({ ...base, motivo: 'pago_o_expediente', terminos: ['12345'] }).success).toBe(false);
+    expect(EntradaDerivacion.safeParse({ ...base, motivo: 'pago_o_expediente', terminos: ['Término uno', 'termino  uno'] }).success).toBe(false);
   });
 
   it('rechaza motivos de derivación reservados a otros mecanismos', () => {

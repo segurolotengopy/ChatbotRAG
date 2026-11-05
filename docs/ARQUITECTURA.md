@@ -446,7 +446,7 @@ el código solo asegura la forma, la integridad del archivo y que ningún marcad
 
 `banco/enrutador.ts` decide, sin modelo y sin red, por cuál de tres carriles sigue un mensaje: `fijo` (respuesta
 aprobada), `derivacion` (texto aprobado que pasa la conversación a una persona) o `ia` (el agente de siempre).
-El orden es fijo: (a) enrutador apagado, (b) mensaje sin contenido, (c) término de emergencia, (d) pregunta
+El orden es fijo: (a) enrutador apagado, (b) mensaje sin contenido, (c) término de bloqueo (emergencia u otro motivo), (d) pregunta
 conocida del banco, (e) sin coincidencia. La derivación va primero: un término de emergencia gana sobre cualquier
 respuesta fija, y una pregunta de derivación deriva aunque el carril fijo esté apagado.
 
@@ -481,16 +481,34 @@ Hangul incluidos), pero un mismo mensaje que mezcle ambos usos en un solo térmi
 Pendientes y decisiones:
 
 - **D1** (decide Andres): con `carrilFijo` apagado, las condiciones de entrada (`contenido_pendiente`,
-  `atencion_humana_solicitada`) no derivan; solo derivan las preguntas de derivación y los términos de emergencia.
+  `atencion_humana_solicitada`) no derivan; solo derivan las preguntas de derivación y los términos de bloqueo. Excepción desde H4a: una respuesta de riesgo
+  `critico` deriva aun con el carril apagado (ver D5).
 - **D2** (decide Rodrigo): un dato faltante con la condición `sin_dato` deriva con el motivo `contenido_pendiente`.
 - **D3** (decide Andres): la aclaración «¿sobre qué plan?» queda fuera de H2; decidir en H4 si hay un carril
   `aclaracion`.
 - **D4**: encender `carrilFijo` es un booleano; falta decidir si exige una medición con confusión 0. H2 no lo hace
-  cumplir.
-- **D5** (decide Andres, para H4): si una compuerta rechaza el texto fijo de una entrada con `riesgo: 'critico'`,
-  hoy `armarTextoFijo` pasa a `ia`; la alternativa es pasar a derivación. No se cambió ese comportamiento.
-- Los términos de emergencia y los textos de derivación reales los entrega Rodrigo (Legal); el banco versionado
-  sigue siendo sintético.
+  cumplir. Desde H4a, la vía semántica sí lo cumple en código (`verificarCalibracion`, ver H4a).
+- **D5** (decidida y AMPLIADA por Andres, implementada en H4a): un texto fijo de riesgo `critico` que no se puede
+  entregar se DERIVA y nunca pasa a la IA, sea cual sea la causa: entrada no hallada (manda el riesgo de la decisión),
+  plantilla inválida, datos faltantes sin `sin_dato`, compuerta de salida o verificador adicional. `armarTextoFijo`
+  pide la derivación `contenido_pendiente`; `armarTextoConD5` completa la cadena: si ese texto también se rechaza o no
+  existe, sale el mensaje general de derivación con la propuesta `atencion_humana_solicitada` (los avisos de ambos
+  rechazos se conservan; solo códigos). Por semántica, un crítico propuesto sin respaldo de D4 (`!fijoApto`) deriva con
+  `contenido_pendiente` (origen `pregunta_semantica`). **Frontera exacta:** el riesgo normal rechazado o sin armar
+  sigue a la IA. **Excepción explícita a D1 (decidida por Andres):** con `activo: true` y `carrilFijo: false`, una
+  respuesta de riesgo `critico` hallada (por coincidencia exacta o por semántica) DERIVA con `contenido_pendiente`
+  (origen `condicion_entrada`) en vez de ir a la IA, y la cadena de D5 sigue (mensaje general con la propuesta
+  `atencion_humana_solicitada` si ese texto falla). Esto cambia el contrato de `enrutar` para críticos con el carril
+  apagado; D1 sigue valiendo para el riesgo normal (IA con su candidata, `carril_fijo_apagado`). Con el enrutador
+  APAGADO del todo (`activo: false`) nada cambia: todo va a la IA. D5 alcanza a un crítico ya ELEGIDO. **Caminos por los
+  que un crítico SÍ puede llegar a la IA** (lista exacta): (1) enrutador apagado (`enrutador_apagado`); (2) una pregunta
+  cercana a un crítico que no alcanza el umbral o con duda por el margen: `sin_coincidencia`, porque nunca se eligió;
+  (3) la vía semántica sin poder proponer: `semantica_no_disponible`, `embebedor_error`, `embebedor_tiempo` o
+  `calibracion_no_apta` (sin candidata); y (4) un mensaje sin contenido (`sin_contenido`).
+- Los términos de bloqueo y los textos de derivación reales los entrega Rodrigo (Legal); el banco versionado
+  sigue siendo sintético. Desde H4a las derivaciones admiten `terminos` con cualquier motivo (antes solo `emergencia`;
+  un banco anterior carga igual): un término de otro motivo deriva con ese motivo y el origen `termino_derivacion`,
+  y el de emergencia conserva `termino_emergencia`. Ningún vocabulario real vive en el código.
 
 ### Calibración (modelo híbrido, H3)
 
@@ -503,20 +521,25 @@ un script (`scripts/medir-umbral-banco.mts`) y un ejemplo sintético (`banco/eva
   una entrada solo si su mejor puntaje (coseno) alcanza el umbral de SU tipo y se distancia al menos `margen` del
   mejor puntaje de cualquier OTRA entrada. Si una derivación y una respuesta empatan, el orden pone primero a la
   derivación (con margen mayor que cero el empate da nulo: hay duda y va a la IA).
-- **Regla B: derivar de más es la dirección segura.** Una respuesta «bajo umbral» es la que no alcanza
-  `umbralFijo`: no puede proponerse y no compite por el margen de una derivación. Si la mejor entrada (la
-  «líder») es una respuesta bajo umbral, gana la mejor derivación solo si (1) alcanza `umbralDerivacion`, (2) está
-  casi empatada con la líder (`líder - derivación <= margen`) y (3) se distancia al menos `margen` de la mejor de
-  las demás entradas, excluyendo solo a la líder. Simétricamente, si la mejor entrada es una derivación y la
-  segunda es una respuesta bajo umbral, el margen de la derivación se mide contra la mejor entrada excluyendo esa
-  respuesta. Si la mejor entrada es una derivación bajo su umbral, el resultado es nulo. Las comparaciones de
-  umbral y de margen toleran `EPSILON = 1e-9` (el redondeo de la coma flotante no deja fuera un borde exacto).
-  El `margen` devuelto es la distancia real a la siguiente mejor entrada que compite; cuando la única otra es la
-  respuesta excluida (o la líder) puede ser MENOR que el margen pedido, así que H4 no debe suponer ese invariante.
-  Con `umbralFijo` 0,80, `umbralDerivacion` 0,70 y margen 0,05, una respuesta en 0,79 con una derivación en 0,79,
-  0,80 o 0,84 deriva. No-monotonía que queda: en cuanto la respuesta alcanza `umbralFijo` (p. ej. 0,81 con la
-  derivación en 0,79), ambas pasan a ser propuestas casi empatadas y el resultado es nulo (va a la IA) por falta de
-  margen, aunque con 0,79 se derivaba.
+- **Regla B (confirmada por Andres en H4a): derivación casi empatada con la respuesta LÍDER.** Sea «candidata» la
+  mejor derivación y «líder» la respuesta de mayor puntaje. Si la candidata alcanza `umbralDerivacion` y está casi
+  empatada con la respuesta líder (a lo sumo `margen`, en cualquiera de los dos sentidos), DERIVA, esté o no la líder
+  sobre `umbralFijo` (derivar de más es la dirección segura), siempre que se distancie al menos `margen` de la mejor de
+  las demás entradas (se excluyen la candidata y las respuestas casi empatadas con ella; otra derivación cercana da
+  nulo: hay duda y va a la IA). Si la líder está claramente por encima de la candidata (más allá del margen), no hay
+  empate con la líder y decide la regla común: esa respuesta se propone si cumple su umbral y su margen; si no, nulo.
+  Eso elimina la franja de H3 donde una derivación más parecida iba a la IA. Con `umbralFijo` 0,80, `umbralDerivacion`
+  0,70 y margen 0,05: respuesta y derivación en 0,79/0,78, 0,79/0,79, 0,79/0,80, 0,79/0,84 y 0,81/0,79 derivan (con o
+  sin una tercera entrada lejana); y tres ejemplos con dos respuestas quedan fijados en las pruebas: r0 0,70, r1 0,80,
+  d 0,70 → respuesta r1; r0 0,70, r1 0,76, d 0,70 → nulo; d 0,79, r0 0,80, r1 0,845 → nulo. Fuera de la zona de empate,
+  una respuesta bajo `umbralFijo` no puede proponerse (si es la mejor, nulo) y no compite por el margen de una
+  derivación líder; una derivación bajo su umbral da nulo. Las comparaciones de umbral y de margen toleran
+  `EPSILON = 1e-9`. El `margen` devuelto es la distancia real a la siguiente mejor entrada que compite; cuando la única
+  otra es una respuesta excluida o casi empatada puede ser MENOR que el margen pedido, así que H4 no debe suponer ese
+  invariante. Un puntaje no finito nunca propone nada: `coseno` lanza `ErrorSimilitud` si algún componente (o el resultado) no es finito, `decidirEmparejamiento` devuelve nulo ante un puntaje no
+  finito, `coseno` escala cada vector por su mayor valor absoluto cuando sus cuadrados se saldrían de rango (componentes
+  enormes o diminutos dan el coseno correcto, no NaN ni 0), y `medir`/`barrerUmbrales` fallan de forma ruidosa en vez de calibrar con NaN.
+  `VERSION_REGLA_DECISION` (hoy 1) versiona la regla: si cambia, súbase y las calibraciones anteriores dejan de servir.
 - **D7: dos umbrales asimétricos más margen.** `umbralFijo` y `umbralDerivacion` (la derivación puede exigir menos:
   derivar de más es la dirección segura) y `margen`.
 - **D8: mínimos por partición.** En CADA partición (calibración y control): al menos 5 casos por entrada del
@@ -555,9 +578,54 @@ un script (`scripts/medir-umbral-banco.mts`) y un ejemplo sintético (`banco/eva
 - H3 no conecta nada: ni el orquestador, ni `agente-kuaa.ts`, ni el enrutador. La conexión del emparejamiento
   semántico al agente es de H4.
 - Encender `carrilFijo` exige un informe de calibración válido con confusión 0 en el control, medido con el banco
-  y el modelo reales; este código no lo hace cumplir (D4 sigue siendo una condición de proceso).
+  y el modelo reales. H3 no lo hacía cumplir; desde H4a lo hace `verificarCalibracion` para las respuestas fijas
+  semánticas (`fijoApto`).
 - Un umbral medido con pocos casos o poco variados se sobreestima, y el control solo sirve si es independiente de
   la calibración (lo decide quien arma el conjunto). El paso de 0,01 es una rejilla, no un óptimo demostrado.
+
+### Enrutamiento con semántica (modelo híbrido, H4a)
+
+H4a es el núcleo puro que une H2 y H3; no se conecta al agente (H4d) ni a un bucket (H4c). Cuatro módulos en
+`paquetes/nucleo/src/banco/`:
+
+- **`enrutador-semantico.ts`: `enrutarConSemantica`.** Corre primero `enrutar` (su contrato no cambió). Solo si da
+  `sin_coincidencia` y hay un índice semántico apto usa el vector YA calculado de la consulta (el núcleo no llama a
+  nada) y `emparejarSemantico`. Devuelve `{ decision, via: 'exacta' | 'semantica', similitud }` (similitud redondeada a
+  milésimas, sin texto). Una derivación propuesta lleva el origen `pregunta_semantica`; una respuesta pasa por las
+  mismas condiciones `derivar_cuando` que la vía exacta (`decidirRespuesta`, función compartida) y por el carril fijo
+  apagado, que va primero. Motivos de caída a la IA, enumerados: `semantica_no_disponible` (sin contexto o sin
+  consulta), `embebedor_error` (error, vector de otra dimensión, vacío o con valores no finitos), `embebedor_tiempo`
+  y `calibracion_no_apta`. `semantica_no_disponible` cubre también un `IndiceEnrutador` sin `bancoSha256` (el índice
+  lo lleva: `prepararEnrutador(banco, sha256)`, y se compara con la calibración) y un índice semántico con algún
+  `entradaId` que no existe en el banco con su tipo (no se ignora en silencio). `eventoEnrutador` arma el evento de bitácora `enrutador` (carril, vía, similitud, motivo,
+  latencia y los avisos de ids y enumerados; nunca texto ni el término que coincidió).
+- **`calibracion.ts`.** Esquema Zod estricto de `calibracion.json` (`formato`, `regla`, `banco_sha256`, `evaluacion_sha256`,
+  `proveedor` `vertex|simulado`, `modelo`, `dimension`, umbrales, `valido`, `motivos_invalidez`, `control`
+  `{total, confusiones, falsos_positivos}`, `medido`) y `verificarCalibracion`: la semántica es apta si la
+  calibración es válida, su `regla` es la versión vigente (`VERSION_REGLA_DECISION`), su SHA del banco, modelo y
+  dimensión coinciden con los cargados y el proveedor no es el simulado (salvo `admitirSimulado`, solo pruebas); el carril fijo es apto además con `confusiones` y
+  `falsos_positivos` en 0 (D4 en código; defensa en profundidad, porque el esquema ya exige coherencia). El esquema
+  rechaza un archivo incoherente: `valido` si y solo si no hay `motivos_invalidez`; confusiones o falsos positivos sin su
+  motivo; `valido` con control menor que `MINIMO_NINGUNA` de `medir.ts`; `umbral_fijo` bajo el piso del barrido (0,50). `umbral_derivacion` solo debe ser mayor que 0, porque la medición lo
+  baja hasta 0,01 con `--diferencia-derivacion` (D7); la salida real de `elegirUmbral` se prueba contra este esquema. Una
+  calibración de H3, sin `regla`, se rechaza. Si el fijo no es apto (hoy solo alcanzable con un objeto que no pasó por el esquema), las respuestas de riesgo
+  normal van a la IA con la candidata y las críticas derivan (D5). Una derivación semántica no depende de `fijoApto`
+  pero sí de `semanticaApta`, que incluye `valido`: como `valido` implica control sin confusiones ni falsos positivos,
+  una confusión en el control apaga también las derivaciones semánticas (a propósito: una calibración inválida no respalda
+  ninguna propuesta). La derivación por coincidencia exacta no necesita calibración.
+- **`embebedor-memo.ts`.** `EmbebedorConMemoria` memoriza la PROMESA del cálculo (clave SHA-256 del texto, 32
+  entradas, 60 s, reloj inyectable) para que el enrutador y el RAG compartan el vector con una sola llamada; un fallo
+  no se memoriza y se entregan copias. `embeberConTiempo` (tope y temporizador inyectables) y `consultarEmbedding` (lo
+  traduce a `ok | error | tiempo`). Un lote mayor que `maximo` se resuelve desde su propia promesa, con una sola
+  llamada; `maximo`, `vidaMs` y el tope `ms` se validan (`RangeError`); un embebedor que lanza de forma síncrona o
+  devuelve una lista vacía o mal formada es un error controlado. El tope de tiempo NO aborta la llamada en curso:
+  deja de esperarla, y el servicio sigue (y factura) hasta terminar.
+- **`similitud.ts` y `esquema.ts`.** Regla B con la respuesta líder (ver H3) y términos con cualquier motivo (ver H2).
+
+Qué NO garantiza H4a: que el modelo de embeddings entienda el dominio (lo acota la calibración); que el SHA-256 de la
+evaluación corresponda a un archivo real (solo queda como constancia); que `semantica_no_disponible` sea un fallo (es
+también el estado de un agente sin semántica configurada); ni una conexión al agente, al bucket o a Vertex: eso es
+H4c y H4d. La memoria es por instancia de Cloud Run, no se comparte entre instancias.
 
 ## 7. Aplicación a segurolotengo-demo
 

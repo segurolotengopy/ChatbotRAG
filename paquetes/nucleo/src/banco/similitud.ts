@@ -13,8 +13,9 @@
  * empatan en puntaje, el orden pone primero a la derivación (con margen mayor que cero el empate igual da nulo,
  * porque la distancia entre ambas es cero).
  *
- * Regla B: si la mejor entrada es una respuesta que no alcanza `umbralFijo` y una derivación casi empatada con ella
- * (a lo sumo `margen` de distancia) alcanza `umbralDerivacion`, gana la derivación en vez de dar nulo.
+ * Regla B (confirmada en H4a): derivación casi empatada con la respuesta LÍDER. Una derivación que alcanza
+ * `umbralDerivacion` y está a lo sumo a `margen` de la respuesta de mayor puntaje deriva, esté o no esa respuesta sobre
+ * su umbral; ver `decidirEmparejamiento`.
  *
  * Reglas: «supera» significa puntaje mayor o igual que el umbral de SU tipo (el borde cuenta, con tolerancia `EPSILON`
  * de 1e-9 para el redondeo); el margen se mide
@@ -24,8 +25,8 @@
  *
  * Qué NO garantiza: que el modelo de embeddings entienda bien el dominio, que un umbral sea el correcto (lo fija
  * la medición de `medir.ts`, ligada a modelo, dimensión y SHA-256 del banco; no vive en el código), ni que dos
- * entradas con el mismo sentido no se confundan. Tampoco decide el carril: devuelve una propuesta, y la conexión
- * al agente es de H4. Un `coseno` con vectores de largo distinto o con valores no finitos lanza error; un vector
+ * entradas con el mismo sentido no se confundan. Tampoco decide el carril: devuelve una propuesta; el carril lo decide
+ * `enrutador-semantico.ts` y la conexión al agente es de H4d. Un `coseno` con vectores de largo distinto o con valores no finitos lanza error; un vector
  * nulo (norma cero) vale 0, porque no apunta a ninguna parte.
  */
 import type { Embebedor } from '../puertos/proveedor-llm.js';
@@ -40,24 +41,49 @@ export class ErrorSimilitud extends Error {
   }
 }
 
-/** Similitud coseno en [-1, 1]. Largo distinto, vacío o valores no finitos: error. Vector nulo: 0. */
+/**
+ * Similitud coseno en [-1, 1]. Largo distinto, vacío o valores no finitos: error. Vector nulo (todo en cero): 0. Las
+ * magnitudes extremas (enormes o diminutas) se manejan escalando cada vector por su mayor valor absoluto: ni se
+ * desborda a NaN ni se confunde un vector diminuto con uno nulo.
+ */
 export function coseno(a: readonly number[], b: readonly number[]): number {
   if (a.length !== b.length) throw new ErrorSimilitud('vectores de largo distinto');
   if (a.length === 0) throw new ErrorSimilitud('vectores vacíos');
-  let punto = 0;
-  let na = 0;
-  let nb = 0;
   for (let i = 0; i < a.length; i++) {
-    const x = a[i] as number;
-    const y = b[i] as number;
-    if (!Number.isFinite(x) || !Number.isFinite(y)) throw new ErrorSimilitud('vector con valores no finitos');
-    punto += x * y;
-    na += x * x;
-    nb += y * y;
+    if (!Number.isFinite(a[i]) || !Number.isFinite(b[i])) throw new ErrorSimilitud('vector con valores no finitos');
+  }
+  const productos = (x: readonly number[], y: readonly number[], fx = 1, fy = 1) => {
+    let punto = 0;
+    let nx = 0;
+    let ny = 0;
+    for (let i = 0; i < x.length; i++) {
+      const u = (x[i] as number) / fx;
+      const v = (y[i] as number) / fy;
+      punto += u * v;
+      nx += u * u;
+      ny += v * v;
+    }
+    return { punto, nx, ny };
+  };
+  const RANGO_BAJO = 1e-280;
+  const RANGO_ALTO = 1e280;
+  const enRango = (n: number): boolean => Number.isFinite(n) && n > RANGO_BAJO && n < RANGO_ALTO;
+  let { punto, nx: na, ny: nb } = productos(a, b);
+  if (!(enRango(na) && enRango(nb) && Number.isFinite(punto))) {
+    // Componentes enormes (> 1e140: los cuadrados desbordan) o diminutos (< 1e-140: los cuadrados se pierden o son
+    // subnormales) no se pueden elevar al cuadrado tal cual. El coseno no depende de la escala de cada vector, así que se
+    // divide cada uno por su mayor valor absoluto. Un vector con todo en cero es nulo y vale 0.
+    const ma = a.reduce((m, x) => Math.max(m, Math.abs(x)), 0);
+    const mb = b.reduce((m, x) => Math.max(m, Math.abs(x)), 0);
+    if (ma === 0 || mb === 0) return 0;
+    ({ punto, nx: na, ny: nb } = productos(a, b, ma, mb));
   }
   if (na === 0 || nb === 0) return 0;
   // El recorte absorbe el error de redondeo (1.0000000000000002).
-  return Math.max(-1, Math.min(1, punto / (Math.sqrt(na) * Math.sqrt(nb))));
+  const c = Math.max(-1, Math.min(1, punto / (Math.sqrt(na) * Math.sqrt(nb))));
+  // Defensa final: un puntaje no finito (`Math.min/max` propagan NaN) no se acepta jamás.
+  if (!Number.isFinite(c)) throw new ErrorSimilitud('similitud no finita');
+  return c;
 }
 
 export interface VectorEntrada {
@@ -147,6 +173,14 @@ export function puntuarEntradas(vector: readonly number[], indice: IndiceSemanti
   return [...mejores.values()];
 }
 
+/**
+ * Versión de la regla de decisión de `decidirEmparejamiento`. Una calibración se mide con una regla concreta y solo
+ * sirve con esa: `calibracion.json` lleva el campo `regla` y `verificarCalibracion` exige que sea igual a esta
+ * constante. Súbala cada vez que cambie cómo se deciden umbrales, margen o empates (1 = regla B monótona de H4a; la
+ * de H3 no tenía versión y sus calibraciones, sin el campo, se rechazan).
+ */
+export const VERSION_REGLA_DECISION = 1;
+
 /** Tolerancia fija para las comparaciones de umbral y margen: absorbe el redondeo de la coma flotante en el borde. */
 export const EPSILON = 1e-9;
 
@@ -155,42 +189,53 @@ export const EPSILON = 1e-9;
  * de umbral y de margen toleran `EPSILON` (1e-9), de modo que una diferencia exactamente igual al margen, o un
  * puntaje exactamente en el umbral, cuentan aunque el redondeo los deje una millonésima de millonésima por debajo.
  *
- * Una respuesta «bajo umbral» es una que no alcanza `umbralFijo`: no puede proponerse, así que no compite por el
- * margen de una derivación.
+ * Regla B (confirmada por Andres): derivación casi empatada con la respuesta LÍDER. Sea «candidata» la mejor
+ * derivación y «líder» la respuesta de mayor puntaje. Si la candidata alcanza `umbralDerivacion` y está casi empatada
+ * con la respuesta líder (a lo sumo `margen` de distancia, en cualquiera de los dos sentidos), DERIVA, esté o no la
+ * líder sobre `umbralFijo` (derivar de más es la dirección segura). Debe además distanciarse al menos `margen` de la
+ * mejor de las demás entradas (excluidas la candidata y las respuestas casi empatadas con ella; otra derivación
+ * cercana da nulo: hay duda). Si la respuesta líder está claramente por encima de la candidata (más allá del
+ * margen), la candidata no está empatada con la líder y se aplica la regla común: esa respuesta se propone si cumple
+ * su umbral y su margen, y si no, el resultado es nulo. Así no hay franja donde una derivación más parecida iba a la
+ * IA (la no-monotonía de H3). Ejemplos fijados en las pruebas (umbralFijo 0,80, umbralDerivacion 0,70, margen 0,05):
+ * r0 0,70, r1 0,80, d 0,70 → respuesta r1; r0 0,70, r1 0,76, d 0,70 → nulo; d 0,79, r0 0,80, r1 0,845 → nulo.
  *
- * Regla B (derivar de más es la dirección segura): la mejor entrada es una RESPUESTA (la «líder») bajo umbral.
- * Gana entonces la mejor derivación (la «candidata») solo si: (1) alcanza `umbralDerivacion`; (2) está casi
- * empatada con la líder: `líder - candidata <= margen` (una derivación lejos de la líder no es motivo para
- * derivar); y (3) se distancia al menos `margen` de la mejor de las DEMÁS entradas, excluyendo solo a la líder.
- * Si la mejor entrada es una derivación bajo su umbral, el resultado es nulo.
+ * Fuera de esa zona de empate: una respuesta es «bajo umbral» si no alcanza `umbralFijo`; no puede proponerse y no
+ * compite por el margen de una derivación líder. Si la mejor entrada es una respuesta bajo umbral, o una derivación
+ * bajo `umbralDerivacion`, el resultado es nulo.
  *
- * Simétrico a la regla B: si la mejor entrada es una derivación y la segunda es una respuesta bajo umbral, el
- * margen de la derivación se mide contra la mejor entrada excluyendo esa respuesta.
- *
- * Margen devuelto: distancia real a la siguiente mejor entrada que compite; si la única otra es la respuesta
- * excluida (o la líder, en la regla B), la distancia a ella; si no hay otra, el puntaje (distancia a cero). En esos
- * casos puede ser MENOR que `umbrales.margen`: quien consuma el resultado no debe suponer ese invariante.
- *
- * Única no-monotonía que queda: si una derivación está a menos de `margen` de una respuesta, la respuesta bajo
- * `umbralFijo` cede ante la derivación (deriva), pero en cuanto la respuesta alcanza `umbralFijo` ambas son
- * propuestas casi empatadas y el resultado pasa a ser nulo (va a la IA), por falta de margen.
+ * Margen devuelto: distancia real a la siguiente mejor entrada que compite; si la única otra es una respuesta
+ * excluida (o casi empatada), la distancia a ella; si no hay otra, el puntaje (distancia a cero). Cuando la única
+ * otra es una respuesta excluida o casi empatada puede ser MENOR que `umbrales.margen`: quien consuma el resultado
+ * no debe suponer ese invariante.
  */
 export function decidirEmparejamiento(entradas: readonly PuntajeEntrada[], umbrales: UmbralesSemanticos): CoincidenciaSemantica | null {
   validarUmbrales(umbrales);
   if (entradas.length === 0) return null;
+  // Defensa en profundidad: con un puntaje no finito (NaN, Infinity) no se propone nada.
+  if (entradas.some((e) => !Number.isFinite(e.puntaje))) return null;
   // Puntaje descendente; ante empate, la derivación primero; ante empate total, el orden del índice (sort estable).
   const orden = [...entradas].sort((x, y) => y.puntaje - x.puntaje || (x.tipo === y.tipo ? 0 : x.tipo === 'derivacion' ? -1 : 1));
   const mejor = orden[0] as PuntajeEntrada;
-  const bajoUmbralFijo = (e: PuntajeEntrada | undefined): boolean => e?.tipo === 'respuesta' && e.puntaje < umbrales.umbralFijo - EPSILON;
-  if (bajoUmbralFijo(mejor)) {
-    const candidata = orden.find((e) => e.tipo === 'derivacion');
-    if (candidata === undefined || candidata.puntaje < umbrales.umbralDerivacion - EPSILON) return null;
-    if (mejor.puntaje - candidata.puntaje > umbrales.margen + EPSILON) return null;
-    const otra = orden.find((e) => e !== mejor && e !== candidata);
-    if (candidata.puntaje - Math.max(otra?.puntaje ?? 0, 0) < umbrales.margen - EPSILON) return null;
-    const margen = otra === undefined ? mejor.puntaje - candidata.puntaje : candidata.puntaje - otra.puntaje;
-    return { tipo: 'derivacion', entradaId: candidata.entradaId, puntaje: candidata.puntaje, margen };
+
+  const candidata = orden.find((e) => e.tipo === 'derivacion');
+  if (candidata !== undefined && candidata.puntaje >= umbrales.umbralDerivacion - EPSILON) {
+    const empatadas = orden.filter((e) => e.tipo === 'respuesta' && Math.abs(e.puntaje - candidata.puntaje) <= umbrales.margen + EPSILON);
+    if (empatadas.length > 0) {
+      const otra = orden.find((e) => e !== candidata && !empatadas.includes(e));
+      // Una respuesta claramente por encima de la candidata (más allá del margen) no es una duda: la candidata no
+      // lidera y decide la regla común de abajo (esa respuesta se propone si cumple su umbral y su margen).
+      const encima = otra !== undefined && otra.tipo === 'respuesta' && otra.puntaje > candidata.puntaje;
+      if (!encima) {
+        if (candidata.puntaje - Math.max(otra?.puntaje ?? 0, 0) < umbrales.margen - EPSILON) return null;
+        const referencia = otra !== undefined ? candidata.puntaje - otra.puntaje : Math.min(...empatadas.map((e) => Math.abs(candidata.puntaje - e.puntaje)));
+        return { tipo: 'derivacion', entradaId: candidata.entradaId, puntaje: candidata.puntaje, margen: referencia };
+      }
+    }
   }
+
+  const bajoUmbralFijo = (e: PuntajeEntrada | undefined): boolean => e?.tipo === 'respuesta' && e.puntaje < umbrales.umbralFijo - EPSILON;
+  if (bajoUmbralFijo(mejor)) return null;
   const umbral = mejor.tipo === 'derivacion' ? umbrales.umbralDerivacion : umbrales.umbralFijo;
   if (mejor.puntaje < umbral - EPSILON) return null;
   const excluida = mejor.tipo === 'derivacion' && bajoUmbralFijo(orden[1]) ? orden[1] : undefined;

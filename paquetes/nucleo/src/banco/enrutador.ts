@@ -10,7 +10,7 @@
  * similitud) y ante la duda gana la derivación o la IA. Además, el texto de la persona nunca llega a la decisión
  * ni a los avisos de la bitácora: eso rompería la confidencialidad. Una decisión lleva solo ids y enumerados.
  *
- * Orden fijo: (a) enrutador apagado, (b) sin contenido, (c) término de emergencia, (d) pregunta conocida,
+ * Orden fijo: (a) enrutador apagado, (b) sin contenido, (c) término de bloqueo (emergencia u otro motivo, H4a), (d) pregunta conocida,
  * (e) sin coincidencia. La derivación va primero: un término de emergencia gana sobre cualquier respuesta fija.
  * No se construye ninguna expresión regular con datos del banco: los términos se buscan como palabras completas
  * comparando grupos de palabras consecutivas del texto normalizado contra un mapa de términos, de modo que no hay
@@ -25,16 +25,33 @@
  * `carrilFijo` es prudente: eso exige una medición (pendiente).
  */
 import type { Enrutador } from '../configuracion/esquema.js';
-import type { BancoRespuestas, MotivoDerivacion, Riesgo } from './esquema.js';
+import type { BancoRespuestas, EntradaDerivacion, EntradaRespuesta, MotivoDerivacion, Riesgo } from './esquema.js';
 import { normalizarParaTerminos, normalizarParaTerminosSeparado, normalizarPregunta } from './esquema.js';
 
 export const CARRILES = ['fijo', 'derivacion', 'ia'] as const;
 export type Carril = (typeof CARRILES)[number];
 
-export const MOTIVOS_IA = ['enrutador_apagado', 'sin_contenido', 'sin_coincidencia', 'carril_fijo_apagado'] as const;
+/**
+ * Motivos por los que un mensaje va a la IA. Los cuatro primeros los produce `enrutar`; los cuatro últimos los produce
+ * `enrutarConSemantica` (H4a) cuando la vía semántica no puede decidir.
+ */
+export const MOTIVOS_IA = [
+  'enrutador_apagado',
+  'sin_contenido',
+  'sin_coincidencia',
+  'carril_fijo_apagado',
+  'semantica_no_disponible',
+  'embebedor_error',
+  'embebedor_tiempo',
+  'calibracion_no_apta',
+] as const;
 export type MotivoIa = (typeof MOTIVOS_IA)[number];
 
-export const ORIGENES_DERIVACION = ['termino_emergencia', 'pregunta_derivacion', 'condicion_entrada'] as const;
+/**
+ * `termino_emergencia` y `termino_derivacion` distinguen el término de una derivación de emergencia del de cualquier
+ * otro motivo (H4a); `pregunta_semantica` es la derivación propuesta por similitud (H4a).
+ */
+export const ORIGENES_DERIVACION = ['termino_emergencia', 'termino_derivacion', 'pregunta_derivacion', 'pregunta_semantica', 'condicion_entrada'] as const;
 export type OrigenDerivacion = (typeof ORIGENES_DERIVACION)[number];
 
 export interface DecisionFijo {
@@ -70,6 +87,11 @@ export interface TerminoIndexado {
 
 export interface IndiceEnrutador {
   banco: BancoRespuestas;
+  /**
+   * SHA-256 del banco cargado (el de `cargarBanco`), o `null` si quien lo preparó no lo entregó. La vía semántica lo
+   * exige para compararlo con la calibración: sin él, `enrutarConSemantica` no usa la semántica.
+   */
+  bancoSha256: string | null;
   preguntas: ReadonlyMap<string, { tipo: 'respuesta' | 'derivacion'; posicion: number }>;
   /** Términos por su texto normalizado (palabras separadas por un espacio). Si dos se repiten, queda el primero. */
   terminos: ReadonlyMap<string, TerminoIndexado>;
@@ -77,7 +99,7 @@ export interface IndiceEnrutador {
   longitudes: ReadonlyArray<number>;
 }
 
-export function prepararEnrutador(banco: BancoRespuestas): IndiceEnrutador {
+export function prepararEnrutador(banco: BancoRespuestas, bancoSha256: string | null = null): IndiceEnrutador {
   const preguntas = new Map<string, { tipo: 'respuesta' | 'derivacion'; posicion: number }>();
   const terminos = new Map<string, TerminoIndexado>();
   const longitudes = new Set<number>();
@@ -100,11 +122,11 @@ export function prepararEnrutador(banco: BancoRespuestas): IndiceEnrutador {
     }
   });
   banco.respuestas.forEach((e, i) => registrar(e.preguntas, 'respuesta', i));
-  return { banco, preguntas, terminos, longitudes: [...longitudes].sort((x, y) => x - y) };
+  return { banco, bancoSha256, preguntas, terminos, longitudes: [...longitudes].sort((x, y) => x - y) };
 }
 
 /**
- * Término de emergencia que coincide, el primero según el orden del banco. Compara cada grupo de palabras
+ * Término de bloqueo que coincide, el primero según el orden del banco. Compara cada grupo de palabras
  * consecutivas del mensaje (de los tamaños que existen en el banco) contra el mapa de términos: el costo crece
  * con el largo del mensaje y no con la cantidad de términos.
  */
@@ -120,6 +142,33 @@ function buscarTermino(nt: string, indice: IndiceEnrutador): TerminoIndexado | n
   return mejor;
 }
 
+/** Decisión de derivar por una entrada de derivación (término, pregunta exacta o pregunta semántica). */
+export function decidirDerivacion(d: EntradaDerivacion, origen: OrigenDerivacion): DecisionDerivacion {
+  return { carril: 'derivacion', motivo: d.motivo, origen, entradaId: d.id };
+}
+
+/**
+ * Decisión sobre una respuesta ya hallada (por coincidencia exacta o semántica), con las condiciones `derivar_cuando`:
+ * una respuesta de riesgo CRÍTICO con el carril fijo apagado deriva (`contenido_pendiente`) y no pasa a la IA: excepción
+ * explícita a D1, decidida por Andres, que va ANTES de la comprobación del carril (un riesgo normal sigue a la IA);
+ * carril fijo apagado va a la IA con la candidata (D1: las condiciones de entrada no derivan); `contenido_pendiente`
+ * deriva; `atencion_humana_solicitada` deriva si la persona ya pidió atención humana; si no, carril fijo. La usan
+ * `enrutar` y `enrutarConSemantica` para que ambas vías apliquen exactamente las mismas condiciones.
+ */
+export function decidirRespuesta(r: EntradaRespuesta, config: Enrutador, estado: EstadoEnrutador): DecisionFijo | DecisionDerivacion | DecisionIa {
+  if (!config.carrilFijo) {
+    if (r.riesgo === 'critico') return { carril: 'derivacion', motivo: 'contenido_pendiente', origen: 'condicion_entrada', entradaId: r.id };
+    return { carril: 'ia', motivo: 'carril_fijo_apagado', entradaCandidata: r.id };
+  }
+  if (r.derivar_cuando.includes('contenido_pendiente')) {
+    return { carril: 'derivacion', motivo: 'contenido_pendiente', origen: 'condicion_entrada', entradaId: r.id };
+  }
+  if (r.derivar_cuando.includes('atencion_humana_solicitada') && estado.atencionHumanaSolicitada) {
+    return { carril: 'derivacion', motivo: 'atencion_humana_ya_solicitada', origen: 'condicion_entrada', entradaId: r.id };
+  }
+  return { carril: 'fijo', entradaId: r.id, tema: r.tema, riesgo: r.riesgo };
+}
+
 export function enrutar(texto: string, indice: IndiceEnrutador, config: Enrutador, estado: EstadoEnrutador): DecisionEnrutador {
   if (!config.activo) return { carril: 'ia', motivo: 'enrutador_apagado', entradaCandidata: null };
 
@@ -133,26 +182,17 @@ export function enrutar(texto: string, indice: IndiceEnrutador, config: Enrutado
   const t = a !== null && b !== null ? (a.orden <= b.orden ? a : b) : (a ?? b);
   if (t !== null) {
     const d = indice.banco.derivaciones[t.derivacion];
-    if (d) return { carril: 'derivacion', motivo: d.motivo, origen: 'termino_emergencia', entradaId: d.id };
+    if (d) return decidirDerivacion(d, d.motivo === 'emergencia' ? 'termino_emergencia' : 'termino_derivacion');
   }
 
   const hallada = indice.preguntas.get(normalizarPregunta(texto));
   if (hallada?.tipo === 'derivacion') {
     const d = indice.banco.derivaciones[hallada.posicion];
-    if (d) return { carril: 'derivacion', motivo: d.motivo, origen: 'pregunta_derivacion', entradaId: d.id };
+    if (d) return decidirDerivacion(d, 'pregunta_derivacion');
   }
   if (hallada?.tipo === 'respuesta') {
     const r = indice.banco.respuestas[hallada.posicion];
-    if (r) {
-      if (!config.carrilFijo) return { carril: 'ia', motivo: 'carril_fijo_apagado', entradaCandidata: r.id };
-      if (r.derivar_cuando.includes('contenido_pendiente')) {
-        return { carril: 'derivacion', motivo: 'contenido_pendiente', origen: 'condicion_entrada', entradaId: r.id };
-      }
-      if (r.derivar_cuando.includes('atencion_humana_solicitada') && estado.atencionHumanaSolicitada) {
-        return { carril: 'derivacion', motivo: 'atencion_humana_ya_solicitada', origen: 'condicion_entrada', entradaId: r.id };
-      }
-      return { carril: 'fijo', entradaId: r.id, tema: r.tema, riesgo: r.riesgo };
-    }
+    if (r) return decidirRespuesta(r, config, estado);
   }
 
   return { carril: 'ia', motivo: 'sin_coincidencia', entradaCandidata: null };
