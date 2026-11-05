@@ -11,7 +11,7 @@
   "type": "module",
   "scripts": {
     "construir": "tsc -b tsconfig.json",
-    "tipos": "tsc -b tsconfig.json",
+    "tipos": "tsc -b tsconfig.json && tsc -p scripts/tsconfig.json",
     "lint": "eslint .",
     "pruebas": "vitest run",
     "pruebas:cobertura": "vitest run --coverage",

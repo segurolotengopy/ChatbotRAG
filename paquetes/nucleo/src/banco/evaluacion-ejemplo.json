@@ -1,0 +1,968 @@
+{
+ "formato": 1,
+ "version": "0.0.1",
+ "casos": [
+  {
+   "id": "ejemplo-precio-1-cal-1",
+   "texto": "caso sintetico sobre precio uno variante 1 calibracion",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-precio-1"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ejemplo-precio-1-cal-2",
+   "texto": "caso sintetico sobre precio uno variante 2 calibracion",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-precio-1"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ejemplo-precio-1-cal-3",
+   "texto": "caso sintetico sobre precio uno variante 3 calibracion",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-precio-1"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ejemplo-precio-1-cal-4",
+   "texto": "caso sintetico sobre precio uno variante 4 calibracion",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-precio-1"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ejemplo-precio-1-cal-5",
+   "texto": "caso sintetico sobre precio uno variante 5 calibracion",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-precio-1"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ejemplo-precio-1-con-1",
+   "texto": "caso sintetico sobre precio uno variante 1 control",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-precio-1"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ejemplo-precio-1-con-2",
+   "texto": "caso sintetico sobre precio uno variante 2 control",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-precio-1"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ejemplo-precio-1-con-3",
+   "texto": "caso sintetico sobre precio uno variante 3 control",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-precio-1"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ejemplo-precio-1-con-4",
+   "texto": "caso sintetico sobre precio uno variante 4 control",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-precio-1"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ejemplo-precio-1-con-5",
+   "texto": "caso sintetico sobre precio uno variante 5 control",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-precio-1"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ejemplo-precio-2-cal-1",
+   "texto": "caso sintetico sobre precio tres variante 1 calibracion",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-precio-2"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ejemplo-precio-2-cal-2",
+   "texto": "caso sintetico sobre precio tres variante 2 calibracion",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-precio-2"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ejemplo-precio-2-cal-3",
+   "texto": "caso sintetico sobre precio tres variante 3 calibracion",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-precio-2"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ejemplo-precio-2-cal-4",
+   "texto": "caso sintetico sobre precio tres variante 4 calibracion",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-precio-2"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ejemplo-precio-2-cal-5",
+   "texto": "caso sintetico sobre precio tres variante 5 calibracion",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-precio-2"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ejemplo-precio-2-con-1",
+   "texto": "caso sintetico sobre precio tres variante 1 control",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-precio-2"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ejemplo-precio-2-con-2",
+   "texto": "caso sintetico sobre precio tres variante 2 control",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-precio-2"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ejemplo-precio-2-con-3",
+   "texto": "caso sintetico sobre precio tres variante 3 control",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-precio-2"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ejemplo-precio-2-con-4",
+   "texto": "caso sintetico sobre precio tres variante 4 control",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-precio-2"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ejemplo-precio-2-con-5",
+   "texto": "caso sintetico sobre precio tres variante 5 control",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-precio-2"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ejemplo-contacto-cal-1",
+   "texto": "caso sintetico sobre contacto variante 1 calibracion",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-contacto"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ejemplo-contacto-cal-2",
+   "texto": "caso sintetico sobre contacto variante 2 calibracion",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-contacto"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ejemplo-contacto-cal-3",
+   "texto": "caso sintetico sobre contacto variante 3 calibracion",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-contacto"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ejemplo-contacto-cal-4",
+   "texto": "caso sintetico sobre contacto variante 4 calibracion",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-contacto"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ejemplo-contacto-cal-5",
+   "texto": "caso sintetico sobre contacto variante 5 calibracion",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-contacto"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ejemplo-contacto-con-1",
+   "texto": "caso sintetico sobre contacto variante 1 control",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-contacto"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ejemplo-contacto-con-2",
+   "texto": "caso sintetico sobre contacto variante 2 control",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-contacto"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ejemplo-contacto-con-3",
+   "texto": "caso sintetico sobre contacto variante 3 control",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-contacto"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ejemplo-contacto-con-4",
+   "texto": "caso sintetico sobre contacto variante 4 control",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-contacto"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ejemplo-contacto-con-5",
+   "texto": "caso sintetico sobre contacto variante 5 control",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-contacto"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ejemplo-pendiente-cal-1",
+   "texto": "caso sintetico sobre tema pendiente variante 1 calibracion",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-pendiente"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ejemplo-pendiente-cal-2",
+   "texto": "caso sintetico sobre tema pendiente variante 2 calibracion",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-pendiente"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ejemplo-pendiente-cal-3",
+   "texto": "caso sintetico sobre tema pendiente variante 3 calibracion",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-pendiente"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ejemplo-pendiente-cal-4",
+   "texto": "caso sintetico sobre tema pendiente variante 4 calibracion",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-pendiente"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ejemplo-pendiente-cal-5",
+   "texto": "caso sintetico sobre tema pendiente variante 5 calibracion",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-pendiente"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ejemplo-pendiente-con-1",
+   "texto": "caso sintetico sobre tema pendiente variante 1 control",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-pendiente"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ejemplo-pendiente-con-2",
+   "texto": "caso sintetico sobre tema pendiente variante 2 control",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-pendiente"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ejemplo-pendiente-con-3",
+   "texto": "caso sintetico sobre tema pendiente variante 3 control",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-pendiente"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ejemplo-pendiente-con-4",
+   "texto": "caso sintetico sobre tema pendiente variante 4 control",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-pendiente"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ejemplo-pendiente-con-5",
+   "texto": "caso sintetico sobre tema pendiente variante 5 control",
+   "esperado": {
+    "tipo": "respuesta",
+    "entradaId": "ejemplo-pendiente"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ejemplo-siniestro-cal-1",
+   "texto": "caso sintetico sobre siniestro variante 1 calibracion",
+   "esperado": {
+    "tipo": "derivacion",
+    "entradaId": "ejemplo-siniestro"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ejemplo-siniestro-cal-2",
+   "texto": "caso sintetico sobre siniestro variante 2 calibracion",
+   "esperado": {
+    "tipo": "derivacion",
+    "entradaId": "ejemplo-siniestro"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ejemplo-siniestro-cal-3",
+   "texto": "caso sintetico sobre siniestro variante 3 calibracion",
+   "esperado": {
+    "tipo": "derivacion",
+    "entradaId": "ejemplo-siniestro"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ejemplo-siniestro-cal-4",
+   "texto": "caso sintetico sobre siniestro variante 4 calibracion",
+   "esperado": {
+    "tipo": "derivacion",
+    "entradaId": "ejemplo-siniestro"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ejemplo-siniestro-cal-5",
+   "texto": "caso sintetico sobre siniestro variante 5 calibracion",
+   "esperado": {
+    "tipo": "derivacion",
+    "entradaId": "ejemplo-siniestro"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ejemplo-siniestro-con-1",
+   "texto": "caso sintetico sobre siniestro variante 1 control",
+   "esperado": {
+    "tipo": "derivacion",
+    "entradaId": "ejemplo-siniestro"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ejemplo-siniestro-con-2",
+   "texto": "caso sintetico sobre siniestro variante 2 control",
+   "esperado": {
+    "tipo": "derivacion",
+    "entradaId": "ejemplo-siniestro"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ejemplo-siniestro-con-3",
+   "texto": "caso sintetico sobre siniestro variante 3 control",
+   "esperado": {
+    "tipo": "derivacion",
+    "entradaId": "ejemplo-siniestro"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ejemplo-siniestro-con-4",
+   "texto": "caso sintetico sobre siniestro variante 4 control",
+   "esperado": {
+    "tipo": "derivacion",
+    "entradaId": "ejemplo-siniestro"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ejemplo-siniestro-con-5",
+   "texto": "caso sintetico sobre siniestro variante 5 control",
+   "esperado": {
+    "tipo": "derivacion",
+    "entradaId": "ejemplo-siniestro"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-cal-1",
+   "texto": "texto sintetico ajeno al banco numero 1 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-2",
+   "texto": "texto sintetico ajeno al banco numero 2 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-3",
+   "texto": "texto sintetico ajeno al banco numero 3 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-4",
+   "texto": "texto sintetico ajeno al banco numero 4 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-5",
+   "texto": "texto sintetico ajeno al banco numero 5 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-6",
+   "texto": "texto sintetico ajeno al banco numero 6 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-7",
+   "texto": "texto sintetico ajeno al banco numero 7 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-8",
+   "texto": "texto sintetico ajeno al banco numero 8 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-9",
+   "texto": "texto sintetico ajeno al banco numero 9 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-10",
+   "texto": "texto sintetico ajeno al banco numero 10 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-11",
+   "texto": "texto sintetico ajeno al banco numero 11 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-12",
+   "texto": "texto sintetico ajeno al banco numero 12 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-13",
+   "texto": "texto sintetico ajeno al banco numero 13 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-14",
+   "texto": "texto sintetico ajeno al banco numero 14 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-15",
+   "texto": "texto sintetico ajeno al banco numero 15 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-16",
+   "texto": "texto sintetico ajeno al banco numero 16 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-17",
+   "texto": "texto sintetico ajeno al banco numero 17 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-18",
+   "texto": "texto sintetico ajeno al banco numero 18 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-19",
+   "texto": "texto sintetico ajeno al banco numero 19 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-20",
+   "texto": "texto sintetico ajeno al banco numero 20 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-21",
+   "texto": "texto sintetico ajeno al banco numero 21 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-22",
+   "texto": "texto sintetico ajeno al banco numero 22 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-23",
+   "texto": "texto sintetico ajeno al banco numero 23 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-24",
+   "texto": "texto sintetico ajeno al banco numero 24 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-25",
+   "texto": "texto sintetico ajeno al banco numero 25 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-26",
+   "texto": "texto sintetico ajeno al banco numero 26 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-27",
+   "texto": "texto sintetico ajeno al banco numero 27 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-28",
+   "texto": "texto sintetico ajeno al banco numero 28 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-29",
+   "texto": "texto sintetico ajeno al banco numero 29 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-30",
+   "texto": "texto sintetico ajeno al banco numero 30 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-31",
+   "texto": "texto sintetico ajeno al banco numero 31 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-cal-32",
+   "texto": "texto sintetico ajeno al banco numero 32 calibracion",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "calibracion"
+  },
+  {
+   "id": "ninguna-con-1",
+   "texto": "texto sintetico ajeno al banco numero 1 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-2",
+   "texto": "texto sintetico ajeno al banco numero 2 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-3",
+   "texto": "texto sintetico ajeno al banco numero 3 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-4",
+   "texto": "texto sintetico ajeno al banco numero 4 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-5",
+   "texto": "texto sintetico ajeno al banco numero 5 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-6",
+   "texto": "texto sintetico ajeno al banco numero 6 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-7",
+   "texto": "texto sintetico ajeno al banco numero 7 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-8",
+   "texto": "texto sintetico ajeno al banco numero 8 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-9",
+   "texto": "texto sintetico ajeno al banco numero 9 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-10",
+   "texto": "texto sintetico ajeno al banco numero 10 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-11",
+   "texto": "texto sintetico ajeno al banco numero 11 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-12",
+   "texto": "texto sintetico ajeno al banco numero 12 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-13",
+   "texto": "texto sintetico ajeno al banco numero 13 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-14",
+   "texto": "texto sintetico ajeno al banco numero 14 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-15",
+   "texto": "texto sintetico ajeno al banco numero 15 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-16",
+   "texto": "texto sintetico ajeno al banco numero 16 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-17",
+   "texto": "texto sintetico ajeno al banco numero 17 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-18",
+   "texto": "texto sintetico ajeno al banco numero 18 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-19",
+   "texto": "texto sintetico ajeno al banco numero 19 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-20",
+   "texto": "texto sintetico ajeno al banco numero 20 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-21",
+   "texto": "texto sintetico ajeno al banco numero 21 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-22",
+   "texto": "texto sintetico ajeno al banco numero 22 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-23",
+   "texto": "texto sintetico ajeno al banco numero 23 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-24",
+   "texto": "texto sintetico ajeno al banco numero 24 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-25",
+   "texto": "texto sintetico ajeno al banco numero 25 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-26",
+   "texto": "texto sintetico ajeno al banco numero 26 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-27",
+   "texto": "texto sintetico ajeno al banco numero 27 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-28",
+   "texto": "texto sintetico ajeno al banco numero 28 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-29",
+   "texto": "texto sintetico ajeno al banco numero 29 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-30",
+   "texto": "texto sintetico ajeno al banco numero 30 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-31",
+   "texto": "texto sintetico ajeno al banco numero 31 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  },
+  {
+   "id": "ninguna-con-32",
+   "texto": "texto sintetico ajeno al banco numero 32 control",
+   "esperado": {
+    "tipo": "ninguna"
+   },
+   "particion": "control"
+  }
+ ]
+}

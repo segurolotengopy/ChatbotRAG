@@ -33,4 +33,7 @@ export * from './banco/plantillas.js';
 export * from './banco/cargar.js';
 export * from './banco/enrutador.js';
 export * from './banco/texto-fijo.js';
+export * from './banco/similitud.js';
+export * from './banco/evaluacion.js';
+export * from './banco/medir.js';
 export * from './oportunidad/variables-plataforma.js';
