@@ -5,7 +5,7 @@
  */
 import { execFile } from 'node:child_process';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, truncateSync, writeFileSync } from 'node:fs';
+import { chmodSync, closeSync, copyFileSync, existsSync, fstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -193,9 +193,16 @@ describe('medir-umbral-banco', { timeout: 60000 }, () => {
       expect(r.codigo).toBe(0);
       expect(r.salida).toContain('calibracion_json=escrita valido=true');
       const ruta = join(salida, 'calibracion.json');
-      expect(statSync(ruta).mode & 0o777).toBe(0o600);
+      // Se abre una sola vez y se lee por el descriptor: modo y contenido salen del mismo archivo (sin carrera).
+      const fd = openSync(ruta, 'r');
+      let contenido: string;
+      try {
+        expect(fstatSync(fd).mode & 0o777).toBe(0o600);
+        contenido = readFileSync(fd, 'utf8');
+      } finally {
+        closeSync(fd);
+      }
       expect(readdirSync(salida)).toEqual(['calibracion.json']);
-      const contenido = readFileSync(ruta, 'utf8');
       const cal = cargarCalibracion(contenido);
       expect(cal.proveedor).toBe('simulado');
       expect(cal.modelo).toBe('simulado');
@@ -274,10 +281,10 @@ describe('medir-umbral-banco', { timeout: 60000 }, () => {
         const con = await correr([...args, '--sobrescribir']);
         expect(con.codigo).toBe(1);
         expect(con.salida).toContain('invalidada la calibración anterior');
-        expect(existsSync(ruta)).toBe(false);
         expect(readFileSync(`${ruta}.invalidada`, 'utf8')).toBe('previo');
-        // Una segunda invalidación no pisa la primera: usa el sufijo de fecha y hora UTC.
-        writeFileSync(ruta, 'segundo');
+        // Una segunda invalidación no pisa la primera: usa el sufijo de fecha y hora UTC. El flag 'wx' falla si el
+        // original siguiera ahí, así que también comprueba que la invalidación lo retiró (sin comprobar-y-escribir).
+        writeFileSync(ruta, 'segundo', { flag: 'wx' });
         await correr([...args, '--sobrescribir']);
         const nombres = readdirSync(salida).sort();
         expect(nombres).toHaveLength(2);
