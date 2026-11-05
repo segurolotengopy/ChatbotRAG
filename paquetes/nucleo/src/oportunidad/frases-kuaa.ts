@@ -20,6 +20,9 @@ import {
   PropuestaSalida,
   type ResumenOportunidad,
 } from './esquemas.js';
+import type { TRATAMIENTOS } from '../configuracion/esquema.js';
+
+type TratamientoVoz = (typeof TRATAMIENTOS)[number];
 
 export const FRASE_ETAPA_KUAA: Record<EtapaVenta, string> = {
   E01: 'Etapa comercial actual: contacto iniciado. Salude y entienda para qué viene la persona; si el producto de interés ya está indicado, no lo pregunte.',
@@ -108,6 +111,29 @@ export const FRASE_OBJECION_ESTADO: Record<ResumenOportunidad['objecion_estado']
   resuelta_explicita: 'Objeción: resuelta, la persona lo confirmó.',
   pendiente_humana: 'Objeción: pendiente de una persona del equipo.',
   cerrada_sin_venta: 'Objeción: cerrada sin venta.',
+};
+
+/**
+ * Texto al cliente cuando el modelo falla por demanda (causa `cuota` o `saturacion`): distinto del «problema técnico»
+ * porque aquí repetir en un minuto sí ayuda. Frase fija por trato (`voz.tratamiento`); no se interpola nada y no lleva
+ * teléfonos ni correos. Qué NO garantiza: que dentro de un minuto haya capacidad.
+ */
+export const FRASE_ALTA_DEMANDA: Record<TratamientoVoz, string> = {
+  usted: 'Estoy con mucha demanda en este momento. ¿Podría escribirme de nuevo en un minuto?',
+  tu: 'Estoy con mucha demanda en este momento. ¿Puedes escribirme de nuevo en un minuto?',
+  vos: 'Estoy con mucha demanda en este momento. ¿Podés escribirme de nuevo en un minuto?',
+  neutro: 'Hay mucha demanda en este momento. Conviene escribir de nuevo en un minuto.',
+};
+
+/**
+ * Derivación al WhatsApp de la plataforma en el caso «sin respaldo»: [antes del número, después]. Una frase fija por trato;
+ * el número (E.164 validado por el esquema) es lo único que se inserta. Con `vos` coincide con la redacción de `salidaSinCifras`.
+ */
+export const FRASE_DERIVACION_WHATSAPP: Record<TratamientoVoz, readonly [string, string]> = {
+  usted: ['Puede escribir al WhatsApp', 'y una persona del equipo le ayudará.'],
+  tu: ['Puedes escribir al WhatsApp', 'y una persona del equipo te ayudará.'],
+  vos: ['Podés escribir al WhatsApp', 'y una persona del equipo te ayuda.'],
+  neutro: ['Se puede escribir al WhatsApp', 'para recibir ayuda de una persona del equipo.'],
 };
 
 export const JERARQUIA_KUAA: readonly string[] = [

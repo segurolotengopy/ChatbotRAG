@@ -9,6 +9,7 @@
  */
 import type { MotivoIa } from '../banco/enrutador.js';
 import type { MotivoDerivacion } from '../banco/esquema.js';
+import type { CausaErrorProveedor } from './proveedor-llm.js';
 
 export type TipoEvento =
   | 'mensaje_atendido'
@@ -44,6 +45,8 @@ export interface EventoBitacora {
   pagina?: string;
   herramienta?: string;
   codigo?: string;
+  /** Evento `error_modelo` (`proveedor` e `indice` de Kuaa): causa enumerada del fallo. Jamás el mensaje del error. */
+  causa?: CausaErrorProveedor;
   /** Evento `enrutador` (H4a): carril elegido. Solo enumerados; jamás el texto ni el término que coincidió. */
   carril?: 'fijo' | 'derivacion' | 'ia';
   /** Evento `enrutador`: vía que decidió. */
