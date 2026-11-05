@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { GenerateContentResponse } from '@google/genai';
+import { cargarCalibracion, verificarCalibracion, VERSION_REGLA_DECISION } from '@chatbotrag/nucleo';
 import { agruparPorPresupuesto, aContenidos, EmbebedorVertex, ErrorProveedor, MAX_CARACTERES_POR_LOTE, MAX_TEXTOS_POR_LOTE, ProveedorVertex, type ClienteGemini } from './indice.js';
 
 function clienteFalso(respuesta: Partial<GenerateContentResponse>, capturar: { ultima?: unknown } = {}): ClienteGemini {
@@ -74,6 +75,22 @@ describe('ProveedorVertex', () => {
 });
 
 describe('EmbebedorVertex', () => {
+  it('el nombre lleva el modelo efectivo y una calibración medida con otro modelo no es apta', () => {
+    const a = new EmbebedorVertex(clienteFalso({}));
+    const b = new EmbebedorVertex(clienteFalso({}), { modelo: 'text-embedding-006' });
+    expect(a.nombre).toBe('vertex-embeddings:text-embedding-005');
+    expect(b.nombre).toBe('vertex-embeddings:text-embedding-006');
+    const sha = 'a'.repeat(64);
+    const cal = cargarCalibracion(
+      JSON.stringify({
+        formato: 1, regla: VERSION_REGLA_DECISION, banco_sha256: sha, evaluacion_sha256: sha, proveedor: 'vertex', modelo: a.nombre, dimension: a.dimension,
+        umbral_fijo: 0.8, umbral_derivacion: 0.7, margen: 0.05, valido: true, motivos_invalidez: [], control: { total: 40, confusiones: 0, falsos_positivos: 0 }, medido: '2026-11-05',
+      }),
+    );
+    expect(verificarCalibracion(cal, { bancoSha256: sha, modelo: a.nombre, dimension: a.dimension }).semanticaApta).toBe(true);
+    expect(verificarCalibracion(cal, { bancoSha256: sha, modelo: b.nombre, dimension: b.dimension }).semanticaApta).toBe(false);
+  });
+
   it('devuelve un vector por texto y valida la cantidad', async () => {
     const e = new EmbebedorVertex(clienteFalso({}), { dimension: 3 });
     expect(await e.embeber(['a', 'b'])).toEqual([[0, 1, 0], [1, 1, 0]]);

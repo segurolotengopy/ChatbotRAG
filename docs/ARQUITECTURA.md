@@ -627,6 +627,39 @@ evaluación corresponda a un archivo real (solo queda como constancia); que `sem
 también el estado de un agente sin semántica configurada); ni una conexión al agente, al bucket o a Vertex: eso es
 H4c y H4d. La memoria es por instancia de Cloud Run, no se comparte entre instancias.
 
+### Producción de `calibracion.json` (modelo híbrido, H4b)
+
+`scripts/medir-umbral-banco.mts` acepta `--salida=<directorio> [--sobrescribir]` y escribe allí `calibracion.json` con el
+contrato de `calibracion.ts` (formato 1, `regla` = `VERSION_REGLA_DECISION`, SHA-256 del banco y de la evaluación,
+`proveedor`, `modelo`, `dimension`, umbrales, `margen`, `valido`, `motivos_invalidez`, `control` con solo conteos y
+`medido` AAAA-MM-DD). Reglas:
+
+- El directorio debe existir y estar fuera del repositorio y de la raíz común de git (mismas comprobaciones de ruta real que
+  `--banco` y `--evaluacion`); se verifica antes de medir, para no gastar embeddings en un error de ruta.
+- Escritura atómica (temporal exclusivo en el mismo directorio, modo 0600, escritura completa con `fsync`, `link`/`rename`)
+  y sin sobrescribir un `calibracion.json` existente salvo `--sobrescribir`. Justo antes de abrir el temporal se revalida el
+  directorio (misma ruta real, fuera del repo, del usuario actual y sin escritura de grupo/otros). Si el destino no admite
+  enlaces duros, el script lo dice y pide un directorio local.
+- Se escribe también un resultado inválido con umbrales MEDIDOS (`valido: false` con sus motivos, por confusión o falso
+  positivo en el control; el código de salida sigue siendo 1). Con el proveedor simulado el archivo dice
+  `proveedor: "simulado"`, que `verificarCalibracion` no acepta fuera de pruebas.
+- Si NO hay nada medido (`sin_umbral_factible`, `minimos_calibracion_insuficientes`, esquema incumplido o error de
+  ejecución) NO se escribe archivo y sale con código 1: no se inventan umbrales ni un control no medido. Un
+  `calibracion.json` anterior no corresponde a esa medición: con `--sobrescribir` se renombra a
+  `calibracion.json.invalidada` (con sufijo `-AAAAMMDDTHHMMSSZ-<hex>` si ya existe; nunca pisa un archivo) y se informa. Para
+  restaurarla: `mv calibracion.json.invalidada calibracion.json`. Sin `--sobrescribir` y con un `calibracion.json` presente el script
+  sale antes de medir (no gasta embeddings); si uno apareciera durante la ejecución (carrera) no se toca, se avisa por stderr
+  que no debe usarse, y el `link` atómico final impide pisarlo. El contenido se valida con `cargarCalibracion` antes de escribirse; jamás lleva
+  texto de casos ni del banco. `medido` es la fecha UTC.
+- **`modelo` es el `nombre` del embebedor, y ese nombre incluye el modelo**: `vertex-embeddings:<modelo>` (por defecto
+  `vertex-embeddings:text-embedding-005`), `bedrock-embeddings:<modelo>` y `simulado`. Por eso un cambio de modelo de
+  embeddings (o de dimensión) invalida la calibración: `verificarCalibracion` compara `modelo` y `dimension` con los del
+  índice y, si difieren, la semántica no es apta y todo cae a la IA hasta volver a medir. Nota: el nombre anterior de
+  Bedrock era `bedrock-titan`; cualquier calibración o índice que lo guardara deja de coincidir (en el repositorio no había ninguno).
+- El script mide solo con el modelo por defecto del embebedor (Vertex: `text-embedding-005`); un agente con otro modelo cae a la IA hasta
+  que se añada `--modelo-embeddings`. El nombre completo debe caber en 100 caracteres (se verifica antes de gastar embeddings).
+- `calibracion.json` solo admite `proveedor` `vertex|simulado`: una calibración con Bedrock no está soportada por el esquema.
+
 ## 7. Aplicación a segurolotengo-demo
 
 El demo (Next.js 15 en AWS Amplify) **no embebe** el núcleo: consume el servicio por
