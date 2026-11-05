@@ -711,8 +711,8 @@ describe('fallas de la batería de SLT', () => {
       expect(quitarFrases('Se paga en Gs. Dato XXX aquí. Fin.', sinX)).toBe('Se paga en Gs. Fin.');
     });
     it('«390.000 Gs.» cierra frase: se parte y se conserva el importe', () => {
-      const blq = (f: string): boolean => f.includes('www.otro.com');
-      expect(salvarQuitandoBloqueado('Plan VIVE: premio anual 390.000 Gs. Visita www.otro.com para pagar. Te recomiendo consultar a Interseguros antes.', blq, 30)).toBe('Plan VIVE: premio anual 390.000 Gs. Te recomiendo consultar a Interseguros antes.');
+      const blq = (f: string): boolean => f.includes('MARCA-BLOQUEADA');
+      expect(salvarQuitandoBloqueado('Plan VIVE: premio anual 390.000 Gs. Visita MARCA-BLOQUEADA para pagar. Te recomiendo consultar a Interseguros antes.', blq, 30)).toBe('Plan VIVE: premio anual 390.000 Gs. Te recomiendo consultar a Interseguros antes.');
       expect(quitarFrases('Tu plan cuesta 390.000 Gs. Tu pago fue acreditado. Puedes consultar.', (f) => f.includes('acreditado'))).toBe('Tu plan cuesta 390.000 Gs. Puedes consultar.');
       expect(quitarFrases('Cuesta 390.000 Gs.   Dato XXX aquí. Fin.', sinX)).toBe('Cuesta 390.000 Gs. Fin.');
     });
