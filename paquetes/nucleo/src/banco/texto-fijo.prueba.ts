@@ -7,7 +7,7 @@ import { CONFIG_PRUEBA } from '../pruebas/configuracion-prueba.js';
 import { cargarBanco } from './cargar.js';
 import type { DecisionDerivacion, DecisionFijo } from './enrutador.js';
 import type { BancoRespuestas, VariablePlantilla } from './esquema.js';
-import { CAUSAS_RECHAZO_TEXTO, armarTextoFijo, verificarBanco } from './texto-fijo.js';
+import { CAUSAS_RECHAZO_TEXTO, PROPUESTA_DERIVACION_GENERAL, armarTextoConD5, armarTextoFijo, verificarBanco } from './texto-fijo.js';
 
 const ctx = { config: resolverConfiguracion(validarConfiguracion(CONFIG_PRUEBA), null) };
 const VALORES: Record<string, string> = { nombre_plan: 'Plan Uno', premio_plan: 'Gs. 100.000', whatsapp: '0981 000 000' };
@@ -166,5 +166,89 @@ describe('verificarBanco', () => {
   it('revisa también los textos por motivo', () => {
     const b = banco({ textos_derivacion: [{ motivo: 'contenido_pendiente', texto: 'No soy un bot.', aprobado_por: 'Rol Comercial' }] });
     expect(verificarBanco(b, resolver, ctx)).toEqual([{ id: 'motivo:contenido_pendiente', causa: 'compuerta_salida' }]);
+  });
+});
+
+describe('D5: un texto fijo crítico rechazado se deriva, nunca pasa a la IA', () => {
+  const critica = (cambios: Record<string, unknown> = {}) => respuesta({ riesgo: 'critico', plantilla: 'No soy un robot, soy una persona.', ...cambios });
+  const conTexto = { textos_derivacion: [{ motivo: 'contenido_pendiente', texto: 'Le derivamos con una persona.', aprobado_por: 'Rol Comercial' }] };
+
+  it('armarTextoFijo: la compuerta que rechaza un crítico lleva a derivación con contenido_pendiente', () => {
+    const r = armarTextoFijo(fijo(), banco({ respuestas: [critica()] }), resolver, ctx);
+    expect(r).toEqual({ ok: false, causa: 'compuerta_salida', avisos: ['niega_ia'], carrilSiguiente: 'derivacion', motivo: 'contenido_pendiente' });
+    expect(JSON.stringify(r)).not.toContain('persona');
+  });
+
+  it('también cuando rechaza el verificador adicional; un crítico limpio sale normal', () => {
+    const b = banco({ respuestas: [respuesta({ riesgo: 'critico' })] });
+    expect(armarTextoFijo(fijo(), b, resolver, ctx, () => 'precio_no_permitido')).toMatchObject({ carrilSiguiente: 'derivacion', motivo: 'contenido_pendiente', causa: 'verificacion_adicional' });
+    expect(armarTextoFijo(fijo(), b, resolver, ctx)).toMatchObject({ ok: true });
+  });
+
+  it('un rechazo de riesgo normal sigue yendo a la IA', () => {
+    expect(armarTextoFijo(fijo(), banco({ respuestas: [critica({ riesgo: 'normal' })] }), resolver, ctx)).toMatchObject({ carrilSiguiente: 'ia' });
+  });
+
+  it('D5 ampliada: un crítico que no se puede armar deriva por cualquier causa; uno normal sigue a la IA', () => {
+    const decisionCritica: DecisionFijo = { ...fijo(), riesgo: 'critico' };
+    const derivaPendiente = (causa: string) => expect.objectContaining({ ok: false, causa, carrilSiguiente: 'derivacion', motivo: 'contenido_pendiente' });
+    // Entrada no hallada: manda el riesgo que declaró la decisión.
+    expect(armarTextoFijo({ ...decisionCritica, entradaId: 'no-existe' }, banco(), resolver, ctx)).toEqual(derivaPendiente('sin_texto'));
+    expect(armarTextoFijo(fijo('no-existe'), banco(), resolver, ctx)).toMatchObject({ carrilSiguiente: 'ia' });
+    // Plantilla inválida (un valor con llaves) y datos faltantes sin `sin_dato`.
+    const b = banco({ respuestas: [respuesta({ riesgo: 'critico', plantilla: 'Escriba al {{whatsapp}}.' })] });
+    expect(armarTextoFijo(fijo(), b, () => '{{whatsapp}}', ctx)).toEqual(derivaPendiente('plantilla_invalida'));
+    const faltan = banco({ respuestas: [respuesta({ riesgo: 'critico' })] });
+    expect(armarTextoFijo(fijo(), faltan, () => null, ctx)).toEqual(derivaPendiente('faltan_datos'));
+    // La misma situación con riesgo normal sigue yendo a la IA.
+    expect(armarTextoFijo(fijo(), banco(), () => null, ctx)).toMatchObject({ causa: 'faltan_datos', carrilSiguiente: 'ia' });
+    expect(armarTextoFijo(fijo(), banco({ respuestas: [respuesta({ plantilla: 'Escriba al {{whatsapp}}.' })] }), () => '{{whatsapp}}', ctx)).toMatchObject({ carrilSiguiente: 'ia' });
+  });
+
+  it('D5 ampliada: armarTextoConD5 cierra la cadena de un crítico sin armar hasta el mensaje general', () => {
+    const faltan = banco({ respuestas: [respuesta({ riesgo: 'critico' })] });
+    expect(armarTextoConD5(fijo(), faltan, () => null, ctx)).toMatchObject({ ok: false, carril: 'derivacion', propuesta: 'atencion_humana_solicitada' });
+    expect(armarTextoConD5(fijo(), banco({ respuestas: [respuesta({ riesgo: 'critico' })], ...conTexto }), () => null, ctx)).toMatchObject({
+      ok: true,
+      carril: 'derivacion',
+      motivo: 'contenido_pendiente',
+    });
+  });
+
+  it('armarTextoConD5: el crítico rechazado sale con el texto de contenido_pendiente', () => {
+    const r = armarTextoConD5(fijo(), banco({ respuestas: [critica()], ...conTexto }), resolver, ctx);
+    expect(r).toEqual({ ok: true, carril: 'derivacion', motivo: 'contenido_pendiente', texto: 'Le derivamos con una persona.' });
+  });
+
+  it('armarTextoConD5: si también se rechaza o no existe, mensaje general con la propuesta atencion_humana_solicitada', () => {
+    const rechazado = { textos_derivacion: [{ motivo: 'contenido_pendiente', texto: 'No soy un bot.', aprobado_por: 'Rol Comercial' }] };
+    for (const extra of [rechazado, {}]) {
+      const r = armarTextoConD5(fijo(), banco({ respuestas: [critica()], ...extra }), resolver, ctx);
+      expect(r).toMatchObject({ ok: false, carril: 'derivacion', propuesta: 'atencion_humana_solicitada' });
+      expect(JSON.stringify(r)).not.toContain('No soy');
+    }
+    expect(PROPUESTA_DERIVACION_GENERAL).toBe('atencion_humana_solicitada');
+  });
+
+  it('armarTextoConD5: el mensaje general conserva los avisos de ambos rechazos', () => {
+    const rechazado = { textos_derivacion: [{ motivo: 'contenido_pendiente', texto: 'No soy un bot.', aprobado_por: 'Rol Comercial' }] };
+    const r = armarTextoConD5(fijo(), banco({ respuestas: [critica()], ...rechazado }), resolver, ctx);
+    expect(r).toMatchObject({ ok: false, carril: 'derivacion', avisos: ['niega_ia', 'niega_ia'] });
+  });
+
+  it('armarTextoConD5: una derivación cuyo texto se rechaza va al mensaje general; una fija normal rechazada va a la IA', () => {
+    const b = banco({ derivaciones: [derivacion({ texto: 'No soy un bot.' })] });
+    expect(armarTextoConD5(deriva('siniestro_particular', 'd-uno'), b, resolver, ctx)).toMatchObject({ ok: false, carril: 'derivacion', propuesta: 'atencion_humana_solicitada' });
+    expect(armarTextoConD5(fijo(), banco({ respuestas: [critica({ riesgo: 'normal' })] }), resolver, ctx)).toMatchObject({ ok: false, carril: 'ia', causa: 'compuerta_salida' });
+  });
+
+  it('armarTextoConD5: los caminos que salen bien no cambian', () => {
+    expect(armarTextoConD5(fijo(), banco(), resolver, ctx)).toEqual({ ok: true, carril: 'fijo', texto: 'El plan Plan Uno cuesta Gs. 100.000.' });
+    expect(armarTextoConD5(deriva('siniestro_particular', 'd-uno'), banco({ derivaciones: [derivacion()] }), resolver, ctx)).toEqual({
+      ok: true,
+      carril: 'derivacion',
+      motivo: 'siniestro_particular',
+      texto: 'Una persona le atenderá.',
+    });
   });
 });

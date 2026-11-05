@@ -30,6 +30,15 @@ const BIEN = { minimoPorEntrada: 5, casosNinguna: 30, cumple: true };
 const MAL = { minimoPorEntrada: 4, casosNinguna: 30, cumple: false };
 const CUMPLE: Minimos = { calibracion: BIEN, control: BIEN, cumple: true };
 
+describe('puntajes no finitos', () => {
+  it('calibrar con un vector no finito falla de forma ruidosa, nunca con NaN en silencio', () => {
+    const indice: IndiceSemantico = { modelo: 'prueba', dimension: 2, vectores: [{ entradaId: 'a', tipo: 'respuesta', vector: [1, 0] }] };
+    const casos = [{ id: 'c1', vector: [Number.NaN, 1], esperado: { tipo: 'ninguna' as const }, particion: 'calibracion' as const }];
+    expect(() => barrerUmbrales(casos, indice, { margen: 0.1 })).toThrow(ErrorSimilitud);
+    expect(() => medir(casos, indice, { umbralFijo: 0.9, umbralDerivacion: 0.9, margen: 0.1 })).toThrow(ErrorSimilitud);
+  });
+});
+
 describe('medir', () => {
   it('cuenta la matriz conocida', () => {
     const casos = [

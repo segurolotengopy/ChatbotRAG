@@ -25,6 +25,35 @@ describe('coseno', () => {
     expect(coseno([0, 0], [1, 1])).toBe(0);
     expect(coseno([1, 1], [0, 0])).toBe(0);
   });
+  it('magnitudes enormes (> 1e154) no dan NaN ni 0: se escala cada vector y el coseno es el correcto', () => {
+    expect(coseno([1e200, 1e200], [1e200, 1e199])).toBeCloseTo(1.1 / (Math.SQRT2 * Math.sqrt(1.01)), 12);
+    expect(coseno([1e200, 0], [1, 0])).toBe(1);
+    expect(coseno([1e200, 0], [-1e300, 0])).toBe(-1);
+    expect(coseno([1e200, 1e200], [1e-200, 1e-200])).toBeCloseTo(1, 12);
+    expect(coseno([1e150, 1e150], [1e150, 1e150])).toBeCloseTo(1, 12);
+    expect(coseno([Number.MAX_VALUE, Number.MAX_VALUE], [Number.MAX_VALUE, 0])).toBeCloseTo(Math.SQRT1_2, 12);
+  });
+
+  it('magnitudes diminutas (cuadrados que se pierden o son subnormales) no se confunden con un vector nulo', () => {
+    expect(coseno([1e-200, 0], [1, 0])).toBe(1);
+    expect(coseno([1e-200, 1e-200], [1e-200, 0])).toBeCloseTo(Math.SQRT1_2, 12);
+    expect(coseno([5e-324, 0], [1, 0])).toBe(1); // subnormal mínimo
+    expect(coseno([1e-310, 1e-310], [1e-310, -1e-310])).toBeCloseTo(0, 12);
+    expect(coseno([1e-160, 3e-160], [3e-160, 1e-160])).toBeCloseTo(0.6, 12);
+  });
+
+  it('un vector con todo en cero sigue valiendo 0, también frente a uno enorme o diminuto', () => {
+    expect(coseno([0, 0], [1e200, 1])).toBe(0);
+    expect(coseno([1e-200, 0], [0, 0])).toBe(0);
+  });
+
+  it('el rango normal no cambia (mismo resultado que la fórmula directa)', () => {
+    const a = [0.3, -0.4, 0.5];
+    const b = [0.1, 0.2, 0.9];
+    const directo = (0.3 * 0.1 - 0.4 * 0.2 + 0.5 * 0.9) / (Math.sqrt(0.09 + 0.16 + 0.25) * Math.sqrt(0.01 + 0.04 + 0.81));
+    expect(coseno(a, b)).toBe(directo);
+  });
+
   it('largo distinto, vacío o no finito lanzan error claro', () => {
     expect(() => coseno([1, 0], [1, 0, 0])).toThrow(ErrorSimilitud);
     expect(() => coseno([], [])).toThrow(ErrorSimilitud);
@@ -87,8 +116,8 @@ describe('emparejarSemantico', () => {
       { entradaId: 'd-uno', tipo: 'derivacion', vector: [1, 0] },
     ]);
     expect(emparejarSemantico([1, 0], empate, { ...U, margen: 0 })).toMatchObject({ tipo: 'derivacion', entradaId: 'd-uno' });
-    // Con margen mayor que cero, el empate no se distancia de nadie: duda, va a la IA.
-    expect(emparejarSemantico([1, 0], empate, U)).toBeNull();
+    // Regla B monótona (H4a): con margen mayor que cero, el empate con una respuesta también deriva (antes iba a la IA).
+    expect(emparejarSemantico([1, 0], empate, U)).toMatchObject({ tipo: 'derivacion', entradaId: 'd-uno' });
   });
 
   it('regla B: una respuesta bajo su umbral cede ante una derivación casi empatada que supera el suyo', () => {
@@ -123,9 +152,14 @@ describe('emparejarSemantico', () => {
     expect(r?.entradaId).toBe('d-uno');
     // Margen real: distancia a la siguiente mejor entrada distinta (d-dos), no al puntaje ni a la líder.
     expect(r?.margen).toBeCloseTo(Math.cos((30 * Math.PI) / 180) - Math.cos((55 * Math.PI) / 180), 12);
-    // Otra respuesta (no líder) por encima de la candidata también cuenta como competidora.
+    // Otra respuesta casi empatada con la candidata no compite: también cede (regla B monótona).
     const otraRespuesta = indice([...base, { entradaId: 'r-dos', tipo: 'respuesta', vector: angulo(52) }]);
-    expect(emparejarSemantico(angulo(25), otraRespuesta, u)).toBeNull();
+    expect(emparejarSemantico(angulo(25), otraRespuesta, u)?.entradaId).toBe('d-uno');
+    // Una respuesta claramente por encima de la candidata (más allá del margen) no es empate: decide la regla común
+    // y se propone esa respuesta (antes de este ajuste una respuesta débil empatada con una derivación mediocre
+    // la tapaba y el mensaje iba a la IA).
+    const porEncima = indice([...base, { entradaId: 'r-dos', tipo: 'respuesta', vector: angulo(25) }]);
+    expect(emparejarSemantico(angulo(25), porEncima, u)).toMatchObject({ tipo: 'respuesta', entradaId: 'r-dos' });
   });
 
   describe('regla B con puntajes exactos (umbralFijo 0,80, umbralDerivacion 0,70, margen 0,05)', () => {
@@ -144,8 +178,8 @@ describe('emparejarSemantico', () => {
     it('respuesta 0,79 y derivación 0,71: la derivación está lejos de la líder, va a la IA', () => {
       expect(con(0.79, 0.71)).toBeNull();
     });
-    it('respuesta 0,81 y derivación 0,79: la respuesta supera su umbral pero no el margen, va a la IA', () => {
-      expect(con(0.81, 0.79)).toBeNull();
+    it('respuesta 0,81 y derivación 0,79: la respuesta supera su umbral pero la derivación está casi empatada, deriva (monótona)', () => {
+      expect(con(0.81, 0.79)).toMatchObject({ tipo: 'derivacion', entradaId: 'd-uno' });
     });
     it('derivación líder con una respuesta bajo umbral como segunda: la respuesta no compite (0,79 con 0,79, 0,80 y 0,84)', () => {
       for (const d of [0.79, 0.8, 0.84, 0.85]) {
@@ -166,6 +200,44 @@ describe('emparejarSemantico', () => {
         ]), u);
       expect(tres(0.8)).toBeNull();
       expect(tres(0.85)?.entradaId).toBe('d-uno');
+    });
+
+    describe('tabla de la regla B monótona (respuesta, derivación)', () => {
+      const vec = (c: number, signo = 1) => [c, signo * Math.sqrt(1 - c * c)];
+      /** Con una tercera entrada opcional: otra derivación en `tercera`. */
+      const tabla = (r: number, d: number, tercera?: number) =>
+        emparejarSemantico([1, 0], indice([
+          { entradaId: 'r-uno', tipo: 'respuesta', vector: vec(r) },
+          { entradaId: 'd-uno', tipo: 'derivacion', vector: vec(d, -1) },
+          ...(tercera === undefined ? [] : [{ entradaId: 'd-dos', tipo: 'derivacion' as const, vector: vec(tercera) }]),
+        ]), u);
+      it.each([
+        [0.79, 0.78],
+        [0.79, 0.79],
+        [0.79, 0.8],
+        [0.79, 0.84],
+        [0.81, 0.79],
+      ])('respuesta %f y derivación %f derivan sin tercera entrada y con una tercera lejana', (r, d) => {
+        expect(tabla(r, d)).toMatchObject({ tipo: 'derivacion', entradaId: 'd-uno' });
+        expect(tabla(r, d, 0.5)).toMatchObject({ tipo: 'derivacion', entradaId: 'd-uno' });
+      });
+      it('una tercera derivación cercana (0,77) da duda salvo que la candidata se distancie el margen', () => {
+        expect(tabla(0.79, 0.78, 0.77)).toBeNull();
+        expect(tabla(0.79, 0.79, 0.77)).toBeNull();
+        expect(tabla(0.79, 0.8, 0.77)).toBeNull();
+        expect(tabla(0.79, 0.84, 0.77)).toMatchObject({ entradaId: 'd-uno' });
+        expect(tabla(0.81, 0.79, 0.77)).toBeNull();
+      });
+      it('monótona: toda respuesta a distancia de margen o menos de una derivación sobre su umbral deriva', () => {
+        for (let r = 0.7; r <= 0.9 + 1e-9; r += 0.01) {
+          const dist = Math.abs(r - 0.79);
+          const res = tabla(Math.round(r * 100) / 100, 0.79);
+          if (dist <= 0.05 + 1e-9) expect(res?.tipo, `r=${r.toFixed(2)}`).toBe('derivacion');
+        }
+      });
+      it('una derivación bajo su umbral no deriva por estar empatada', () => {
+        expect(tabla(0.69, 0.68)).toBeNull();
+      });
     });
 
     it('bordes de coma flotante: una diferencia exactamente igual al margen cuenta', () => {
@@ -190,6 +262,44 @@ describe('emparejarSemantico', () => {
   it('el orden de las entradas no cambia el resultado', () => {
     const al_reves = indice([...base.vectores].reverse());
     expect(emparejarSemantico(angulo(20), base, { ...U, margen: 0 })).toEqual(emparejarSemantico(angulo(20), al_reves, { ...U, margen: 0 }));
+  });
+
+  it('un puntaje no finito (NaN, Infinity) no propone nada, aunque llegue a decidirEmparejamiento', () => {
+    const u = { umbralFijo: 0.8, umbralDerivacion: 0.7, margen: 0.05 };
+    for (const malo of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      expect(decidirEmparejamiento([{ entradaId: 'r-uno', tipo: 'respuesta', puntaje: malo }], u)).toBeNull();
+      expect(
+        decidirEmparejamiento(
+          [
+            { entradaId: 'r-uno', tipo: 'respuesta', puntaje: 0.95 },
+            { entradaId: 'd-uno', tipo: 'derivacion', puntaje: malo },
+          ],
+          u,
+        ),
+      ).toBeNull();
+    }
+  });
+
+  describe('dos familias de la regla B fijadas como comportamiento actual (umbralFijo 0,80, umbralDerivacion 0,70, margen 0,05)', () => {
+    // Pendiente de decisión de Andres: estas pruebas fijan lo que el código hace HOY, no lo que se considera ideal.
+    const u = { umbralFijo: 0.8, umbralDerivacion: 0.7, margen: 0.05 };
+    const v = (c: number, signo: number) => [c, signo * Math.sqrt(1 - c * c)];
+    const con = (r0: number, r1: number, d: number) =>
+      emparejarSemantico([1, 0], indice([
+        { entradaId: 'r-cero', tipo: 'respuesta', vector: v(r0, 1) },
+        { entradaId: 'r-uno', tipo: 'respuesta', vector: v(r1, -1) },
+        { entradaId: 'd-uno', tipo: 'derivacion', vector: v(d, 1) },
+      ]), u);
+
+    it('r0 0,70, r1 0,80, d 0,70: la respuesta r1 está claramente por encima y se propone', () => {
+      expect(con(0.7, 0.8, 0.7)).toMatchObject({ tipo: 'respuesta', entradaId: 'r-uno' });
+    });
+    it('r0 0,70, r1 0,76, d 0,70: la mejor respuesta no llega a su umbral, va a la IA', () => {
+      expect(con(0.7, 0.76, 0.7)).toBeNull();
+    });
+    it('d 0,79, r0 0,80, r1 0,845: la respuesta r1 no se distancia de r0 por el margen, va a la IA', () => {
+      expect(con(0.8, 0.845, 0.79)).toBeNull();
+    });
   });
 
   it('índice vacío da null y umbrales inválidos lanzan error', () => {

@@ -14,6 +14,11 @@
  * detecten todo. `VerificadorAdicional` es el gancho para detectores propios de un agente (por ejemplo, precios
  * no permitidos), de modo que el núcleo no importe `oportunidad/`. Si no hay texto de derivación en el banco,
  * se informa `sin_texto` con el carril `derivacion`: H4 usará `config.mensajes.derivacion`.
+ *
+ * D5 (H4a, ampliada): un texto fijo de riesgo crítico que no se puede entregar (entrada no hallada, plantilla inválida,
+ * datos faltantes sin `sin_dato`, compuerta o verificador adicional) se DERIVA, no pasa a la IA (`armarTextoFijo`
+ * pide `contenido_pendiente`; `armarTextoConD5` completa la cadena hasta el mensaje general con la propuesta
+ * `atencion_humana_solicitada`).
  */
 import { aplicarCompuertasSalida } from '../compuertas/salida.js';
 import type { ContextoSalida } from '../compuertas/salida.js';
@@ -67,19 +72,25 @@ export function armarTextoFijo(
 ): ResultadoTextoFijo {
   if (decision.carril === 'fijo') {
     const entrada = banco.respuestas.find((e) => e.id === decision.entradaId);
-    if (!entrada) return haciaIa('sin_texto');
+    // D5 (ampliada): el riesgo crítico decide a dónde cae un texto fijo que NO se puede entregar, sea por la causa que
+    // sea. Sin entrada hallada se usa el riesgo que declaró la decisión. Un crítico nunca pasa a la IA: deriva con
+    // `contenido_pendiente` (y, si ese texto falla, `armarTextoConD5` usa el mensaje general). Un riesgo normal sigue a la IA.
+    const critico = (entrada?.riesgo ?? decision.riesgo) === 'critico';
+    const cae = (causa: CausaRechazoTexto, avisos: string[] = []): ResultadoTextoFijo =>
+      critico ? haciaDerivacion(causa, 'contenido_pendiente', avisos) : haciaIa(causa, avisos);
+    if (!entrada) return cae('sin_texto');
 
     let relleno: ReturnType<typeof rellenarPlantilla>;
     try {
       relleno = rellenarPlantilla(entrada.plantilla, resolver);
     } catch (e) {
-      if (e instanceof ErrorPlantilla) return haciaIa('plantilla_invalida');
+      if (e instanceof ErrorPlantilla) return cae('plantilla_invalida');
       throw e;
     }
     if (!relleno.ok) {
-      return entrada.derivar_cuando.includes('sin_dato') ? haciaDerivacion('faltan_datos', 'contenido_pendiente') : haciaIa('faltan_datos');
+      return entrada.derivar_cuando.includes('sin_dato') ? haciaDerivacion('faltan_datos', 'contenido_pendiente') : cae('faltan_datos');
     }
-    return revisar(relleno.texto, ctx, verificarAdicional, (causa, avisos) => haciaIa(causa, avisos));
+    return revisar(relleno.texto, ctx, verificarAdicional, (causa, avisos) => cae(causa, avisos));
   }
 
   const motivo = decision.motivo;
@@ -109,4 +120,43 @@ export function verificarBanco(
     probar(id, { carril: 'derivacion', motivo: t.motivo, origen: 'condicion_entrada', entradaId: id });
   }
   return fallos;
+}
+
+/** Propuesta que acompaña al mensaje general de derivación cuando ningún texto aprobado sirvió (D5). */
+export const PROPUESTA_DERIVACION_GENERAL = 'atencion_humana_solicitada' as const;
+
+export type ResultadoTextoFinal =
+  | { ok: true; carril: 'fijo'; texto: string }
+  | { ok: true; carril: 'derivacion'; motivo: MotivoDerivacion; texto: string }
+  | { ok: false; carril: 'ia'; causa: CausaRechazoTexto; avisos: string[] }
+  /** Ningún texto aprobado sirvió: usar el mensaje general de derivación (`config.mensajes.derivacion`) con la propuesta. */
+  | { ok: false; carril: 'derivacion'; causa: CausaRechazoTexto; avisos: string[]; propuesta: typeof PROPUESTA_DERIVACION_GENERAL };
+
+/**
+ * Cadena completa de D5 sobre `armarTextoFijo`: un texto fijo de riesgo crítico rechazado se deriva con el texto de
+ * `contenido_pendiente`; si ese texto también se rechaza (o no existe), se deriva con el mensaje general y la propuesta
+ * `atencion_humana_solicitada`. Una derivación cuyo texto se rechaza va directo al mensaje general. Solo una respuesta
+ * fija NO crítica rechazada cae a la IA. Nunca devuelve el texto de una cadena fallida ni valores resueltos.
+ */
+export function armarTextoConD5(
+  decision: DecisionFijo | DecisionDerivacion,
+  banco: BancoRespuestas,
+  resolver: ResolverVariables,
+  ctx: ContextoSalida,
+  verificarAdicional?: VerificadorAdicional,
+): ResultadoTextoFinal {
+  const primero = armarTextoFijo(decision, banco, resolver, ctx, verificarAdicional);
+  if (primero.ok) {
+    return decision.carril === 'fijo'
+      ? { ok: true, carril: 'fijo', texto: primero.texto }
+      : { ok: true, carril: 'derivacion', motivo: decision.motivo, texto: primero.texto };
+  }
+  if (primero.carrilSiguiente === 'ia') return { ok: false, carril: 'ia', causa: primero.causa, avisos: primero.avisos };
+  const general = { ok: false, carril: 'derivacion', causa: primero.causa, avisos: primero.avisos, propuesta: PROPUESTA_DERIVACION_GENERAL } as const;
+  if (decision.carril === 'derivacion') return general;
+  // Una respuesta fija que debe derivarse: se intenta el texto del motivo indicado.
+  const segundo = armarTextoFijo({ carril: 'derivacion', motivo: primero.motivo, origen: 'condicion_entrada', entradaId: decision.entradaId }, banco, resolver, ctx, verificarAdicional);
+  if (segundo.ok) return { ok: true, carril: 'derivacion', motivo: primero.motivo, texto: segundo.texto };
+  // Ambos rechazos dejan constancia: los avisos del texto fijo y los del texto de derivación (solo códigos, sin texto).
+  return { ...general, avisos: [...primero.avisos, ...segundo.avisos] };
 }

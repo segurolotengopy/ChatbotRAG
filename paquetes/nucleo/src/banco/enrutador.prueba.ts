@@ -29,8 +29,17 @@ const enLinea = (cambios: Record<string, unknown>): BancoRespuestas =>
 describe('enrutador', () => {
   it('las listas enumeradas son las acordadas', () => {
     expect(CARRILES).toEqual(['fijo', 'derivacion', 'ia']);
-    expect(MOTIVOS_IA).toEqual(['enrutador_apagado', 'sin_contenido', 'sin_coincidencia', 'carril_fijo_apagado']);
-    expect(ORIGENES_DERIVACION).toEqual(['termino_emergencia', 'pregunta_derivacion', 'condicion_entrada']);
+    expect(MOTIVOS_IA).toEqual([
+      'enrutador_apagado',
+      'sin_contenido',
+      'sin_coincidencia',
+      'carril_fijo_apagado',
+      'semantica_no_disponible',
+      'embebedor_error',
+      'embebedor_tiempo',
+      'calibracion_no_apta',
+    ]);
+    expect(ORIGENES_DERIVACION).toEqual(['termino_emergencia', 'termino_derivacion', 'pregunta_derivacion', 'pregunta_semantica', 'condicion_entrada']);
   });
 
   it('apagado: todo va a la IA', () => {
@@ -251,6 +260,72 @@ describe('tiempo y ReDoS', () => {
       enrutar(entrada, indice, ON, SIN_ATENCION);
       expect(performance.now() - t1).toBeLessThan(250);
     }
+  });
+});
+
+describe('riesgo crítico con el carril fijo apagado (excepción a D1)', () => {
+  const banco = enLinea({
+    respuestas: [
+      respuesta({ id: 'r-critica', preguntas: ['pregunta critica'], riesgo: 'critico' }),
+      respuesta({ id: 'r-normal', preguntas: ['pregunta normal'] }),
+    ],
+  });
+  const indice = prepararEnrutador(banco);
+  const ir3 = (t: string, config: { activo: boolean; carrilFijo: boolean }) => enrutar(t, indice, config, SIN_ATENCION);
+
+  it('el crítico deriva con contenido_pendiente y el normal sigue a la IA con su candidata (D1 vale para el normal)', () => {
+    const apagado = { activo: true, carrilFijo: false };
+    expect(ir3('pregunta critica', apagado)).toEqual({ carril: 'derivacion', motivo: 'contenido_pendiente', origen: 'condicion_entrada', entradaId: 'r-critica' });
+    expect(ir3('pregunta normal', apagado)).toEqual({ carril: 'ia', motivo: 'carril_fijo_apagado', entradaCandidata: 'r-normal' });
+  });
+
+  it('con el carril encendido el crítico responde fijo, como siempre', () => {
+    expect(ir3('pregunta critica', ON)).toMatchObject({ carril: 'fijo', entradaId: 'r-critica', riesgo: 'critico' });
+  });
+
+  it('con el enrutador apagado del todo nada cambia: la excepción solo aplica con activo=true', () => {
+    for (const t of ['pregunta critica', 'pregunta normal']) {
+      expect(ir3(t, { activo: false, carrilFijo: false })).toEqual({ carril: 'ia', motivo: 'enrutador_apagado', entradaCandidata: null });
+    }
+  });
+});
+
+describe('términos de bloqueo con motivos distintos de emergencia (H4a)', () => {
+  const banco = enLinea({
+    derivaciones: [
+      { id: 'd-pago', motivo: 'pago_o_expediente', terminos: ['palabra de pago'], texto: 'Texto real.', aprobado_por: 'Rol Comercial' },
+      { id: 'd-emerg', motivo: 'emergencia', terminos: ['palabra urgente'], texto: 'Texto real.', aprobado_por: 'Rol Comercial' },
+    ],
+  });
+  const indice = prepararEnrutador(banco);
+  const ir2 = (t: string, config = ON) => enrutar(t, indice, config, SIN_ATENCION);
+
+  it('un término de otro motivo deriva con su motivo y el origen termino_derivacion', () => {
+    expect(ir2('quiero saber mi palabra de pago por favor')).toEqual({
+      carril: 'derivacion',
+      motivo: 'pago_o_expediente',
+      origen: 'termino_derivacion',
+      entradaId: 'd-pago',
+    });
+  });
+
+  it('el de emergencia conserva el origen termino_emergencia', () => {
+    expect(ir2('palabra urgente')).toMatchObject({ motivo: 'emergencia', origen: 'termino_emergencia' });
+  });
+
+  it('gana sobre una respuesta fija y deriva con el carril fijo apagado, como la emergencia', () => {
+    const conPregunta = enLinea({
+      respuestas: [respuesta({ preguntas: ['palabra de pago'] })],
+      derivaciones: [{ id: 'd-pago', motivo: 'pago_o_expediente', terminos: ['palabra de pago'], texto: 'Texto real.', aprobado_por: 'Rol Comercial' }],
+    });
+    for (const config of [ON, { activo: true, carrilFijo: false }]) {
+      expect(enrutar('palabra de pago', prepararEnrutador(conPregunta), config, SIN_ATENCION)).toMatchObject({ carril: 'derivacion', origen: 'termino_derivacion' });
+    }
+  });
+
+  it('respeta el límite de palabra y los avisos llevan solo ids y enumerados', () => {
+    expect(ir2('palabras de pagos')).toMatchObject({ carril: 'ia', motivo: 'sin_coincidencia' });
+    expect(avisosDecision(ir2('palabra de pago'))).toEqual(['carril:derivacion', 'derivacion:pago_o_expediente', 'origen:termino_derivacion', 'entrada:d-pago']);
   });
 });
 

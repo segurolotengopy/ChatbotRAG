@@ -133,6 +133,9 @@ export const EntradaDerivacion = z
     id: z.string().regex(ID_ENTRADA),
     motivo: MotivoDerivacion.exclude(['atencion_humana_ya_solicitada', 'contenido_pendiente']),
     preguntas: z.array(PREGUNTA(300)).max(60).default([]),
+    // Términos deterministas de bloqueo: desde H4a se admiten con cualquier motivo (antes solo `emergencia`). Un banco
+    // anterior, con términos solo en emergencia, sigue cargando igual. Los términos reales los entrega Rodrigo en el
+    // banco del bucket; ninguno vive en el código.
     terminos: z
       .array(z.string().trim().regex(/^(?=.*\p{L})[\p{L}\p{N} ]{3,40}$/u))
       .max(200)
@@ -141,11 +144,7 @@ export const EntradaDerivacion = z
     texto: TEXTO(600),
     aprobado_por: APROBADO_POR,
   })
-  .strict()
-  .refine((e) => e.terminos.length === 0 || e.motivo === 'emergencia', {
-    message: 'los términos solo se admiten con el motivo emergencia',
-    path: ['terminos'],
-  });
+  .strict();
 export type EntradaDerivacion = z.infer<typeof EntradaDerivacion>;
 
 export const TextoMotivo = z
