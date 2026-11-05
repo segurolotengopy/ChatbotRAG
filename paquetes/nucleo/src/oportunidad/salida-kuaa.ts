@@ -168,13 +168,22 @@ export function salidaSinCifras(etapa: EtapaVenta, whatsappE164?: string): Salid
 }
 
 /**
+ * Corte de oraciones. «Gs.» lleva punto pero no siempre cierra frase: en «es Gs. 390.000» (el importe sigue) no se
+ * corta; en «390.000 Gs. Visita...» (lo que sigue no es un dígito) sí. Qué NO garantiza: otras abreviaturas con punto.
+ * El espacio posterior excluye otro espacio para que el retroceso no parta en medio de una tanda de espacios.
+ */
+export const CORTE_DE_ORACIONES = /(?<!\b[Gg][Ss]\.)(?<=[.!?])\s+|(?<=\b[Gg][Ss]\.)\s+(?![\d\s])/;
+/** Corte de cláusulas: como `CORTE_DE_ORACIONES`, más coma, punto y coma y «pero». */
+export const CORTE_DE_CLAUSULAS = /(?<!\b[Gg][Ss]\.)(?<=[.!?;,])\s{1,8}|(?<=\b[Gg][Ss]\.)\s{1,8}(?![\d\s])|\s{1,8}pero\s{1,8}/;
+
+/**
  * Quita las frases en que el asistente promete entregar algo que no puede hacer («te preparo un resumen», «te envío
  * el detalle»). Devuelve el texto sin ellas; vacío si no quedaba otra cosa. Qué NO garantiza: promesas con otra forma.
  */
 export function quitarPromesasDeEntrega(texto: string): string {
   const PROMESA = /\b(?:te|le)\s+(?:preparo|armo|envio|mando|paso|genero)\b[^.!?]{0,40}\b(?:resumen|informe|documento|detalle|comprobante|cotizacion|propuesta)|\b(?:preparo|armo|genero)\s+(?:un|el)\s+(?:resumen|informe|detalle)|\b(?:queres|quieres|te\s+muestro|puedo\s+mostrarte)\b[^.!?]{0,60}\b(?:documentacion|informacion\s+institucional|quien\s+asegura)/;
   return texto
-    .split(/(?<=[.!?])\s+/)
+    .split(CORTE_DE_ORACIONES)
     .filter((frase) => !PROMESA.test(paraDetectar(frase)))
     .join(' ')
     .trim();
@@ -187,7 +196,7 @@ export function quitarPromesasDeEntrega(texto: string): string {
  */
 export function quitarFrases(texto: string, debeQuitarse: (frase: string) => boolean): string {
   return texto
-    .split(/(?<!\bGs)(?<=[.!?])\s+/)
+    .split(CORTE_DE_ORACIONES)
     .filter((frase) => !debeQuitarse(frase))
     .join(' ')
     .trim();
@@ -201,12 +210,12 @@ export function quitarFrases(texto: string, debeQuitarse: (frase: string) => boo
  * modelo quería decir; solo que no contiene lo bloqueado.
  */
 export function salvarQuitandoBloqueado(texto: string, bloqueado: (fragmento: string) => boolean, minimo: number): string | null {
-  // Un resto que termina en «Gs.» o «Gs» quedó sin su importe: no se entrega.
-  const ok = (t: string): boolean => t.length >= minimo && !bloqueado(t) && !/\bGs\.?$/i.test(t);
+  // Un resto que termina en «Gs.» o «Gs» sin importe antes («...confirmar que Gs.») no se entrega; «390.000 Gs.» sí.
+  const ok = (t: string): boolean => t.length >= minimo && !bloqueado(t) && !/(?<!\d[\d.]*\s*)\bGs\.?$/i.test(t);
   const porFrases = quitarFrases(texto, bloqueado);
   if (ok(porFrases)) return porFrases;
   // «Gs.» (guaraníes) lleva punto pero no cierra frase: cortar ahí dejaba «...confirmar que Gs.» sin el importe.
-  const clausulas = texto.split(/(?<!\bGs)(?<=[.!?;,])\s{1,8}|\s{1,8}pero\s{1,8}/);
+  const clausulas = texto.split(CORTE_DE_CLAUSULAS);
   const resto = clausulas.filter((c) => !bloqueado(c)).join(' ').replace(/[,;]\s*$/, '.').trim();
   return ok(resto) ? resto : null;
 }

@@ -18,7 +18,7 @@ import { AgenteKuaa } from './agente-kuaa.js';
 import { CodigoObjecion, ESTADOS_OPERATIVOS_DESCONOCIDOS, EntradaKuaa, EstadoObjecion, Plataforma, RESUMEN_DESCONOCIDO } from './esquemas.js';
 import { REGLAS_KUAA, reglasKuaa } from './frases-kuaa.js';
 import { armarPromptKuaa } from './prompt-kuaa.js';
-import { afirmaHechoNoRespaldado, afirmaTratamientoTributario, analizarSalida, patronEnlaceOPrecio, quitarPromesasDeEntrega, quitarSaludoInicial, retirarNumerosDeRegistro, permitidosDe, salidaSinCifras, salvarQuitandoBloqueado, salidaTributaria, type Permitidos } from './salida-kuaa.js';
+import { afirmaHechoNoRespaldado, afirmaTratamientoTributario, analizarSalida, patronEnlaceOPrecio, quitarFrases, quitarPromesasDeEntrega, quitarSaludoInicial, retirarNumerosDeRegistro, permitidosDe, salidaSinCifras, salvarQuitandoBloqueado, salidaTributaria, type Permitidos } from './salida-kuaa.js';
 
 const RUTA = fileURLToPath(new URL('../../../../configuraciones/kuaa.json', import.meta.url));
 const JSON_KUAA = readFileSync(RUTA, 'utf8');
@@ -685,7 +685,61 @@ describe('fallas de la batería de SLT', () => {
     expect(r.salida.texto).toContain(premio);
   });
   it('un resto que termina en «Gs.» sin importe no se entrega', () => {
-    expect(salvarQuitandoBloqueado('Hola amigo, no puedo confirmar que Gs. 10.000 sea el precio actual del seguro', (f) => f.includes('10.000'), 5)).toBeNull();
+    expect(salvarQuitandoBloqueado('Hola amigo, el importe es Gs.', (f) => f.includes('Hola'), 5)).toBeNull();
+    // Ya no se parte tras «Gs.»: la cláusula con el importe ajeno se quita entera y queda lo anterior.
+    expect(salvarQuitandoBloqueado('Hola amigo, no puedo confirmar que Gs. 10.000 sea el precio actual del seguro', (f) => f.includes('10.000'), 5)).toBe('Hola amigo.');
+  });
+  describe('«Gs.» con importe no se parte (TCV014)', () => {
+    const TCV014 = 'La referencia comercial de VIVE es Gs. 390.000 anuales. Se documentó una diferencia de importes; no puedo confirmar que diez mil sea una tarifa autorizada. Te recomiendo consultar a Interseguros antes de pagar.';
+    const perm2: Permitidos = permitidosDe(Plataforma.parse(plataforma())) as Permitidos;
+    const bloqueaDiezMil = (f: string): boolean => patronEnlaceOPrecio(f, perm2) !== null;
+    it('salvarQuitandoBloqueado quita solo la oración con «diez mil» y conserva el importe', () => {
+      expect(bloqueaDiezMil(TCV014)).toBe(true);
+      expect(salvarQuitandoBloqueado(TCV014, bloqueaDiezMil, 20)).toBe('La referencia comercial de VIVE es Gs. 390.000 anuales. Te recomiendo consultar a Interseguros antes de pagar.');
+    });
+    it('a nivel agente entrega el importe y la recomendación', async () => {
+      const { agente } = await armar(TCV014);
+      const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+      expect(r.salida.texto).toContain('Gs. 390.000 anuales.');
+      expect(r.salida.texto).toContain('consultar a Interseguros');
+      expect(r.salida.texto).not.toMatch(/diez\s+mil/i);
+    });
+    const sinX = (f: string): boolean => f.includes('XXX');
+    it('«Gs.» al inicio, en medio y al final de la oración', () => {
+      expect(quitarFrases('Gs. 390.000 es el premio. Dato XXX aquí. Fin.', sinX)).toBe('Gs. 390.000 es el premio. Fin.');
+      expect(quitarFrases('El premio es Gs. 390.000 por año. Dato XXX aquí. Fin.', sinX)).toBe('El premio es Gs. 390.000 por año. Fin.');
+      expect(quitarFrases('Se paga en Gs. Dato XXX aquí. Fin.', sinX)).toBe('Se paga en Gs. Fin.');
+    });
+    it('«390.000 Gs.» cierra frase: se parte y se conserva el importe', () => {
+      const blq = (f: string): boolean => f.includes('www.otro.com');
+      expect(salvarQuitandoBloqueado('Plan VIVE: premio anual 390.000 Gs. Visita www.otro.com para pagar. Te recomiendo consultar a Interseguros antes.', blq, 30)).toBe('Plan VIVE: premio anual 390.000 Gs. Te recomiendo consultar a Interseguros antes.');
+      expect(quitarFrases('Tu plan cuesta 390.000 Gs. Tu pago fue acreditado. Puedes consultar.', (f) => f.includes('acreditado'))).toBe('Tu plan cuesta 390.000 Gs. Puedes consultar.');
+      expect(quitarFrases('Cuesta 390.000 Gs.   Dato XXX aquí. Fin.', sinX)).toBe('Cuesta 390.000 Gs. Fin.');
+    });
+    it('un resto que termina en «390.000 Gs.» se entrega; sin importe, no', () => {
+      expect(salvarQuitandoBloqueado('Dato XXX aquí, el premio es 390.000 Gs.', sinX, 10)).toBe('el premio es 390.000 Gs.');
+      expect(salvarQuitandoBloqueado('Dato XXX aquí, no puedo confirmar que Gs.', sinX, 10)).toBeNull();
+    });
+    it('combinaciones: importe antes y después de «Gs.» en la misma respuesta', () => {
+      expect(quitarFrases('Cuesta 390.000 Gs. Antes era Gs. 100. Dato XXX aquí. Fin.', sinX)).toBe('Cuesta 390.000 Gs. Antes era Gs. 100. Fin.');
+      expect(salvarQuitandoBloqueado('Cuesta 390.000 Gs. Antes era Gs. 100, dato XXX; fin de todo', sinX, 30)).toBe('Cuesta 390.000 Gs. Antes era Gs. 100, fin de todo');
+    });
+    it('rendimiento lineal con 50 000 caracteres', () => {
+      const largo = 'Cuesta 390.000 Gs. Antes era Gs. 100 y mas texto aqui.   '.repeat(900);
+      const t0 = Date.now();
+      quitarFrases(largo, sinX);
+      salvarQuitandoBloqueado(largo + ' Dato XXX aquí.', sinX, 10);
+      expect(largo.length).toBeGreaterThan(50000);
+      expect(Date.now() - t0).toBeLessThan(1500);
+    });
+    it('varios «Gs.» y mayúsculas o minúsculas', () => {
+      expect(quitarFrases('Va de Gs. 100 a Gs. 200 al año. Dato XXX aquí. Fin.', sinX)).toBe('Va de Gs. 100 a Gs. 200 al año. Fin.');
+      expect(quitarFrases('Son GS. 100 y gs. 200 en total. Dato XXX aquí. Fin.', sinX)).toBe('Son GS. 100 y gs. 200 en total. Fin.');
+    });
+    it('por cláusulas tampoco se parte tras «Gs.»', () => {
+      expect(salvarQuitandoBloqueado('El premio es Gs. 390.000 por año, no XXX en total', sinX, 10)).toBe('El premio es Gs. 390.000 por año.');
+      expect(salvarQuitandoBloqueado('El premio es GS. 390.000 por año; dato XXX; fin', sinX, 10)).toBe('El premio es GS. 390.000 por año; fin');
+    });
   });
   it('si solo queda el valor ajeno, sigue sin cifras', async () => {
     const { agente } = await armar('La web dice diez mil guaraníes.');
