@@ -242,6 +242,256 @@ describe('tratamiento tributario (C14 pendiente)', () => {
       expect(afirmaTratamientoTributario(texto)).toBe(false);
     },
   );
+  describe('«el precio cobrado incluye IVA» (decisión de Andres)', () => {
+    it.each([
+      'El precio cobrado incluye IVA.',
+      'Tu premio total anual ya incluye el IVA.',
+      'Sí, el precio cobrado incluye IVA.',
+      'Sí, el premio incluye IVA.',
+      'Los precios publicados incluyen IVA.',
+      'Los montos publicados incluyen IVA.',
+      'Ese precio incluye IVA.',
+      'El costo incluye IVA.',
+      'La cuota incluye IVA.',
+      'Su premio incluye IVA',
+      'EL PRECIO COBRADO INCLUYE IVA.',
+      'El  precio\tcobrado   ya incluye\u00a0IVA.',
+      'Así es, la tarifa final incluye el IVA!',
+      'El precio cobrado incluye IVA. 😊',
+      'El precio cobrado incluye IVA 👍',
+      'El precio cobrado incluye IVA ✅',
+      'El precio cobrado incluye IVA ✔️',
+      'El precio cobrado incluye IVA 🙂',
+      'El precio cobrado incluye IVA.\n',
+      'Estos son los planes\n- Plan Confio: 390.000 Gs al año\n- El precio cobrado incluye IVA.',
+      '**El precio cobrado incluye IVA.**',
+      '*El precio cobrado incluye IVA.*',
+      '__El precio cobrado incluye IVA__',
+      'El plan cuesta 390.000 Gs al año en dos cuotas. El precio cobrado incluye IVA.',
+      'Tenemos dos planes con montos en Gs. El plan Confio cuesta Gs. 390.000 al año. El precio cobrado incluye IVA.',
+      'Cubre a tres beneficiarios hasta treinta días. Se paga en dos cuotas. El precio cobrado incluye IVA.',
+      'Plan Básico: 390.000 Gs al año. Plan Medio: 590.000 Gs al año. Es un plan para tu familia. El precio cobrado incluye IVA.',
+      'Plan Básico: 390.000 Gs al año. Plan Medio: 590.000 Gs al año. Se paga una vez al año. El precio cobrado incluye IVA.',
+      'Premio total anual · IVA incluido',
+      'El premio total anual es de 390.000 Gs, con IVA incluido. Se paga una vez al año.',
+    ])('«%s» no se detecta', (texto) => {
+      expect(afirmaTratamientoTributario(texto)).toBe(false);
+    });
+    it.each([
+      'El precio cobrado no incluye IVA.',
+      'El precio cobrado nunca incluye IVA.',
+      'No, el precio cobrado incluye IVA.',
+      'Quizá el premio incluye IVA.',
+      'Tampoco el premio incluye IVA.',
+      'Sin IVA.',
+      'Más IVA.',
+      'El IVA se cobra aparte.',
+      'El precio cobrado incluye IVA más impuestos.',
+      'El precio cobrado incluye IVA del 10 %.',
+      'El precio cobrado incluye IVA 10%.',
+      'El precio cobrado incluye IVA del diez por ciento.',
+      'El precio cobrado incluye el IVA y está exento.',
+      'El precio cobrado incluye IVA y los impuestos.',
+      'El precio cobrado incluye IVA, pero se suma un impuesto.',
+      'El precio cobrado incluye IVA, pero solo en algunos planes.',
+      'El precio cobrado incluye IVA excepto en el plan básico.',
+      'El precio cobrado incluye IVA, no siempre.',
+      'El precio cobrado incluye IVA; depende del plan.',
+      'Este monto final ya incluye el IVA, y se paga una vez al año.',
+      'El importe total mensual publicado incluye el IVA; se paga una vez al año.',
+      'El valor final incluyen IVA y se paga en cuotas.',
+      'No sé si incluye IVA.',
+      'No sé si el precio incluye IVA.',
+      'El IVA es del 10 por ciento.',
+      'El precio cobrado incluye IVA incluye IVA.',
+      'El precio cobrado incluye IVA y el IVA es otro.',
+      'El precio cobrado incluye IVA y la prima neta es menor.',
+      'El precio cobrado incluye IVA.\nEl IVA es aparte.',
+      'EL PRECIO COBRADO NO INCLUYE IVA.',
+      'El precio de la póliza incluye IVA.',
+      'El precio cobrado incluye IVA-',
+      'El precio cobrado incluye IVA:',
+      'El precio incluye IVA y es deducible del IRP.',
+      'El precio incluye IVA, en el primer año.',
+      'El precio incluye IVA, para personas físicas.',
+      'El precio incluye IVA, por ahora.',
+      'El precio incluye IVA, el diez.',
+      'El precio incluye IVA, a la tasa del diez.',
+      'El precio incluye IVA y está exonerado para empresas.',
+      'El precio incluye IVA y emitimos factura con crédito fiscal.',
+      'El precio incluye IVA y lo paga Interseguros.',
+      'El precio incluye IVA y te lo reintegramos.',
+      'El precio incluye IVA y tributos.',
+      'El precio incluye IVA e ISC.',
+      'El precio incluye IVA, reducido.',
+      'El precio incluye IVA y el Premium lo cobra por separado.',
+      'El precio incluye IVA, a parte del recargo.',
+      'El precio incluye IVA, + recargo.',
+      'El precio incluye IVA, I.V.A. aparte',
+      'El precio incluye IVA e IT.',
+      'El precio incluye IVA y excluye el sellado.',
+      'Excepto en el Plan Básico, el precio incluye IVA.',
+      'Salvo el plan básico, el precio incluye IVA.',
+      'Solo el premio anual incluye IVA.',
+      'Únicamente el premio anual incluye IVA.',
+      'Para empresas, el precio incluye IVA.',
+      'Desde 2027 el precio incluye IVA.',
+      'En el plan Medio el precio incluye IVA.',
+      'Es falso que el precio incluye IVA.',
+      'Es incorrecto decir que el precio incluye IVA.',
+      'Jamás el precio incluye IVA.',
+      'Ojalá el precio incluye IVA.',
+      'No es cierto que (ver punto 3.2) el precio incluye IVA.',
+      'El precio incluye IVA. La tasa es del diez.',
+      'El precio incluye IVA del diez',
+      'El precio incluye IVA! Del diez',
+      'El precio incluye IVA\nal diez',
+      'El precio incluye IVA. Lo paga Interseguros, no tú.',
+      'Creo que el precio incluye IVA.',
+      'El precio incluye IVA (ver nota).',
+      'Costo: el precio incluye IVA y el seguro es de vida.',
+      '¿El precio incluye IVA? No, se cobra aparte.',
+      '¿Tu premio incluye IVA? No.',
+      'El precio incluye IVA. Bueno, en realidad no.',
+      'El precio incluye IVA. ¿O no?',
+      'El precio incluye IVA… o no.',
+      'Solo para personas físicas. El precio incluye IVA.',
+      'Para empresas no aplica. El precio incluye IVA.',
+      'El precio incluye IVA. El seguro de vida no lo lleva.',
+      'El precio incluye IVA. Es del 10.',
+      'El precio incluye IVA. Al 5.',
+      'El precio incluye IVA. El gravamen se paga aparte.',
+      'El precio incluye IVA. Los aranceles van por separado.',
+      'El precio incluye IVA. Hacienda cobra aparte el resto.',
+      'El precio incluye IVA. Se discrimina en la factura.',
+      'El precio incluye IVA. Un décimo va al fisco.',
+      'El precio incluye IVA. Al dieciséis.',
+      'El precio incluye IVA. I V A aparte.',
+      'IVA incluido. La tasa es del diez.',
+      'El precio incluye IVA ❌',
+      '❌ El precio incluye IVA.',
+      'El precio incluye IVA 🚫',
+      'El precio incluye IVA ✗',
+      'El precio incluye IVA 👎',
+      'El precio incluye IVA 🤥',
+      '🤥 El precio incluye IVA.',
+      'El precio incluye IVA ≠',
+      'El precio incluye IVA ¬',
+      'El precio incluye IVA ~~',
+      '✅ El precio incluye IVA.',
+      'Premium ✗ excluido. El precio cobrado incluye IVA.',
+      'Premio 390.000 Gs, de los cuales 100.000 Gs van al gobierno. El precio incluye IVA.',
+      'Premio 390.000 Gs. Una porción corresponde a otra cosa. El precio incluye IVA.',
+      'Premio 390.000 Gs. Una parte de eso es otra cosa. El precio incluye IVA.',
+      'Premio 390.000 Gs. Van a la DNIT. El precio incluye IVA.',
+      'Premio 390.000 Gs. El valor agregado es otro. El precio incluye IVA.',
+      'Premio 390.000 Gs. El valor añadido es otro. El precio incluye IVA.',
+      'Ojo con el crédito. El precio incluye IVA.',
+      'Régimen general. El precio incluye IVA.',
+      'Para el contribuyente. El precio incluye IVA.',
+      'Para monotributistas. El precio incluye IVA.',
+      'Se retienen valores. El precio incluye IVA.',
+      'Hay personas exceptuadas. El precio incluye IVA.',
+      'Excluye emisión. El precio incluye IVA.',
+      'El Premium está excluido. El precio incluye IVA.',
+      'Hay un plan fuera de esto. El precio incluye IVA.',
+      'Encima hay un extra. El precio incluye IVA.',
+      'Hay un plus. El precio incluye IVA.',
+      'Es el premio neto. El precio incluye IVA.',
+      'Cuenta el gobierno. El precio incluye IVA.',
+      'Un diezmo. El precio incluye IVA.',
+      'Es a parte. El precio incluye IVA.',
+      'Más gastos de emisión. El precio incluye IVA.',
+      'Se añade el gasto de emisión. El precio incluye IVA.',
+      'Es libre. El precio incluye IVA.',
+      'Queda liberado. El precio incluye IVA.',
+      'Si lo pagan hoy. El precio incluye IVA.',
+      'Cuando se paga. El precio incluye IVA.',
+      'Es distinto. El precio incluye IVA.',
+      'Es diferente. El precio incluye IVA.',
+      'Esto cambia. El precio incluye IVA.',
+      'Es otro monto. El precio incluye IVA.',
+      'Es broma. El precio incluye IVA.',
+      'Dato inexacto. El precio incluye IVA.',
+      'Te engañamos. El precio incluye IVA.',
+      'The VAT is separate. El precio incluye IVA.',
+      'Tax free. El precio incluye IVA.',
+      'Not included. El precio incluye IVA.',
+      'Excluding fees. El precio incluye IVA.',
+      'Plus fees. El precio incluye IVA.',
+      'Extra fees. El precio incluye IVA.',
+      'Los seguros de vida están eximidos. El precio cobrado incluye IVA.',
+      'El seguro está desgravado. El precio cobrado incluye IVA.',
+      'Lo podés desgravar. El precio cobrado incluye IVA.',
+      'La carga impositiva es mínima. El precio cobrado incluye IVA.',
+      'Se aplica una sobretasa. El precio cobrado incluye IVA.',
+      'Se paga al erario. El precio cobrado incluye IVA.',
+      'Lo podés usar como saldo a favor. El precio cobrado incluye IVA.',
+      'Lo podés imputar contra tus débitos. El precio cobrado incluye IVA.',
+      'Te reembolsan la diferencia. El precio cobrado incluye IVA.',
+      'Te devolvemos parte del monto. El precio cobrado incluye IVA.',
+      'Es compensable. El precio cobrado incluye IVA.',
+      'Va la percepción correspondiente. El precio cobrado incluye IVA.',
+      'Lo recauda la autoridad recaudadora. El precio cobrado incluye IVA.',
+      'El porcentaje es reducido. El precio cobrado incluye IVA.',
+      'Lo refleja la factura por separada. El precio cobrado incluye IVA.',
+      'Se liquida por separada. El precio cobrado incluye IVA.',
+      'Lo asume Interseguros. El precio cobrado incluye IVA.',
+      'La aseguradora lo absorbe. El precio cobrado incluye IVA.',
+      'Está bonificado. El precio cobrado incluye IVA.',
+      'Lo podés rebajar de tu renta. El precio cobrado incluye IVA.',
+      'Una parte es para el erario. El precio cobrado incluye IVA.',
+      'Te lo descontamos después. El precio cobrado incluye IVA.',
+      'Se resta del premio. El precio cobrado incluye IVA.',
+      'El precio cobrado incluye IVA*',
+      '**El precio cobrado incluye IVA*',
+      'Falso: el precio incluye IVA.',
+      'Excepto en el Plan Básico: el precio incluye IVA.',
+      'Desde 2027: el precio incluye IVA.',
+      'Depende: el premio incluye IVA.',
+      'Sí: el precio incluye IVA.',
+      'No.\nEl precio incluye IVA.',
+      'Mentira. El precio incluye IVA.',
+      'El precio incluye IVA. Salvo para empresas.',
+      'El precio incluye IVA. Mentira, se suma aparte.',
+      'El precio incluye IVA.\n- Salvo para empresas.',
+      'El precio incluye IVA. Lo cobra Interseguros y lo devuelve el Estado.',
+      'El precio incluye IVA. Un plan aparte. Hola',
+      'El precio incluye IVA. Hola.',
+      'El precio incluye IVA, gracias.',
+      'El precio incluye IVA. Es del diez por ciento.',
+      'El precio incluye IVA. Es del 10 %.',
+      'El precio incluye IVA. Al uno y medio.',
+      'El precio incluye IVA. Una décima parte.',
+      'El precio incluye IVA. Veintiuno.',
+      'El precio incluye IVA. La tasa de aprobación es alta.',
+    ])('«%s» se detecta', (texto) => {
+      expect(afirmaTratamientoTributario(texto)).toBe(true);
+    });
+    it('una oración permitida que no es la última no se quita', () => {
+      expect(afirmaTratamientoTributario('El precio cobrado incluye IVA. Se paga una vez al año.')).toBe(true);
+    });
+    it('los números en palabras: qué bloquea y qué no', () => {
+      // La oración permitida va al final: el resto va antes.
+      const f = (resto: string): boolean => afirmaTratamientoTributario(`${resto} El precio cobrado incluye IVA.`);
+      for (const ok of ['Tenemos un plan.', 'Es el Plan Medio.', 'Hay dos planes.', 'Cubre a tres beneficiarios.', 'Hasta treinta días.', 'Se paga en dos cuotas.', 'Cuesta 390.000 Gs.', 'Cuesta Gs. 390.000.', 'Cuesta diez mil guaraníes.', 'Edad de 18 a 64 años.']) {
+        expect(f(ok), ok).toBe(false);
+      }
+      for (const mal of ['Es del diez.', 'Es del 10.', 'Al 5.', 'Dieciséis.', 'Veintiuno.', 'Un décimo.', 'Una décima parte.', 'Al uno y medio.', 'Cuesta 10 %.', 'Son treinta.']) {
+        expect(f(mal), mal).toBe(true);
+      }
+    });
+    it('el costo es lineal con textos enormes', () => {
+      for (const n of [50_000, 200_000]) {
+        for (const unidad of ['el precio incluye iva, ', 'el precio incluye iva. ', 'dos planes y tres cuotas de 390.000 gs. ']) {
+          const texto = unidad.repeat(Math.ceil(n / unidad.length));
+          const t0 = performance.now();
+          afirmaTratamientoTributario(texto);
+          expect(performance.now() - t0).toBeLessThan(300);
+        }
+      }
+    });
+  });
   it('el agente reemplaza «IVA incluido» por la frase provisional y lo avisa sin texto', async () => {
     const { agente } = await armar('El plan cuesta 390.000 Gs al año, más IVA.');
     const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
@@ -318,6 +568,36 @@ describe('tratamiento tributario (C14 pendiente)', () => {
     const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
     expect(r.salida.texto).toBe('El plan cuesta 390.000 Gs al año, con IVA incluido.');
     expect(r.avisos).not.toContain('tributario_bloqueado');
+  });
+  it('el agente entrega los precios cuando la respuesta dice «El precio cobrado incluye IVA»', async () => {
+    const { agente } = await armar('El plan cuesta 390.000 Gs al año. El precio cobrado incluye IVA.');
+    const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+    expect(r.salida.texto).toBe('El plan cuesta 390.000 Gs al año. El precio cobrado incluye IVA.');
+    expect(r.avisos).not.toContain('tributario_bloqueado');
+  });
+  it.each([
+    'El plan cuesta 390.000 Gs al año. El precio cobrado incluye IVA. Salvo para empresas.',
+    'El plan cuesta 390.000 Gs al año. ¿El precio incluye IVA? No, se cobra aparte.',
+    'El plan cuesta 390.000 Gs al año. Falso: el precio incluye IVA.',
+    'El plan cuesta 390.000 Gs al año. El precio cobrado incluye IVA. La tasa es del diez.',
+  ])('el agente sustituye por el texto tributario: «%s»', async (texto) => {
+    const { agente } = await armar(texto);
+    const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+    expect(r.salida).toEqual(salidaTributaria('E04'));
+    expect(r.avisos).toContain('tributario_bloqueado');
+  });
+  it('el agente entrega intacta una respuesta de precios que cierra con la frase permitida', async () => {
+    const texto = 'Tenemos dos planes con montos en Gs. El plan Confio cuesta 390.000 Gs al año, en dos cuotas. El precio cobrado incluye IVA.';
+    const { agente } = await armar(texto);
+    const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+    expect(r.salida.texto).toBe(texto);
+    expect(r.avisos).not.toContain('tributario_bloqueado');
+  });
+  it('el agente sustituye por el texto tributario si dice «incluye IVA del 10 %»', async () => {
+    const { agente } = await armar('El plan cuesta 390.000 Gs al año. El precio cobrado incluye IVA del 10 %.');
+    const r = await agente.responder(entrada({ plataforma: plataforma(), mensaje: 'proceso pasos sintéticos' }), 'c');
+    expect(r.salida).toEqual(salidaTributaria('E04'));
+    expect(r.avisos).toContain('tributario_bloqueado');
   });
   it('el prompt lleva la regla del IVA', () => {
     expect(REGLAS_KUAA.join(' ')).toContain('con IVA incluido');
