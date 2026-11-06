@@ -16,6 +16,8 @@
  */
 import type { ConfiguracionEfectiva } from '../configuracion/esquema.js';
 import { BotonSalida, ObjecionSalida, PropuestaSalida, SalidaOportunidad, type EstadosOperativos, type EtapaVenta } from './esquemas.js';
+import type { CausaErrorProveedor } from '../puertos/proveedor-llm.js';
+import { FRASE_ALTA_DEMANDA, FRASE_DERIVACION_WHATSAPP } from './frases-kuaa.js';
 import { formatearTelefono } from './formato-plataforma.js';
 import { contieneEnlaceOPrecio, paraDetectar, patronEnlaceOPrecio, permitidosDe, type Permitidos } from './detector-enlace-precio.js';
 
@@ -165,6 +167,23 @@ export const TEXTO_SIN_CIFRAS = 'Los precios, montos, teléfonos y enlaces no lo
 export function salidaSinCifras(etapa: EtapaVenta, whatsappE164?: string): SalidaOportunidad {
   const texto = whatsappE164 === undefined ? TEXTO_SIN_CIFRAS : `Ese dato no lo puedo dar por este medio. Podés escribir al WhatsApp ${formatearTelefono(whatsappE164)} y una persona del equipo te ayuda.`;
   return { texto, etapa_propuesta: etapa, objecion: null, botones: [], propuestas: [] };
+}
+
+/**
+ * Texto del caso `sin_respaldo` (RAG sin fragmentos): `mensajes.sinRespaldo` más la derivación. Con el WhatsApp de la
+ * plataforma de ESTA petición, la derivación lo nombra con una frase fija por `voz.tratamiento` (con vos, la de `salidaSinCifras`); sin él (no hay plataforma
+ * o no trae contacto) queda el texto de siempre, sin contacto inventado. Defensa: si el detector de enlaces, teléfonos
+ * e importes objetara el texto resultante aun con el número permitido, se vuelve al texto de siempre. Es otro caso que
+ * el «problema técnico» (`errorTemporal`), que se dispara cuando falla el modelo o un verificador descarta la respuesta.
+ * Qué NO garantiza: que el número sea el vigente (lo informa SLT) ni que la persona escriba.
+ */
+export function textoSinRespaldo(config: ConfiguracionEfectiva, plataforma: Parameters<typeof permitidosDe>[0]): string {
+  const siempre = `${config.mensajes.sinRespaldo} ${config.mensajes.derivacion}`.trim();
+  const tel = plataforma?.contacto.whatsapp_e164;
+  if (tel === undefined) return siempre;
+  const [antes, despues] = FRASE_DERIVACION_WHATSAPP[config.voz.tratamiento];
+  const texto = `${config.mensajes.sinRespaldo} ${antes} ${formatearTelefono(tel)} ${despues}`.trim();
+  return patronEnlaceOPrecio(texto, permitidosDe(plataforma)) === null ? texto : siempre;
 }
 
 /**
@@ -411,6 +430,7 @@ export function retirarCodigosInternos(texto: string): string {
     .trim();
 }
 
-export function salidaFallback(config: ConfiguracionEfectiva, etapa: EtapaVenta): SalidaOportunidad {
-  return { texto: config.mensajes.errorTemporal, etapa_propuesta: etapa, objecion: null, botones: [], propuestas: [] };
+export function salidaFallback(config: ConfiguracionEfectiva, etapa: EtapaVenta, causa?: CausaErrorProveedor): SalidaOportunidad {
+  const demanda = causa === 'cuota' || causa === 'saturacion';
+  return { texto: demanda ? FRASE_ALTA_DEMANDA[config.voz.tratamiento] : config.mensajes.errorTemporal, etapa_propuesta: etapa, objecion: null, botones: [], propuestas: [] };
 }

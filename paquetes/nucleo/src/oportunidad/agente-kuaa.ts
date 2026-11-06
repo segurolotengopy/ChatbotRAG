@@ -37,13 +37,13 @@ import { evaluarEntrada } from '../compuertas/entrada.js';
 import { aplicarCompuertasSalida, extraerMarcas } from '../compuertas/salida.js';
 import { sanearTexto } from '../compuertas/saneo.js';
 import { ErrorPeticion, hashConversacion, type DependenciasAgente } from '../orquestador/agente.js';
-import { mensajeSinRespaldo } from '../prompt/armar.js';
 import type { EventoBitacora } from '../puertos/bitacora.js';
+import { causaDeError } from '../puertos/proveedor-llm.js';
 import type { FragmentoRecuperado } from '../puertos/indice-conocimiento.js';
 import { EntradaKuaa, SalidaOportunidad, filtrarBotonesSalida } from './esquemas.js';
 import { normalizarEntradaKuaa } from './normalizar-entrada.js';
 import { armarPromptKuaa } from './prompt-kuaa.js';
-import { afirmaHechoNoRespaldado, afirmaTratamientoTributario, quitarFrases, salvarQuitandoBloqueado, quitarPromesasDeEntrega, quitarSaludoInicial, retirarNumerosDeRegistro, salidaTributaria, patronEnlaceOPrecio, permitidosDe, analizarSalida, filtraPrompt, retirarCodigosInternos, salidaFallback, salidaSinCifras } from './salida-kuaa.js';
+import { afirmaHechoNoRespaldado, afirmaTratamientoTributario, quitarFrases, salvarQuitandoBloqueado, quitarPromesasDeEntrega, quitarSaludoInicial, retirarNumerosDeRegistro, salidaTributaria, patronEnlaceOPrecio, permitidosDe, analizarSalida, filtraPrompt, retirarCodigosInternos, salidaFallback, salidaSinCifras, textoSinRespaldo } from './salida-kuaa.js';
 
 export interface ResultadoKuaa {
   salida: SalidaOportunidad;
@@ -120,17 +120,17 @@ export class AgenteKuaa {
     if (config.conocimiento.modo === 'rag' && this.deps.indice && !esCortesia(texto)) {
       try {
         fragmentos = await this.deps.indice.buscar(texto, { coleccion: coleccionDe(this.deps.config, null), topK: config.conocimiento.topK, umbral: config.conocimiento.umbral });
-      } catch {
+      } catch (e) {
         avisos.push('indice_error');
-        this.deps.bitacora.registrar({ ...base, tipo: 'error_modelo', codigo: 'indice' });
+        this.deps.bitacora.registrar({ ...base, tipo: 'error_modelo', codigo: 'indice', causa: causaDeError(e) });
       }
       if (this.opciones.perfilConocimiento === 'pruebas' && this.opciones.versionPaquete) {
         try {
           const delPaquete = await this.deps.indice.buscar(texto, { coleccion: coleccionPaquete(coleccionDe(this.deps.config, null)), topK: config.conocimiento.topK, umbral: config.conocimiento.umbral });
           fragmentos = [...fragmentos, ...delPaquete].sort((a, b) => b.puntaje - a.puntaje).slice(0, config.conocimiento.topK);
-        } catch {
+        } catch (e) {
           avisos.push('indice_error');
-          this.deps.bitacora.registrar({ ...base, tipo: 'error_modelo', codigo: 'indice' });
+          this.deps.bitacora.registrar({ ...base, tipo: 'error_modelo', codigo: 'indice', causa: causaDeError(e) });
         }
       }
     }
@@ -173,9 +173,11 @@ export class AgenteKuaa {
         textoModelo = r.texto;
         cortado = r.motivoFin === 'max_tokens';
         motivoFin = r.motivoFin;
-      } catch {
-        this.deps.bitacora.registrar({ ...base, tipo: 'error_modelo', codigo: 'proveedor', iteraciones: intento + 1, ...(intento > 0 ? tokens : {}) });
-        return fallback(avisos, 'error_modelo');
+      } catch (e) {
+        // Solo la causa enumerada llega a la bitácora y decide el texto; jamás el mensaje del error.
+        const causa = causaDeError(e);
+        this.deps.bitacora.registrar({ ...base, tipo: 'error_modelo', codigo: 'proveedor', causa, iteraciones: intento + 1, ...(intento > 0 ? tokens : {}) });
+        return { salida: salidaFallback(config, etapa, causa), avisos: [...avisos, 'error_modelo'] };
       }
       analizada = cortado ? { causa: 'json_roto' } : analizarSalida(textoModelo);
       const formatoRoto = 'causa' in analizada && (analizada.causa === 'json_roto' || analizada.causa === 'sin_objeto');
@@ -243,7 +245,7 @@ export class AgenteKuaa {
     // Sin respaldo no se afirma nada, sea cual sea la forma del texto: no hay excepción por «pregunta».
     let salida: SalidaOportunidad = { ...interpretada, texto: textoSaneado };
     if (config.conocimiento.modo === 'rag' && config.conocimiento.exigirRespaldo && fragmentos.length === 0 && !esCortesia(texto)) {
-      salida = { ...salidaFallback(config, etapa), texto: mensajeSinRespaldo(config), propuestas: salida.propuestas.filter((p) => p === 'atencion_humana_solicitada') };
+      salida = { ...salidaFallback(config, etapa), texto: textoSinRespaldo(config, entrada.plataforma), propuestas: salida.propuestas.filter((p) => p === 'atencion_humana_solicitada') };
       avisos.push('sin_respaldo');
       this.deps.bitacora.registrar({ ...base, tipo: 'sin_respaldo' });
     }
