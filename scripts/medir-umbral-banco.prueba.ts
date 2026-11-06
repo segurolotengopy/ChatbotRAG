@@ -5,12 +5,13 @@
  */
 import { execFile } from 'node:child_process';
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
+import { chmodSync, closeSync, copyFileSync, existsSync, fstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { afterAll, describe, expect, it } from 'vitest';
+import { cargarCalibracion, verificarCalibracion } from '../paquetes/nucleo/src/indice.js';
 
 const ejecutar = promisify(execFile);
 const SCRIPT = fileURLToPath(new URL('./medir-umbral-banco.mts', import.meta.url));
@@ -181,5 +182,166 @@ describe('medir-umbral-banco', { timeout: 60000 }, () => {
     const r = await correr([`--banco=${fifo}`, `--evaluacion=${evaluacion}`, '--proveedor=simulado']);
     expect(r.codigo).toBe(1);
     expect(r.salida).toContain('archivo no admitido');
+  });
+
+  describe('--salida', () => {
+    const nuevaSalida = (): string => mkdtempSync(join(dir, 'salida-'));
+
+    it('escribe un calibracion.json que pasa cargarCalibracion, con modo 0600 y sin texto de casos', async () => {
+      const salida = nuevaSalida();
+      const r = await correr([...base, `--salida=${salida}`]);
+      expect(r.codigo).toBe(0);
+      expect(r.salida).toContain('calibracion_json=escrita valido=true');
+      const ruta = join(salida, 'calibracion.json');
+      // Se abre una sola vez y se lee por el descriptor: modo y contenido salen del mismo archivo (sin carrera).
+      const fd = openSync(ruta, 'r');
+      let contenido: string;
+      try {
+        expect(fstatSync(fd).mode & 0o777).toBe(0o600);
+        contenido = readFileSync(fd, 'utf8');
+      } finally {
+        closeSync(fd);
+      }
+      expect(readdirSync(salida)).toEqual(['calibracion.json']);
+      const cal = cargarCalibracion(contenido);
+      expect(cal.proveedor).toBe('simulado');
+      expect(cal.modelo).toBe('simulado');
+      expect(cal.dimension).toBe(64);
+      expect(cal.valido).toBe(true);
+      expect(cal.banco_sha256).toBe(/banco_sha256=([0-9a-f]{64})/.exec(r.salida)?.[1]);
+      expect(cal.medido).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      const textos = (JSON.parse(readFileSync(evaluacion, 'utf8')) as { casos: Array<{ texto: string }> }).casos.map((c) => c.texto);
+      for (const t of textos) expect(contenido).not.toContain(t);
+      // Apta solo si se admite el simulado, y solo con el mismo banco, modelo y dimensión.
+      const esperado = { bancoSha256: cal.banco_sha256, modelo: 'simulado', dimension: 64 };
+      expect(verificarCalibracion(cal, esperado).semanticaApta).toBe(false);
+      expect(verificarCalibracion(cal, { ...esperado, admitirSimulado: true }).semanticaApta).toBe(true);
+      expect(verificarCalibracion(cal, { ...esperado, admitirSimulado: true, modelo: 'otro' }).semanticaApta).toBe(false);
+    });
+
+    it('escribe valido=false con sus motivos cuando el control es inválido, y no es apta', async () => {
+      // Un caso de control «ninguna» casi idéntico a una pregunta del banco provoca un falso positivo en el control.
+      const crudo = JSON.parse(readFileSync(evaluacion, 'utf8')) as { casos: Array<{ id: string; texto: string; esperado: { tipo: string }; particion: string }> };
+      const cercano = crudo.casos.find((c) => c.esperado.tipo === 'ninguna' && c.particion === 'control');
+      if (!cercano) throw new Error('el ejemplo debe tener casos «ninguna» de control');
+      const banco0 = JSON.parse(readFileSync(banco, 'utf8')) as { respuestas: Array<{ preguntas: string[] }> };
+      cercano.texto = banco0.respuestas[0]!.preguntas[0]!.replace(/[¿?]/g, '');
+      const mala = join(dir, 'control-malo.json');
+      writeFileSync(mala, JSON.stringify(crudo));
+      const salida = nuevaSalida();
+      const r = await correr([`--banco=${banco}`, `--evaluacion=${mala}`, '--proveedor=simulado', `--salida=${salida}`]);
+      expect(r.codigo).toBe(1);
+      const cal = cargarCalibracion(readFileSync(join(salida, 'calibracion.json'), 'utf8'));
+      expect(cal.valido).toBe(false);
+      expect(cal.motivos_invalidez.length).toBeGreaterThan(0);
+      expect(verificarCalibracion(cal, { bancoSha256: cal.banco_sha256, modelo: 'simulado', dimension: 64, admitirSimulado: true }).semanticaApta).toBe(false);
+    });
+
+    // Un caso «ninguna» de calibración idéntico a una pregunta del banco: ningún umbral del barrido evita el falso positivo.
+    const sinUmbral = (): string => {
+      const crudo = JSON.parse(readFileSync(evaluacion, 'utf8')) as { casos: Array<{ texto: string; esperado: { tipo: string }; particion: string }> };
+      const c = crudo.casos.find((x) => x.esperado.tipo === 'ninguna' && x.particion === 'calibracion');
+      const b = JSON.parse(readFileSync(banco, 'utf8')) as { respuestas: Array<{ preguntas: string[] }> };
+      if (!c) throw new Error('el ejemplo debe tener casos «ninguna» de calibración');
+      c.texto = b.respuestas[0]!.preguntas[0]!;
+      const ruta = join(dir, 'sin-umbral.json');
+      writeFileSync(ruta, JSON.stringify(crudo));
+      return ruta;
+    };
+    const pocos = (): string => {
+      const ruta = join(dir, 'pocos-salida.json');
+      writeFileSync(ruta, JSON.stringify({ formato: 1, version: '1.0.0', casos: [{ id: 'caso-uno', texto: 'texto sintetico uno', esperado: { tipo: 'ninguna' }, particion: 'control' }] }));
+      return ruta;
+    };
+
+    for (const [nombre, evaluacionFalla, mensaje] of [
+      ['sin_umbral_factible', sinUmbral, 'sin umbral factible'],
+      ['minimos_calibracion_insuficientes', pocos, 'mínimos de calibración insuficientes'],
+    ] as const) {
+      it(`${nombre} no escribe archivo (código 1)`, async () => {
+        const salida = nuevaSalida();
+        const r = await correr([`--banco=${banco}`, `--evaluacion=${evaluacionFalla()}`, '--proveedor=simulado', `--salida=${salida}`]);
+        expect(r.codigo).toBe(1);
+        expect(r.salida).toContain(`resultado=${nombre}`);
+        expect(r.salida).toContain(mensaje);
+        expect(readdirSync(salida)).toEqual([]);
+      });
+
+      it(`${nombre} con un calibracion.json previo: con --sobrescribir lo renombra a .invalidada, sin él rechaza antes de medir y lo deja intacto`, async () => {
+        const salida = nuevaSalida();
+        const ruta = join(salida, 'calibracion.json');
+        writeFileSync(ruta, 'previo');
+        const args = [`--banco=${banco}`, `--evaluacion=${evaluacionFalla()}`, '--proveedor=simulado', `--salida=${salida}`];
+        const sin = await correr(args);
+        expect(sin.codigo).toBe(1);
+        // Sin --sobrescribir y con el archivo presente se sale ANTES de medir: no se gastan embeddings.
+        expect(sin.salida).toContain('no se midió nada');
+        expect(sin.salida).not.toContain('banco_sha256');
+        expect(readFileSync(ruta, 'utf8')).toBe('previo');
+        const con = await correr([...args, '--sobrescribir']);
+        expect(con.codigo).toBe(1);
+        expect(con.salida).toContain('invalidada la calibración anterior');
+        expect(readFileSync(`${ruta}.invalidada`, 'utf8')).toBe('previo');
+        // Una segunda invalidación no pisa la primera: usa el sufijo de fecha y hora UTC. El flag 'wx' falla si el
+        // original siguiera ahí, así que también comprueba que la invalidación lo retiró (sin comprobar-y-escribir).
+        writeFileSync(ruta, 'segundo', { flag: 'wx' });
+        await correr([...args, '--sobrescribir']);
+        const nombres = readdirSync(salida).sort();
+        expect(nombres).toHaveLength(2);
+        expect(nombres[0]).toMatch(/^calibracion\.json\.invalidada$/);
+        expect(nombres[1]).toMatch(/^calibracion\.json\.invalidada-\d{8}T\d{6}Z-[0-9a-f]{6}$/);
+        expect(readFileSync(`${ruta}.invalidada`, 'utf8')).toBe('previo');
+      });
+    }
+
+    it('no sobrescribe un archivo existente salvo --sobrescribir', async () => {
+      const salida = nuevaSalida();
+      const ruta = join(salida, 'calibracion.json');
+      writeFileSync(ruta, 'previo');
+      const r = await correr([...base, `--salida=${salida}`]);
+      expect(r.codigo).toBe(1);
+      expect(r.salida).toContain('--sobrescribir');
+      expect(r.salida).not.toContain('banco_sha256');
+      expect(readFileSync(ruta, 'utf8')).toBe('previo');
+      expect(readdirSync(salida)).toEqual(['calibracion.json']);
+      const r2 = await correr([...base, `--salida=${salida}`, '--sobrescribir']);
+      expect(r2.codigo).toBe(0);
+      cargarCalibracion(readFileSync(ruta, 'utf8'));
+      expect(readdirSync(salida)).toEqual(['calibracion.json']);
+    });
+
+    it('--sobrescribir con un destino que no es un archivo regular falla sin medir', async () => {
+      const salida = nuevaSalida();
+      mkdirSync(join(salida, 'calibracion.json'));
+      const r = await correr([...base, `--salida=${salida}`, '--sobrescribir']);
+      expect(r.codigo).toBe(1);
+      expect(r.salida).toContain('no es un archivo regular');
+      expect(r.salida).not.toContain('banco_sha256');
+    });
+
+    it('rechaza un directorio de salida escribible por grupo u otros', async () => {
+      const salida = nuevaSalida();
+      chmodSync(salida, 0o777);
+      const r = await correr([...base, `--salida=${salida}`]);
+      expect(r.codigo).toBe(1);
+      expect(r.salida).toContain('no debe ser escribible por el grupo ni por otros');
+      expect(r.salida).not.toContain('banco_sha256');
+    });
+
+    it('rechaza una salida dentro del repositorio, inexistente o que no es un directorio, sin medir', async () => {
+      const enRepo = await correr([...base, `--salida=${fileURLToPath(new URL('../scripts', import.meta.url))}`]);
+      expect(enRepo.codigo).toBe(1);
+      expect(enRepo.salida).toContain('fuera del repositorio');
+      expect(enRepo.salida).not.toContain('banco_sha256');
+      const noExiste = await correr([...base, `--salida=${join(dir, 'no-existe-dir')}`]);
+      expect(noExiste.codigo).toBe(1);
+      expect(noExiste.salida).toContain('directorio existente');
+      expect(existsSync(join(dir, 'no-existe-dir'))).toBe(false);
+      const archivo = await correr([...base, `--salida=${banco}`]);
+      expect(archivo.codigo).toBe(1);
+      expect(archivo.salida).toContain('directorio existente');
+      expect((await correr([...base, '--salida='])).codigo).toBe(2);
+      expect((await correr([...base, '--sobrescribir'])).codigo).toBe(2);
+    });
   });
 });

@@ -22,21 +22,53 @@
  *
  * TIEMPO MÁXIMO Y REINTENTO: el 2026-11-03 dos peticiones de Kuaa esperaron 58 s y 20,6 s a Vertex
  * en staging, y el sitio corta a los 20 s. Cada intento de `generar` tiene un tope de 9 000 ms
- * (`tiempoMaximoMs`) y se reintenta una vez (`reintentos`), sin espera entre intentos: peor caso
- * 2 × 9 s = 18 s, bajo el tope del sitio. Solo se reintenta lo transitorio: vencimiento del tiempo,
- * estado 500/502/503/504 y errores de red (ECONNRESET, ETIMEDOUT, EAI_AGAIN, «fetch failed»).
- * El 429 NO se reintenta a propósito: una cuota agotada no se resuelve en 0 ms y reintentar solo
- * duplicaría la presión. Un 400, 401, 403, 404 (modelo retirado), 429 o un error desconocido sale en
- * el primer intento; un `status`/`code` numérico no transitorio decide antes que el texto del mensaje.
- * NO garantiza respuesta: si ambos intentos fallan, se lanza `ErrorProveedor` y el agente responde con
- * su mensaje de respaldo de siempre. El texto propio del error de tiempo no incluye la petición; el
- * de Vertex se propaga tal cual. El tope de 18 s vale POR LLAMADA al modelo, no por turno: el agente
- * genérico puede llamar hasta `maxIteraciones` veces (Kuaa usa una sola). En el peor caso el
- * reintento duplica las llamadas facturables. `crearClienteVertex` NO pasa `httpOptions.retryOptions`
- * a propósito: si se añadiera, el factor sería 2×5. El embebedor no tiene tiempo máximo ni reintento.
+ * (`tiempoMaximoMs`). Lo transitorio se reintenta una vez (`reintentos`), sin espera: vencimiento del tiempo, estado
+ * 500/502/504 y errores de red (ECONNRESET, ETIMEDOUT, EAI_AGAIN, «fetch failed»). El 503 NO es de este grupo: va con el
+ * 429 (abajo), con espera y hasta 2 reintentos. Todo queda acotado por el presupuesto de 18,5 s (más abajo).
+ * Un 400, 401, 403, 404 o un error desconocido sale en el primer intento; un `status`/`code` numérico no
+ * transitorio decide antes que el texto del mensaje.
+ *
+ * EL 429 (CUOTA) Y EL 503, CRITERIO NUEVO (2026-11-05). Antes el 429 no se reintentaba «a propósito»: una cuota agotada
+ * no se resuelve en 0 ms. La medición de staging (5 hilos, ~100 mensajes/min) mostró ráfagas de 4-5 fallos por segundo
+ * en sesiones que en secuencia no fallaban; la HIPÓTESIS (no confirmada hasta ver `causa` en la bitácora) es que son
+ * 429 por ráfaga que se liberan en segundos. Por eso el 429 (causa `cuota`) y el 503 (causa `saturacion`: el servicio
+ * pide esperar) se reintentan hasta `reintentosCuota` = 2 veces, con ESPERA exponencial corta más jitter (≈400-900 ms y
+ * luego ≈1 000-2 000 ms; el jitter evita que los hilos en ráfaga reintenten a la vez). SUPUESTOS NO VERIFICADOS: que un
+ * 429 no se factura, y que la cuota de Gemini en Vertex es por proyecto y no por instancia (entonces el semáforo, que
+ * es por instancia, no la protege del todo). Durante una limitación un turno puede hacer hasta 4 llamadas a Vertex
+ * (1 + 1 transitorio + 2 por cuota, siempre dentro del presupuesto); si el supuesto de facturación fuera falso, también el costo.
+ *
+ * PRESUPUESTO DE LATENCIA (`presupuestoMs`, 18 500 ms = 2 × 9 s del peor caso previo más 500 ms de holgura por la
+ * imprecisión de los temporizadores). Se mide desde que empieza `generar`, con la cola del semáforo incluida. TODO
+ * reintento —por cuota, por saturación o transitorio— solo se hace si transcurrido + espera + `tiempoMaximoMs` ≤
+ * presupuesto; si no cabe, se lanza el error. Así `generar` no pasa de ≈18,5 s en total (la cola de 3 s se descuenta del
+ * reintento, no se suma). Con 429 inmediatos y sin cola caben los dos reintentos.
+ *
+ * TOPE DE CONCURRENCIA (semáforo por instancia y por agente): `maxConcurrentes` llamadas simultáneas al modelo (4 por
+ * omisión) y espera máxima en cola `esperaMaxColaMs` (3 000 ms). En STAGING Cloud Run tiene maxScale 3 (≤ 12 simultáneas
+ * en total); en PRODUCCIÓN el workflow usa `--max-instances 10` por omisión (hasta 40 en vuelo). Este paquete no cambia
+ * el despliegue, y el 4 por instancia y los 3 s de cola deben medirse con la latencia real (p50 ≈ 1 s en staging) antes
+ * de fijarlos en producción. Quien no obtiene cupo en 3 s falla rápido con causa `saturacion` (nunca cuelga). El cupo se
+ * mantiene durante todo `generar` (reintentos y esperas incluidos: bajo limitación, soltarlo solo aumentaría la presión)
+ * y se libera siempre, también ante error. RIESGO CONOCIDO (MEDIUM, compromiso a 30 días: 2026-12-05): el semáforo no es
+ * por cliente, así que un cliente con clave puede dejar sin cupo a otros del mismo agente; no se implementa aquí.
+ *
+ * PEOR CASO DE UN TURNO DE KUAA: `generar` ≤ ≈18,5 s. El reintento de JSON roto del agente (#80) solo se hace si desde
+ * la llegada pasaron ≤ 3 s, y su segunda llamada tiene hasta ≈18,5 s propios: 3 + 18,5 ≈ 21,5 s, que SÍ pasa de los
+ * 20 s del sitio. Ese valor vale para la vía del reintento de JSON roto, y la búsqueda en el índice (el embebedor no tiene
+ * tiempo máximo) va ANTES de `generar` y no tiene cota real. Exige un primer intento de ≈3 s con JSON roto y una segunda llamada que agote su presupuesto; es
+ * improbable, pero NO se garantiza evitarlo.
+ *
+ * NO garantiza respuesta: si todos los intentos fallan, se lanza `ErrorProveedor` (con `causa`, sin el texto de la
+ * petición) y el agente responde con su mensaje de respaldo. El texto propio del error de tiempo no incluye la
+ * petición; el de Vertex se propaga tal cual. En Kuaa el mensaje NO va a la bitácora (solo la causa); el agente genérico
+ * (orquestador/agente.ts) sí registra hasta 200 caracteres del mensaje: defecto previo, para otro PR. El tope vale POR
+ * LLAMADA al modelo, no por turno: el agente genérico puede llamar hasta `maxIteraciones` veces (Kuaa usa una sola).
+ * En el peor caso el reintento duplica las llamadas facturables. `crearClienteVertex` NO pasa `httpOptions.retryOptions`
+ * a propósito: si se añadiera, el factor sería 2×5. El embebedor no tiene tiempo máximo, reintento ni semáforo.
  */
 import { GoogleGenAI, type Content, type FunctionDeclaration, type GenerateContentResponse, type Part, type Schema, Type } from '@google/genai';
-import type { DefinicionHerramientaLLM, Embebedor, MensajeLLM, MotivoFin, PeticionLLM, ProveedorLLM, RespuestaLLM } from '@chatbotrag/nucleo';
+import type { CausaErrorProveedor, DefinicionHerramientaLLM, Embebedor, MensajeLLM, MotivoFin, PeticionLLM, ProveedorLLM, RespuestaLLM } from '@chatbotrag/nucleo';
 
 export interface OpcionesVertex {
   proyecto: string;
@@ -61,6 +93,8 @@ export class ErrorProveedor extends Error {
     mensaje: string,
     public readonly proveedor: string,
     public readonly modelo: string,
+    /** Causa enumerada (la lee el núcleo con `causaDeError`). */
+    public readonly causa: CausaErrorProveedor = 'otro',
   ) {
     super(mensaje);
     this.name = 'ErrorProveedor';
@@ -127,10 +161,23 @@ function motivo(fin: string | undefined, hayLlamadas: boolean): MotivoFin {
   }
 }
 
-/** Opciones de la llamada al modelo (no del cliente): tiempo por intento y reintentos tras el primero. */
+/** Opciones de la llamada al modelo (no del cliente): tiempo por intento, reintentos y límites. */
 export interface OpcionesLlamadaVertex {
   tiempoMaximoMs?: number;
+  /** Reintentos transitorios tras el primer intento (por omisión 1). El 503 no se desactiva con `reintentos: 0`: va por la vía de saturación (`reintentosCuota`). */
   reintentos?: number;
+  /** Reintentos ante 429 y 503 (causas `cuota` y `saturacion` de la nube); por omisión 2. */
+  reintentosCuota?: number;
+  /** Presupuesto de latencia de `generar` para decidir un reintento por cuota; por omisión 18 500 ms. */
+  presupuestoMs?: number;
+  /** Llamadas simultáneas por instancia; por omisión 4. */
+  maxConcurrentes?: number;
+  /** Espera máxima por un cupo antes de fallar con causa `saturacion`; por omisión 3 000 ms. */
+  esperaMaxColaMs?: number;
+  /** Inyectables para pruebas: reloj en milisegundos, número en [0, 1) y espera. */
+  ahora?: () => number;
+  aleatorio?: () => number;
+  esperar?: (ms: number) => Promise<void>;
 }
 
 class TiempoAgotado extends Error {
@@ -140,8 +187,45 @@ class TiempoAgotado extends Error {
   }
 }
 
+class Saturacion extends Error {
+  constructor() {
+    super('demasiadas llamadas simultáneas al modelo');
+    this.name = 'Saturacion';
+  }
+}
+
 const ESTADOS_TRANSITORIOS = new Set([500, 502, 503, 504]);
 const RED_TRANSITORIA = /ECONNRESET|ETIMEDOUT|EAI_AGAIN|fetch failed/i;
+const TIEMPO_EN_TEXTO = /ETIMEDOUT|timed? ?out/i;
+const CUOTA_EN_TEXTO = /RESOURCE_EXHAUSTED/;
+
+/**
+ * Causa enumerada de un fallo. Un `status`/`code` numérico manda sobre el texto (un 400 que cite «ETIMEDOUT» es
+ * `otro`); el texto solo decide cuando no hay número. Jamás copia el mensaje: devuelve solo el enumerado.
+ */
+export function clasificarCausa(e: unknown): CausaErrorProveedor {
+  if (e instanceof Saturacion) return 'saturacion';
+  if (e instanceof TiempoAgotado) return 'tiempo';
+  if (typeof e === 'object' && e !== null) {
+    const { status, code } = e as { status?: unknown; code?: unknown };
+    const numero = typeof status === 'number' ? status : typeof code === 'number' ? code : undefined;
+    if (numero !== undefined) {
+      if (numero === 429) return 'cuota';
+      if (numero === 503) return 'saturacion';
+      if (numero === 504) return 'tiempo';
+      if (numero >= 500 && numero <= 599) return 'servidor';
+      if (numero === 401 || numero === 403) return 'autenticacion';
+      if (numero === 404) return 'modelo';
+      return 'otro';
+    }
+    if (typeof code === 'string' && TIEMPO_EN_TEXTO.test(code)) return 'tiempo';
+  }
+  if (e instanceof Error) {
+    if (CUOTA_EN_TEXTO.test(e.message)) return 'cuota';
+    if (TIEMPO_EN_TEXTO.test(e.message)) return 'tiempo';
+  }
+  return 'otro';
+}
 
 /** Transitorio: vale la pena reintentar. Lo desconocido NO lo es. */
 function esTransitorio(e: unknown): boolean {
@@ -156,10 +240,74 @@ function esTransitorio(e: unknown): boolean {
   return e instanceof Error && RED_TRANSITORIA.test(e.message);
 }
 
+/** Espera base y amplitud del jitter de cada reintento por cuota: ≈400-900 ms y ≈1 000-2 000 ms. */
+const ESPERA_CUOTA_MS: ReadonlyArray<{ base: number; jitter: number }> = [
+  { base: 400, jitter: 500 },
+  { base: 1000, jitter: 1000 },
+];
+
+/**
+ * Semáforo con cola FIFO y espera máxima. `adquirir` devuelve la función que libera el cupo (idempotente) o
+ * rechaza con `Saturacion` al vencer la espera. Qué NO garantiza: justicia entre instancias (es por proceso).
+ */
+export class Semaforo {
+  private libres: number;
+  private readonly cola: Array<{ concedido: () => void }> = [];
+
+  constructor(
+    maximo: number,
+    private readonly esperaMaxMs: number,
+  ) {
+    this.libres = maximo;
+  }
+
+  get enCola(): number {
+    return this.cola.length;
+  }
+
+  adquirir(): Promise<() => void> {
+    if (this.libres > 0) {
+      this.libres -= 1;
+      return Promise.resolve(this.liberador());
+    }
+    return new Promise((resolver, rechazar) => {
+      const turno = {
+        concedido: () => {
+          clearTimeout(temporizador);
+          resolver(this.liberador());
+        },
+      };
+      const temporizador = setTimeout(() => {
+        const i = this.cola.indexOf(turno);
+        if (i >= 0) this.cola.splice(i, 1);
+        rechazar(new Saturacion());
+      }, this.esperaMaxMs);
+      this.cola.push(turno);
+    });
+  }
+
+  private liberador(): () => void {
+    let liberado = false;
+    return () => {
+      if (liberado) return;
+      liberado = true;
+      const siguiente = this.cola.shift();
+      if (siguiente) siguiente.concedido();
+      else this.libres += 1;
+    };
+  }
+}
+
 export class ProveedorVertex implements ProveedorLLM {
   readonly nombre = 'vertex';
   private readonly tiempoMaximoMs: number;
   private readonly reintentos: number;
+  private readonly reintentosCuota: number;
+  private readonly presupuestoMs: number;
+  private readonly semaforo: Semaforo;
+  private readonly ahora: () => number;
+  private readonly aleatorio: () => number;
+  private readonly esperar: (ms: number) => Promise<void>;
 
   constructor(
     private readonly cliente: ClienteGemini,
@@ -167,6 +315,18 @@ export class ProveedorVertex implements ProveedorLLM {
   ) {
     this.tiempoMaximoMs = opciones.tiempoMaximoMs ?? 9000;
     this.reintentos = opciones.reintentos ?? 1;
+    this.reintentosCuota = opciones.reintentosCuota ?? ESPERA_CUOTA_MS.length;
+    this.presupuestoMs = opciones.presupuestoMs ?? 18_500;
+    this.ahora = opciones.ahora ?? (() => performance.now());
+    this.aleatorio = opciones.aleatorio ?? Math.random;
+    this.esperar = opciones.esperar ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+    const maxConcurrentes = opciones.maxConcurrentes ?? 4;
+    const esperaMaxColaMs = opciones.esperaMaxColaMs ?? 3000;
+    if (!Number.isInteger(maxConcurrentes) || maxConcurrentes < 1) throw new Error('maxConcurrentes debe ser un entero de al menos 1');
+    if (!Number.isInteger(esperaMaxColaMs) || esperaMaxColaMs < 1) throw new Error('esperaMaxColaMs debe ser un entero de al menos 1 milisegundo');
+    if (!Number.isInteger(this.reintentosCuota) || this.reintentosCuota < 0 || this.reintentosCuota > ESPERA_CUOTA_MS.length) throw new Error(`reintentosCuota debe ser un entero entre 0 y ${ESPERA_CUOTA_MS.length}`);
+    if (!Number.isInteger(this.presupuestoMs) || this.presupuestoMs < 1) throw new Error('presupuestoMs debe ser un entero de al menos 1 milisegundo');
+    this.semaforo = new Semaforo(maxConcurrentes, esperaMaxColaMs);
     if (!Number.isInteger(this.tiempoMaximoMs) || this.tiempoMaximoMs < 1) throw new Error('tiempoMaximoMs debe ser un entero de al menos 1 milisegundo');
     if (!Number.isInteger(this.reintentos) || this.reintentos < 0) throw new Error('reintentos debe ser un entero mayor o igual a 0');
   }
@@ -209,15 +369,44 @@ export class ProveedorVertex implements ProveedorLLM {
           : {}),
       },
     };
+    const inicio = this.ahora();
+    let liberar: () => void;
+    try {
+      liberar = await this.semaforo.adquirir();
+    } catch (e) {
+      throw new ErrorProveedor(`Vertex (${modelo}): ${e instanceof Error ? e.message : String(e)}`, 'vertex', modelo, clasificarCausa(e));
+    }
     let r: GenerateContentResponse | undefined;
-    for (let intento = 0; ; intento++) {
-      try {
-        r = await this.intentar(solicitud);
-        break;
-      } catch (e) {
-        if (intento < this.reintentos && esTransitorio(e)) continue;
-        throw new ErrorProveedor(`Vertex (${modelo}): ${e instanceof Error ? e.message : String(e)}`, 'vertex', modelo);
+    try {
+      let transitorios = 0;
+      let porCuota = 0;
+      for (;;) {
+        try {
+          r = await this.intentar(solicitud);
+          break;
+        } catch (e) {
+          const causa = clasificarCausa(e);
+          // Todo reintento exige que el siguiente intento, en su peor caso, quepa en el presupuesto medido desde `inicio`.
+          const cabe = (espera: number): boolean => this.ahora() - inicio + espera + this.tiempoMaximoMs <= this.presupuestoMs;
+          if (causa === 'cuota' || causa === 'saturacion') {
+            if (porCuota < this.reintentosCuota) {
+              const { base, jitter } = ESPERA_CUOTA_MS[porCuota]!;
+              const espera = Math.round(base + this.aleatorio() * jitter);
+              if (cabe(espera)) {
+                porCuota += 1;
+                await this.esperar(espera);
+                continue;
+              }
+            }
+          } else if (transitorios < this.reintentos && esTransitorio(e) && cabe(0)) {
+            transitorios += 1;
+            continue;
+          }
+          throw new ErrorProveedor(`Vertex (${modelo}): ${e instanceof Error ? e.message : String(e)}`, 'vertex', modelo, causa);
+        }
       }
+    } finally {
+      liberar();
     }
     const candidato = r.candidates?.[0];
     const partes = candidato?.content?.parts ?? [];
@@ -240,7 +429,8 @@ export class ProveedorVertex implements ProveedorLLM {
 }
 
 export class EmbebedorVertex implements Embebedor {
-  readonly nombre = 'vertex-embeddings';
+  /** `vertex-embeddings:<modelo>`: el modelo forma parte del nombre, y con él la calibración del banco (H4b). */
+  readonly nombre: string;
   readonly dimension: number;
   private readonly modelo: string;
 
@@ -249,6 +439,7 @@ export class EmbebedorVertex implements Embebedor {
     opciones: { modelo?: string; dimension?: number } = {},
   ) {
     this.modelo = opciones.modelo ?? 'text-embedding-005';
+    this.nombre = `vertex-embeddings:${this.modelo}`;
     this.dimension = opciones.dimension ?? 768;
   }
 
@@ -260,7 +451,7 @@ export class EmbebedorVertex implements Embebedor {
       try {
         r = await this.cliente.embedContent({ model: this.modelo, contents: lote, config: { outputDimensionality: this.dimension } });
       } catch (e) {
-        throw new ErrorProveedor(`Vertex embeddings (${this.modelo}): ${e instanceof Error ? e.message : String(e)}`, 'vertex', this.modelo);
+        throw new ErrorProveedor(`Vertex embeddings (${this.modelo}): ${e instanceof Error ? e.message : String(e)}`, 'vertex', this.modelo, clasificarCausa(e));
       }
       const vectores = r.embeddings ?? [];
       if (vectores.length !== lote.length) throw new ErrorProveedor(`Vertex embeddings devolvió ${vectores.length} vectores para ${lote.length} textos`, 'vertex', this.modelo);

@@ -171,7 +171,19 @@ verificado bajo qué contrato opera la cuenta ni la retención de los embeddings
 
 ### Tiempo máximo y reintento de Vertex
 
-`ProveedorVertex.generar` limita cada intento a 9 000 ms y reintenta una vez, sin espera (origen: dos peticiones de Kuaa tardaron 58 s y 20,6 s en staging; el sitio corta a los 20 s). Solo se reintenta lo transitorio: vencimiento del tiempo, estados 500/502/503/504 y errores de red; un 400, 401, 403, 404, 429 (cuota: reintentar solo duplicaría la presión) o un error desconocido sale en el primer intento. El tope de 18 s vale por llamada al modelo, no por turno (el agente puede llamar hasta `maxIteraciones` veces; Kuaa usa una), y el reintento duplica las llamadas facturables en el peor caso; `crearClienteVertex` no pasa `httpOptions.retryOptions` a propósito (sería 2×5). NO garantiza una respuesta: si ambos intentos fallan, el agente responde con su mensaje de respaldo de siempre. El texto propio del error de tiempo no incluye la petición; el error de Vertex se propaga tal cual. El embebedor no cambia.
+`ProveedorVertex.generar` limita cada intento a 9 000 ms; lo transitorio se reintenta una vez, sin espera (origen: dos peticiones de Kuaa tardaron 58 s y 20,6 s en staging; el sitio corta a los 20 s). Solo se reintenta lo transitorio: vencimiento del tiempo, estados 500/502/504 y errores de red (el 503 se trata con el 429, abajo); un 400, 401, 403, 404 o un error desconocido sale en el primer intento. El presupuesto de 18,5 s (abajo) vale por llamada al modelo, no por turno (el agente puede llamar hasta `maxIteraciones` veces; Kuaa usa una), y el reintento duplica las llamadas facturables en el peor caso; `crearClienteVertex` no pasa `httpOptions.retryOptions` a propósito (sería 2×5). NO garantiza una respuesta: si todos los intentos fallan, el agente responde con su mensaje de respaldo. El texto propio del error de tiempo no incluye la petición; el error de Vertex se propaga tal cual. El embebedor no cambia (salvo que su error también lleva `causa`).
+
+**Causa enumerada (2026-11-05).** `ErrorProveedor.causa` ∈ `cuota | tiempo | autenticacion | modelo | saturacion | servidor | otro`, derivada de `status`/`code` (un código numérico manda sobre el texto): 429 cuota; 503 saturacion; 504 y vencimiento propio o `ETIMEDOUT` tiempo; 500, 502 y demás 5xx servidor; 401/403 autenticacion; 404 modelo; el límite de concurrencia propio, saturacion; lo demás otro. El tipo y el ayudante `causaDeError` viven en el puerto del núcleo (`puertos/proveedor-llm.ts`); la clasificación, en `proveedor-vertex`. Los eventos `error_modelo` de Kuaa (`proveedor` e `indice`) llevan `causa` (aditivo); nunca el mensaje del error. El agente genérico (`orquestador/agente.ts`, línea del evento `proveedor`) sí registra hasta 200 caracteres del mensaje en `detalle`: defecto previo, para otro PR.
+
+**Reintento del 429 y del 503 (origen: staging, 2026-11-05 23:03-23:05 UTC).** Con 5 hilos en paralelo (~100 mensajes/min) hubo 10 `error_modelo` en ráfagas de 4-5 por segundo, con el texto de respaldo y sin vencimientos; en secuencia 15/15 bien. Hipótesis (no confirmada hasta ver la `causa` en la bitácora): 429 por ráfaga. Ahora el 429 y el 503 se reintentan hasta 2 veces con espera ≈400-900 ms y ≈1 000-2 000 ms (jitter). SUPUESTOS NO VERIFICADOS: que un 429 no se factura, y que la cuota de Gemini en Vertex es por proyecto y no por instancia. Durante una limitación un turno puede hacer hasta 4 llamadas a Vertex (1 + 1 transitorio + 2 por cuota, dentro del presupuesto). El 503 no se desactiva con `reintentos: 0`: va por la vía de saturación (`reintentosCuota`). NO garantiza que la cuota se libere en esos segundos.
+
+**Presupuesto de latencia.** `presupuestoMs` = 18 500 ms (2 × 9 s más 500 ms de holgura de temporizadores), medido desde que empieza `generar` con la cola incluida. Todo reintento (cuota, saturación o transitorio) exige transcurrido + espera + 9 s ≤ presupuesto; si no cabe, se lanza el error. `generar` queda así en ≈18,5 s como máximo. Peor caso de un turno de Kuaa con el reintento de JSON roto (#80, solo si pasaron ≤ 3 s desde la llegada): 3 + 18,5 ≈ 21,5 s, que SÍ pasa de los 20 s del sitio; ese valor vale para la vía del reintento de JSON roto, y la búsqueda en el índice (el embebedor no tiene tiempo máximo) va ANTES de `generar` y no tiene cota real; exige un primer intento de ≈3 s con JSON roto y una segunda llamada que agote su presupuesto. Es improbable y NO se garantiza evitarlo.
+
+**Tope de concurrencia.** Semáforo por instancia y por agente: 4 llamadas simultáneas por omisión (`maxConcurrentes`), espera máxima en cola 3 s (`esperaMaxColaMs`); agotada, falla rápido con causa `saturacion`. Es opción del constructor, no de la configuración JSON (el esquema no cambia). En staging Cloud Run tiene maxScale 3 (≤ 12 simultáneas); en producción el workflow usa `--max-instances 10` por omisión (hasta 40 en vuelo). El despliegue no cambia, y el 4 por instancia y la cola de 3 s deben medirse con la latencia real (p50 ≈ 1 s en staging) antes de fijarlos en producción. El cupo se mantiene durante los reintentos. Riesgo conocido (MEDIUM), compromiso de corrección a 30 días (2026-12-05): el semáforo no es por cliente, así que un cliente con clave puede dejar sin cupo a otros del mismo agente; no se implementa en este cambio.
+
+**Mensaje al cliente.** Con causa `cuota` o `saturacion` (429, 503 o tope propio), Kuaa responde la frase fija `FRASE_ALTA_DEMANDA` (por `voz.tratamiento`, sin teléfonos ni correos) en lugar de «problema técnico»; las demás causas (incluida `servidor`) siguen con `mensajes.errorTemporal`.
+
+**Qué dispara cada texto de respaldo de Kuaa.** (a) «Problema técnico» (`mensajes.errorTemporal`): falla del modelo con causa distinta de cuota o saturación, salida que no se puede leer, corte por `max_tokens`, o un verificador (enlace, hecho no respaldado, fuga del prompt, etc.) que descarta la respuesta. (b) «Mucha demanda» (`FRASE_ALTA_DEMANDA`): causa `cuota` o `saturacion`. (c) «Sin respaldo» (`mensajes.sinRespaldo` + derivación): RAG exigido y sin fragmentos. Solo en (c), si la petición trae `plataforma.contacto.whatsapp_e164`, la derivación nombra ese WhatsApp con una frase fija por `voz.tratamiento` (con vos, la de `salidaSinCifras`: «Podés escribir al WhatsApp +595 … y una persona del equipo te ayuda»; `salidaSinCifras` sigue fija en vos); sin plataforma o sin ese campo queda la derivación genérica de siempre, sin contacto inventado. Antes de usarlo, `textoSinRespaldo` verifica con `patronEnlaceOPrecio` (con el número permitido) que el texto no sería objetado; si lo fuera, vuelve al texto de siempre. La propuesta `atencion_humana_solicitada` se conserva como antes. NO garantiza que el número sea el vigente (lo informa SLT).
 
 ### Reintento de Kuaa ante una salida que no es JSON legible
 
@@ -626,6 +638,39 @@ Qué NO garantiza H4a: que el modelo de embeddings entienda el dominio (lo acota
 evaluación corresponda a un archivo real (solo queda como constancia); que `semantica_no_disponible` sea un fallo (es
 también el estado de un agente sin semántica configurada); ni una conexión al agente, al bucket o a Vertex: eso es
 H4c y H4d. La memoria es por instancia de Cloud Run, no se comparte entre instancias.
+
+### Producción de `calibracion.json` (modelo híbrido, H4b)
+
+`scripts/medir-umbral-banco.mts` acepta `--salida=<directorio> [--sobrescribir]` y escribe allí `calibracion.json` con el
+contrato de `calibracion.ts` (formato 1, `regla` = `VERSION_REGLA_DECISION`, SHA-256 del banco y de la evaluación,
+`proveedor`, `modelo`, `dimension`, umbrales, `margen`, `valido`, `motivos_invalidez`, `control` con solo conteos y
+`medido` AAAA-MM-DD). Reglas:
+
+- El directorio debe existir y estar fuera del repositorio y de la raíz común de git (mismas comprobaciones de ruta real que
+  `--banco` y `--evaluacion`); se verifica antes de medir, para no gastar embeddings en un error de ruta.
+- Escritura atómica (temporal exclusivo en el mismo directorio, modo 0600, escritura completa con `fsync`, `link`/`rename`)
+  y sin sobrescribir un `calibracion.json` existente salvo `--sobrescribir`. Justo antes de abrir el temporal se revalida el
+  directorio (misma ruta real, fuera del repo, del usuario actual y sin escritura de grupo/otros). Si el destino no admite
+  enlaces duros, el script lo dice y pide un directorio local.
+- Se escribe también un resultado inválido con umbrales MEDIDOS (`valido: false` con sus motivos, por confusión o falso
+  positivo en el control; el código de salida sigue siendo 1). Con el proveedor simulado el archivo dice
+  `proveedor: "simulado"`, que `verificarCalibracion` no acepta fuera de pruebas.
+- Si NO hay nada medido (`sin_umbral_factible`, `minimos_calibracion_insuficientes`, esquema incumplido o error de
+  ejecución) NO se escribe archivo y sale con código 1: no se inventan umbrales ni un control no medido. Un
+  `calibracion.json` anterior no corresponde a esa medición: con `--sobrescribir` se renombra a
+  `calibracion.json.invalidada` (con sufijo `-AAAAMMDDTHHMMSSZ-<hex>` si ya existe; nunca pisa un archivo) y se informa. Para
+  restaurarla: `mv calibracion.json.invalidada calibracion.json`. Sin `--sobrescribir` y con un `calibracion.json` presente el script
+  sale antes de medir (no gasta embeddings); si uno apareciera durante la ejecución (carrera) no se toca, se avisa por stderr
+  que no debe usarse, y el `link` atómico final impide pisarlo. El contenido se valida con `cargarCalibracion` antes de escribirse; jamás lleva
+  texto de casos ni del banco. `medido` es la fecha UTC.
+- **`modelo` es el `nombre` del embebedor, y ese nombre incluye el modelo**: `vertex-embeddings:<modelo>` (por defecto
+  `vertex-embeddings:text-embedding-005`), `bedrock-embeddings:<modelo>` y `simulado`. Por eso un cambio de modelo de
+  embeddings (o de dimensión) invalida la calibración: `verificarCalibracion` compara `modelo` y `dimension` con los del
+  índice y, si difieren, la semántica no es apta y todo cae a la IA hasta volver a medir. Nota: el nombre anterior de
+  Bedrock era `bedrock-titan`; cualquier calibración o índice que lo guardara deja de coincidir (en el repositorio no había ninguno).
+- El script mide solo con el modelo por defecto del embebedor (Vertex: `text-embedding-005`); un agente con otro modelo cae a la IA hasta
+  que se añada `--modelo-embeddings`. El nombre completo debe caber en 100 caracteres (se verifica antes de gastar embeddings).
+- `calibracion.json` solo admite `proveedor` `vertex|simulado`: una calibración con Bedrock no está soportada por el esquema.
 
 ## 7. Aplicación a segurolotengo-demo
 
