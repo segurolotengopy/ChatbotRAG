@@ -672,6 +672,44 @@ contrato de `calibracion.ts` (formato 1, `regla` = `VERSION_REGLA_DECISION`, SHA
   que se añada `--modelo-embeddings`. El nombre completo debe caber en 100 caracteres (se verifica antes de gastar embeddings).
 - `calibracion.json` solo admite `proveedor` `vertex|simulado`: una calibración con Bedrock no está soportada por el esquema.
 
+### Carga del banco desde el bucket (modelo híbrido, H4c)
+
+El banco aprobado y su calibración se leen de un bucket privado al arrancar, con la identidad del servicio (ADC), solo
+lectura. **H4c solo carga y verifica: todavía no conecta nada al agente** (eso es H4d); el resultado queda en
+`AgenteArmado.enrutadorBanco`.
+
+- **Ruta**: `<CHATBOTRAG_BUCKET_BANCO>/<agenteId>/<X.Y.Z>/banco.json` y `calibracion.json` (esta última opcional).
+- **Variables** (no secretas): `CHATBOTRAG_BUCKET_BANCO` (nombre de bucket) y `CHATBOTRAG_BANCOS`, un JSON
+  `{"<agenteId>":{"version":"X.Y.Z","sha256":"<hex64>","sha256Calibracion":"<hex64>"}}` validado con Zod estricto en
+  `entorno.ts` (versión semver estricta, hex de 64, sin claves extra; las dos variables van juntas). Un `agenteId` que no
+  corresponde a ningún agente cargado detiene el arranque. Sin las variables no se construye el lector ni se registra nada:
+  el comportamiento es idéntico al anterior.
+- **`LectorBancoGcs`** (`paquetes/conocimiento-gcs/src/lector-banco.ts`): consulta el tamaño en los metadatos (tope 2 MiB
+  el banco, 64 KiB la calibración) antes de descargar, baja esa generación exacta, verifica el SHA-256 de los bytes contra el
+  declarado ANTES de interpretarlos, y recién entonces usa `cargarBanco` (`admitirSintetico` solo con `APP_ENV=test`) y
+  `cargarCalibracion`. El SHA del banco alimenta `prepararEnrutador`.
+- **Nunca lanza por contenido del bucket.** Banco ausente, sin permiso, ilegible, grande, con otra huella, inválido o
+  sintético: `indice: null` y un motivo enumerado (`banco_*`); el servicio arranca y atiende como hoy. Calibración ausente,
+  con otra huella, inválida o no apta (`banco_sha256` distinto del banco cargado, otra `regla` o `valido: false`): se
+  ignora (`calibracion: null`, motivo `calibracion_*`) y el banco queda con coincidencia exacta y derivación por términos.
+- **Aviso de arranque**: evento `banco_cargado` o `banco_no_cargado` con `agenteId`, `codigo` (motivo o `ok`) y
+  `calibracion=si|no`. Sin texto del banco ni de las derivaciones, ni nombres de bucket o rutas.
+- **Tiempo límite**: la carga del banco de cada agente tiene un tope de 10 s (inyectable en pruebas con `tiempoBancoMs`); si
+  GCS se cuelga, el motivo es `banco_tiempo` y el servicio arranca igual. Los agentes de `CHATBOTRAG_BANCOS` se validan contra las
+  configuraciones ANTES de leer ningún banco (dos pasadas), así un arranque que va a fallar no gasta lecturas ni emite eventos.
+  Defecto previo, NO corregido aquí: la lectura del paquete de Kuaa (`LectorPaqueteGcs`) no tiene tiempo límite; una llamada
+  colgada a GCS detendría el arranque. Un tope allí exige cancelar la carga en curso para que no indexe tarde, y queda para otra tarea.
+- **UTF-8 inválido**: un archivo con bytes que no son UTF-8 pero cuya huella coincide con la declarada se rechaza como
+  `banco_invalido` (o `calibracion_invalida`), no como error de huella.
+- **Calibración simulada**: una calibración medida con el proveedor `simulado` solo se admite con `APP_ENV=test`; fuera de
+  pruebas es `calibracion_no_apta`.
+- **Qué NO hace**: no conecta el enrutador al agente; no verifica `modelo` ni `dimension` de la calibración (H4d, cuando exista el
+  embebedor: `verificarCalibracion`); no recarga en caliente; no escribe en el bucket ni lo crea; no garantiza que la huella
+  declarada sea la correcta (la fija quien despliega) ni protege frente a quien pueda escribir el bucket y la variable (IAM).
+- **Cómo se invalida o actualiza**: se publica una versión nueva en el bucket (carpeta `X.Y.Z` nueva, nunca se pisa una
+  existente), se actualiza `CHATBOTRAG_BANCOS` con la versión y los SHA nuevos y se despliega. Quitar la entrada del agente (o
+  las variables) y desplegar vuelve al comportamiento anterior.
+
 ## 7. Aplicación a segurolotengo-demo
 
 El demo (Next.js 15 en AWS Amplify) **no embebe** el núcleo: consume el servicio por

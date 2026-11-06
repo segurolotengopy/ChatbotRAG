@@ -20,10 +20,14 @@ import { pareceSecreto } from '../configuracion/cargar.js';
 import { APROBADO_POR_SINTETICO, BancoRespuestas, normalizarParaTerminos, normalizarPregunta } from './esquema.js';
 import { variablesDe } from './plantillas.js';
 
+/** Causa enumerada del rechazo, para que quien llama no compare mensajes. */
+export type CodigoErrorBanco = 'sha_distinto' | 'json_invalido' | 'forma_invalida' | 'secretos' | 'sintetico';
+
 export class ErrorBanco extends Error {
   constructor(
     mensaje: string,
     public readonly detalles: string[] = [],
+    public readonly codigo?: CodigoErrorBanco,
   ) {
     super(mensaje);
     this.name = 'ErrorBanco';
@@ -69,14 +73,14 @@ function esSintetico(banco: BancoRespuestas): boolean {
 export function cargarBanco(contenido: string, opciones: { sha256Esperado?: string; admitirSintetico?: boolean } = {}): BancoCargado {
   const sha256 = createHash('sha256').update(contenido, 'utf8').digest('hex');
   if (opciones.sha256Esperado !== undefined && opciones.sha256Esperado.toLowerCase() !== sha256) {
-    throw new ErrorBanco('sha256 no coincide');
+    throw new ErrorBanco('sha256 no coincide', [], 'sha_distinto');
   }
 
   let crudo: unknown;
   try {
     crudo = JSON.parse(contenido);
   } catch {
-    throw new ErrorBanco('JSON inválido');
+    throw new ErrorBanco('JSON inválido', [], 'json_invalido');
   }
 
   const analisis = BancoRespuestas.safeParse(crudo);
@@ -88,6 +92,7 @@ export function cargarBanco(contenido: string, opciones: { sha256Esperado?: stri
         // Zod nombra la clave sobrante en su mensaje; podría ser un secreto pegado por error.
         return i.code === 'unrecognized_keys' ? `${ruta}: clave no admitida` : `${ruta}: ${i.message}`;
       }),
+      'forma_invalida',
     );
   }
   const banco = analisis.data;
@@ -105,13 +110,13 @@ export function cargarBanco(contenido: string, opciones: { sha256Esperado?: stri
   banco.derivaciones.forEach((d, i) => sinLlaves(d.texto, `derivaciones.${i}.texto`));
   banco.textos_derivacion.forEach((t, i) => sinLlaves(t.texto, `textos_derivacion.${i}.texto`));
   for (const [clave, a] of Object.entries(banco.aclaraciones)) if (a) sinLlaves(a.texto, `aclaraciones.${clave}.texto`);
-  if (detalles.length > 0) throw new ErrorBanco('banco inválido', detalles);
+  if (detalles.length > 0) throw new ErrorBanco('banco inválido', detalles, 'forma_invalida');
 
   const secretos: string[] = [];
   recorrerSecretos(banco, 'banco', secretos);
-  if (secretos.length > 0) throw new ErrorBanco('el banco contiene valores con forma de secreto', secretos);
+  if (secretos.length > 0) throw new ErrorBanco('el banco contiene valores con forma de secreto', secretos, 'secretos');
 
-  if (opciones.admitirSintetico !== true && esSintetico(banco)) throw new ErrorBanco('banco sintético fuera de pruebas');
+  if (opciones.admitirSintetico !== true && esSintetico(banco)) throw new ErrorBanco('banco sintético fuera de pruebas', [], 'sintetico');
 
   return { banco, sha256 };
 }
