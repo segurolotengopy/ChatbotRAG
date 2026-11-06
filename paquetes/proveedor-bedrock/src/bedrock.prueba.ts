@@ -59,4 +59,9 @@ describe('EmbebedorBedrock', () => {
     const e = new EmbebedorBedrock(clienteFalso({}), { dimension: 2 });
     expect(await e.embeber(['a', 'b'])).toEqual([[0.1, 0.2], [0.1, 0.2]]);
   });
+
+  it('el nombre lleva el modelo efectivo y cambia con él', () => {
+    expect(new EmbebedorBedrock(clienteFalso({})).nombre).toBe('bedrock-embeddings:amazon.titan-embed-text-v2:0');
+    expect(new EmbebedorBedrock(clienteFalso({}), { modelo: 'otro.modelo:1' }).nombre).toBe('bedrock-embeddings:otro.modelo:1');
+  });
 });

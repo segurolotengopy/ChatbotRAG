@@ -132,7 +132,8 @@ export class ProveedorBedrock implements ProveedorLLM {
 
 /** Embeddings con Amazon Titan Text Embeddings v2 (1024/512/256 dimensiones). */
 export class EmbebedorBedrock implements Embebedor {
-  readonly nombre = 'bedrock-titan';
+  /** `bedrock-embeddings:<modelo>`: el modelo forma parte del nombre, y con él la calibración del banco (H4b). */
+  readonly nombre: string;
   readonly dimension: number;
   private readonly modelo: string;
 
@@ -141,6 +142,7 @@ export class EmbebedorBedrock implements Embebedor {
     opciones: { modelo?: string; dimension?: number } = {},
   ) {
     this.modelo = opciones.modelo ?? 'amazon.titan-embed-text-v2:0';
+    this.nombre = `bedrock-embeddings:${this.modelo}`;
     this.dimension = opciones.dimension ?? 1024;
   }
 

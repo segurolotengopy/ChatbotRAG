@@ -429,7 +429,8 @@ export class ProveedorVertex implements ProveedorLLM {
 }
 
 export class EmbebedorVertex implements Embebedor {
-  readonly nombre = 'vertex-embeddings';
+  /** `vertex-embeddings:<modelo>`: el modelo forma parte del nombre, y con él la calibración del banco (H4b). */
+  readonly nombre: string;
   readonly dimension: number;
   private readonly modelo: string;
 
@@ -438,6 +439,7 @@ export class EmbebedorVertex implements Embebedor {
     opciones: { modelo?: string; dimension?: number } = {},
   ) {
     this.modelo = opciones.modelo ?? 'text-embedding-005';
+    this.nombre = `vertex-embeddings:${this.modelo}`;
     this.dimension = opciones.dimension ?? 768;
   }
 
