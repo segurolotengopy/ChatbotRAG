@@ -81,6 +81,25 @@ export interface ProveedorLLM {
   generar(peticion: PeticionLLM): Promise<RespuestaLLM>;
 }
 
+/**
+ * Causa enumerada de un fallo del proveedor. La clasifica el adaptador (que conoce los códigos de su nube);
+ * el núcleo solo recibe el valor. Existe para que la bitácora diga POR QUÉ falló sin guardar el mensaje del
+ * error (que puede citar la petición) y para que el agente elija un texto distinto ante la demanda alta.
+ * `cuota` = límite de la nube (429); `saturacion` = límite de concurrencia propio o 503 de la nube;
+ * `tiempo` = vencimiento (o 504); `autenticacion` = 401/403; `modelo` = 404 (modelo retirado); `servidor` = otros 5xx
+ * (500, 502); `otro` = lo demás. Qué NO garantiza: que la
+ * clasificación sea exacta (un adaptador nuevo puede no informar causa y entonces vale `otro`).
+ */
+export const CAUSAS_ERROR_PROVEEDOR = ['cuota', 'tiempo', 'autenticacion', 'modelo', 'saturacion', 'servidor', 'otro'] as const;
+export type CausaErrorProveedor = (typeof CAUSAS_ERROR_PROVEEDOR)[number];
+
+/** Lee `causa` de un error desconocido; devuelve `otro` si no hay una causa válida (nunca lanza, nunca lee el mensaje). */
+export function causaDeError(e: unknown): CausaErrorProveedor {
+  if (typeof e !== 'object' || e === null) return 'otro';
+  const causa = (e as { causa?: unknown }).causa;
+  return typeof causa === 'string' && (CAUSAS_ERROR_PROVEEDOR as readonly string[]).includes(causa) ? (causa as CausaErrorProveedor) : 'otro';
+}
+
 /** Puerto separado: los embeddings pueden venir de otro modelo u otra nube. */
 export interface Embebedor {
   readonly nombre: string;

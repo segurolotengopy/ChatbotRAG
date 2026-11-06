@@ -6,15 +6,15 @@ import { cargarConfiguracionDesdeJson } from '../configuracion/cargar.js';
 import type { ConfiguracionAgente } from '../configuracion/esquema.js';
 import { coleccionDe } from '../conocimiento/cargar-corpus.js';
 import { coleccionPaquete } from '../conocimiento/cargar-paquete.js';
-import { FRASE_PAQUETE_NO_VALIDADO } from './frases-kuaa.js';
+import { FRASE_ALTA_DEMANDA, FRASE_PAQUETE_NO_VALIDADO } from './frases-kuaa.js';
 import { IndiceEnMemoria } from '../conocimiento/indice-memoria.js';
 import { MemoriaEnProceso } from '../memoria/memoria-en-proceso.js';
-import type { PeticionLLM, ProveedorLLM, RespuestaLLM } from '../puertos/proveedor-llm.js';
+import { CAUSAS_ERROR_PROVEEDOR, causaDeError, type CausaErrorProveedor, type PeticionLLM, type ProveedorLLM, type RespuestaLLM } from '../puertos/proveedor-llm.js';
 import { RegistroHerramientas } from '../herramientas/registro.js';
 import { AgenteKuaa } from './agente-kuaa.js';
 import { ESTADOS_OPERATIVOS_DESCONOCIDOS, EntradaKuaa, RESUMEN_DESCONOCIDO } from './esquemas.js';
 import { normalizarEntradaKuaa } from './normalizar-entrada.js';
-import { afirmaHechoNoRespaldado, contieneEnlaceOPrecio, patronEnlaceOPrecio, filtraPrompt, interpretarSalidaModelo, retirarCodigosInternos, salidaFallback, salidaSinCifras, TEXTO_SIN_CIFRAS } from './salida-kuaa.js';
+import { afirmaHechoNoRespaldado, contieneEnlaceOPrecio, patronEnlaceOPrecio, filtraPrompt, interpretarSalidaModelo, retirarCodigosInternos, permitidosDe, salidaFallback, salidaSinCifras, TEXTO_SIN_CIFRAS, textoSinRespaldo } from './salida-kuaa.js';
 import { ErrorPeticion } from '../orquestador/agente.js';
 
 const RUTA = fileURLToPath(new URL('../../../../configuraciones/kuaa.json', import.meta.url));
@@ -307,6 +307,68 @@ describe('AgenteKuaa', () => {
     });
   });
 
+  describe('causa del error del proveedor', () => {
+    const conCausa = (causa: unknown) => Object.assign(new Error('mensaje-con-texto-centinela del cliente'), { causa });
+
+    it('causaDeError lee una causa válida y devuelve otro si falta o no es válida', () => {
+      for (const c of CAUSAS_ERROR_PROVEEDOR) expect(causaDeError(conCausa(c))).toBe(c);
+      for (const raro of [conCausa('inventada'), conCausa(7), new Error('x'), null, undefined, 'cuota', { causa: null }]) expect(causaDeError(raro)).toBe('otro');
+    });
+
+    it('error_modelo lleva la causa enumerada y nunca el mensaje ni el texto del cliente', async () => {
+      const { agente, bitacora } = await armar(() => {
+        throw conCausa('cuota');
+      });
+      await resp(agente, entrada({ mensaje: '¿Cómo es el proceso? centinela-del-cliente' }));
+      const evento = bitacora.eventos.find((e) => e.tipo === 'error_modelo');
+      expect(evento).toMatchObject({ codigo: 'proveedor', causa: 'cuota' });
+      expect(JSON.stringify(bitacora.eventos).toLowerCase()).not.toContain('centinela');
+    });
+
+    it('un error sin causa se registra como otro', async () => {
+      const { agente, bitacora } = await armar(() => {
+        throw new Error('falla');
+      });
+      await resp(agente, entrada());
+      expect(bitacora.eventos.find((e) => e.tipo === 'error_modelo')).toMatchObject({ causa: 'otro' });
+    });
+
+    it.each<CausaErrorProveedor>(['cuota', 'saturacion'])('con causa %s el cliente recibe el mensaje de alta demanda, no el de problema técnico', async (causa) => {
+      const { agente, config } = await armar(() => {
+        throw conCausa(causa);
+      });
+      const { salida, avisos } = await resp(agente, entrada());
+      expect(config.voz.tratamiento).toBe('vos');
+      expect(salida.texto).toBe(FRASE_ALTA_DEMANDA.vos);
+      expect(salida.texto).toContain('Podés');
+      expect(salida.texto).not.toBe(config.mensajes.errorTemporal);
+      expect(salida).toMatchObject({ botones: [], propuestas: [] });
+      expect(avisos).toContain('error_modelo');
+    });
+
+    it.each<CausaErrorProveedor>(['tiempo', 'autenticacion', 'modelo', 'servidor', 'otro'])('con causa %s sigue el mensaje de problema técnico de siempre', async (causa) => {
+      const { agente, config } = await armar(() => {
+        throw conCausa(causa);
+      });
+      expect((await resp(agente, entrada())).salida.texto).toBe(config.mensajes.errorTemporal);
+    });
+
+    it.each([
+      ['usted', 'Podría escribirme'],
+      ['tu', 'Puedes escribirme'],
+      ['vos', 'Podés escribirme'],
+      ['neutro', 'Conviene escribir de nuevo'],
+    ] as const)('la frase de alta demanda respeta el trato %s', async (tratamiento, trozo) => {
+      const config = cargarConfiguracionDesdeJson(JSON_KUAA.replace('"tratamiento": "vos"', `"tratamiento": "${tratamiento}"`));
+      expect(salidaFallback(config, 'E04', 'cuota').texto).toBe(FRASE_ALTA_DEMANDA[tratamiento]);
+      expect(FRASE_ALTA_DEMANDA[tratamiento]).toContain(trozo);
+    });
+
+    it('la frase de alta demanda no inventa teléfonos, correos ni enlaces', () => {
+      for (const frase of Object.values(FRASE_ALTA_DEMANDA)) expect(contieneEnlaceOPrecio(frase)).toBe(false);
+    });
+  });
+
   describe('reintento ante una salida que no es JSON legible', () => {
     const secuencia = (...salidas: (string | Partial<RespuestaLLM>)[]) => {
       let i = 0;
@@ -400,6 +462,78 @@ describe('AgenteKuaa', () => {
     expect(salida.botones).toEqual([]);
     expect(salida.propuestas).toEqual(['atencion_humana_solicitada']);
     expect(avisos).toContain('sin_respaldo');
+  });
+
+  describe('sin respaldo con el contacto de la plataforma', () => {
+    const plataformaCon = (contacto: Record<string, unknown>) => ({
+      version: 'v0.4',
+      catalogo: [{ producto: 'VIDA_ONCOLOGICO', nombre: 'Vida con cobertura oncológica', estado: 'disponible' }],
+      planes: [{ producto: 'VIDA_ONCOLOGICO', plan: 'CONFIO', nombre: 'Confio Basico', premio_anual_gs: 390000, capital_fallecimiento_gs: 20000000, indemnizacion_cancer_gs: 10000000, renta_hospitalaria_dia_gs: 100000, renta_dias_max: 30, gastos_medicos_accidente_gs: 2000000 }],
+      contacto,
+    });
+    const modelo = () => salidaJson({ texto: 'Cubre todo siempre.', propuestas: ['atencion_humana_solicitada'] });
+
+    it('con WhatsApp en la plataforma el texto lo nombra, con la redacción de salidaSinCifras, y conserva la propuesta', async () => {
+      const { agente, config } = await armar(modelo);
+      const { salida, avisos } = await resp(agente, entrada({ mensaje: '¿Cuánto cubre el plan intermedio?', plataforma: plataformaCon({ whatsapp_e164: '+595991478468', canal: 'WhatsApp SLT' }) }));
+      expect(salida.texto).toBe(`${config.mensajes.sinRespaldo} Podés escribir al WhatsApp +595 991 478 468 y una persona del equipo te ayuda.`);
+      expect(salida.texto).not.toContain(config.mensajes.derivacion);
+      expect(salida.propuestas).toEqual(['atencion_humana_solicitada']);
+      expect(avisos).toContain('sin_respaldo');
+      expect(avisos).not.toContain('enlace_o_precio');
+    });
+
+    it.each([
+      ['usted', 'Puede escribir al WhatsApp +595 991 478 468 y una persona del equipo le ayudará.'],
+      ['tu', 'Puedes escribir al WhatsApp +595 991 478 468 y una persona del equipo te ayudará.'],
+      ['vos', 'Podés escribir al WhatsApp +595 991 478 468 y una persona del equipo te ayuda.'],
+      ['neutro', 'Se puede escribir al WhatsApp +595 991 478 468 para recibir ayuda de una persona del equipo.'],
+    ] as const)('la derivación respeta el trato %s', (tratamiento, esperado) => {
+      const config = cargarConfiguracionDesdeJson(JSON_KUAA.replace('"tratamiento": "vos"', `"tratamiento": "${tratamiento}"`));
+      expect(config.voz.tratamiento).toBe(tratamiento);
+      const plataforma = EntradaKuaa.parse(entrada({ plataforma: plataformaCon({ whatsapp_e164: '+595991478468', canal: 'x' }) })).plataforma;
+      expect(textoSinRespaldo(config, plataforma)).toBe(`${config.mensajes.sinRespaldo} ${esperado}`);
+    });
+
+    it('un fallo del índice queda en la bitácora con causa y sin texto', async () => {
+      const { agente, bitacora } = await armar(modelo);
+      (agente as unknown as { deps: { indice: { buscar: () => Promise<never> } } }).deps.indice.buscar = () => Promise.reject(Object.assign(new Error('texto-centinela'), { causa: 'servidor' }));
+      await resp(agente, entrada({ mensaje: '¿Cuánto cubre el plan intermedio?' }));
+      expect(bitacora.eventos.find((e) => e.codigo === 'indice')).toMatchObject({ tipo: 'error_modelo', causa: 'servidor' });
+      expect(JSON.stringify(bitacora.eventos)).not.toContain('centinela');
+    });
+
+    it('con plataforma pero sin WhatsApp deja el texto de siempre', async () => {
+      const { agente, config } = await armar(modelo);
+      const { salida } = await resp(agente, entrada({ mensaje: '¿Cuánto cubre el plan intermedio?', plataforma: plataformaCon({ canal: 'WhatsApp SLT' }) }));
+      expect(salida.texto).toBe(`${config.mensajes.sinRespaldo} ${config.mensajes.derivacion}`);
+    });
+
+    it('un número con formato raro no pasa el esquema de la entrada', () => {
+      for (const mal of ['0991478468', '+595 991 478 468', '+59599', 'tel:+595991478468']) {
+        expect(() => entrada({ plataforma: plataformaCon({ whatsapp_e164: mal, canal: 'x' }) }), mal).toThrow();
+      }
+    });
+
+    it('el detector admite el número de la plataforma en ese texto y lo objetaría si no fuera el permitido', () => {
+      const config = cargarConfiguracionDesdeJson(JSON_KUAA);
+      const plataforma = EntradaKuaa.parse(entrada({ plataforma: plataformaCon({ whatsapp_e164: '+595991478468', canal: 'x' }) })).plataforma;
+      const texto = textoSinRespaldo(config, plataforma);
+      expect(texto).toContain('+595 991 478 468');
+      expect(patronEnlaceOPrecio(texto, permitidosDe(plataforma))).toBeNull();
+      expect(patronEnlaceOPrecio(texto, undefined)).not.toBeNull();
+    });
+
+    it('si el detector objetara el texto (frase configurada con un enlace) vuelve al texto de siempre', () => {
+      const config = cargarConfiguracionDesdeJson(JSON_KUAA.replace('No tengo información aprobada', 'Visite www.ejemplo.com, no tengo información aprobada'));
+      const plataforma = EntradaKuaa.parse(entrada({ plataforma: plataformaCon({ whatsapp_e164: '+595991478468', canal: 'x' }) })).plataforma;
+      expect(textoSinRespaldo(config, plataforma)).toBe(`${config.mensajes.sinRespaldo} ${config.mensajes.derivacion}`);
+    });
+
+    it('sin plataforma devuelve el texto de siempre', () => {
+      const config = cargarConfiguracionDesdeJson(JSON_KUAA);
+      expect(textoSinRespaldo(config, undefined)).toBe(`${config.mensajes.sinRespaldo} ${config.mensajes.derivacion}`);
+    });
   });
 
   describe('compuertas de entrada', () => {
