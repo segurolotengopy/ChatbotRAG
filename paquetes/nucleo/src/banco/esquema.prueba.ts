@@ -91,6 +91,14 @@ describe('esquema del banco de respuestas', () => {
     expect(EntradaDerivacion.safeParse({ ...base, terminos: ['termino uno', 'termino dos'] }).success).toBe(true);
   });
 
+  it('rechaza un término repetido ENTRE derivaciones (D10: el de emergencia quedaría oculto tras el de otro motivo)', () => {
+    const d = (id: string, motivo: string, terminos: string[]) => ({ id, motivo, terminos, texto: 'T', aprobado_por: 'ejemplo sintetico' });
+    const banco = (derivaciones: unknown[]) => BancoRespuestas.safeParse({ formato: 1, version: '1.0.0', respuestas: [respuesta()], derivaciones });
+    expect(banco([d('d-siniestro', 'siniestro_particular', ['ayuda urgente']), d('d-emergencia', 'emergencia', ['Ayuda  urgente'])]).success).toBe(false);
+    expect(banco([d('d-emergencia', 'emergencia', ['ayuda urgente']), d('d-siniestro', 'siniestro_particular', ['ayuda urgente'])]).success).toBe(false);
+    expect(banco([d('d-siniestro', 'siniestro_particular', ['ayuda urgente']), d('d-emergencia', 'emergencia', ['ayuda inmediata'])]).success).toBe(true);
+  });
+
   it('rechaza preguntas repetidas entre entradas, ignorando puntuación y tildes', () => {
     const otra = respuesta({ id: 'r-dos', preguntas: ['cuanto cuesta'] });
     const primera = respuesta({ preguntas: ['¿Cuánto cuesta?'] });
