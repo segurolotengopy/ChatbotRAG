@@ -73,6 +73,24 @@ function esAltaDemanda(causa: CausaErrorProveedor): boolean {
   return causa === 'cuota' || causa === 'saturacion';
 }
 
+/**
+ * Tiempo agotado o error del servidor del embebedor: falla de infraestructura, no falta de información (evidencia: 2 de 541
+ * mensajes de la corrida de staging del 7-nov-2026 terminaron en «No tengo información aprobada» por causa `tiempo`, y al
+ * repetirse salían bien). Se dice «problema técnico momentáneo». Las causas `autenticacion`, `modelo` y `otro` NO entran aquí a
+ * propósito: son errores de configuración o de petición, que reintentar no arregla, y siguen a `sin_respaldo` como antes.
+ * Política pendiente de confirmar con Andres si se quisiera cambiar.
+ */
+function esErrorTemporalIndice(causa: CausaErrorProveedor): boolean {
+  return causa === 'tiempo' || causa === 'servidor';
+}
+
+/** Devuelve el aviso enumerado si la causa del fallo del índice debe cortar el turno con un mensaje de infraestructura. */
+function avisoCorteIndice(causa: CausaErrorProveedor): string | null {
+  if (esAltaDemanda(causa)) return 'alta_demanda_indice';
+  if (esErrorTemporalIndice(causa)) return 'error_temporal_indice';
+  return null;
+}
+
 export class AgenteKuaa {
   private readonly reloj: () => Date;
 
@@ -131,8 +149,10 @@ export class AgenteKuaa {
         this.deps.bitacora.registrar({ ...base, tipo: 'error_modelo', codigo: 'indice', causa });
         // Cuota o saturación del embebedor es una falla de infraestructura, no «no hay información»: se dice alta demanda,
         // sin llamar al modelo (sin fragmentos no hay respaldo, y RAG es obligatorio) y sin ofrecer atención humana.
-        // Como el fallo del modelo en 429, el turno NO se guarda en la memoria. Los demás fallos siguen a `sin_respaldo`.
-        if (esAltaDemanda(causa)) return { salida: salidaFallback(config, etapa, causa), avisos: [...avisos, 'alta_demanda_indice'] };
+        // Como el fallo del modelo en 429, el turno NO se guarda en la memoria. `tiempo` y `servidor` también son infraestructura:
+        // responden `errorTemporal` con el mismo trato. Los demás fallos (autenticación, modelo, otro) siguen a `sin_respaldo`.
+        const corte = avisoCorteIndice(causa);
+        if (corte) return { salida: salidaFallback(config, etapa, causa), avisos: [...avisos, corte] };
       }
       if (this.opciones.perfilConocimiento === 'pruebas' && this.opciones.versionPaquete) {
         try {
@@ -145,7 +165,8 @@ export class AgenteKuaa {
           // Es la vía real de staging (la colección base está vacía y todo el respaldo viene del paquete). Mismo criterio si no
           // hay NADA de la base. Si la base sí aportó fragmentos, se responde con ellos (RAG cumplido, nada inventado); la
           // respuesta puede ignorar el paquete, y el aviso `indice_error` y el evento lo dejan a la vista.
-          if (esAltaDemanda(causa) && fragmentos.length === 0) return { salida: salidaFallback(config, etapa, causa), avisos: [...avisos, 'alta_demanda_indice'] };
+          const corte = avisoCorteIndice(causa);
+          if (corte && fragmentos.length === 0) return { salida: salidaFallback(config, etapa, causa), avisos: [...avisos, corte] };
         }
       }
     }

@@ -95,7 +95,7 @@ describe('EmbebedorVertex: reintento del 429 y el 503', () => {
       }),
       { ahora: () => t, esperar: async (ms) => void esperas.push(ms), aleatorio: () => 0 },
     );
-    // 2000 + 400 + 2500 = 4900 > 4500: no cabe el reintento.
+    // 2000 + 400 + 4000 = 6400 > 6000: no cabe el reintento.
     await expect(e.embeber(['a'])).rejects.toMatchObject({ causa: 'cuota' });
     expect(llamadas).toBe(1);
     expect(esperas).toEqual([]);
@@ -113,7 +113,7 @@ describe('EmbebedorVertex: reintento del 429 y el 503', () => {
       }),
       { ahora: () => t, esperar: async () => undefined, aleatorio: () => 0 },
     );
-    // 1000 + 400 + 2500 = 3900 ≤ 4500.
+    // 1000 + 400 + 4000 = 5400 ≤ 6000.
     await e.embeber(['a']);
     expect(llamadas).toBe(2);
   });
@@ -126,17 +126,37 @@ describe('EmbebedorVertex: reintento del 429 y el 503', () => {
 });
 
 describe('EmbebedorVertex: tope de tiempo por intento', () => {
-  it('un intento colgado vence a los 2,5 s con causa tiempo y aborta la llamada', async () => {
+  it('un intento colgado vence a los 4 s con causa tiempo y aborta la llamada', async () => {
     vi.useFakeTimers();
     let senal: AbortSignal | undefined;
     const e = new EmbebedorVertex(cliente((p) => { senal = p.config?.abortSignal; return new Promise(() => undefined); }));
     const r = e.embeber(['a']);
     const espera = expect(r).rejects.toMatchObject({ causa: 'tiempo' });
-    await vi.advanceTimersByTimeAsync(2499);
+    await vi.advanceTimersByTimeAsync(3999);
     expect(senal?.aborted).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
     await espera;
     expect(senal?.aborted).toBe(true);
+  });
+
+  it('con el tope por omisión, el vencimiento a los 4 s no se reintenta (1 sola llamada)', async () => {
+    vi.useFakeTimers();
+    let llamadas = 0;
+    const e = new EmbebedorVertex(cliente(() => { llamadas += 1; return new Promise(() => undefined); }));
+    const espera = expect(e.embeber(['a'])).rejects.toMatchObject({ causa: 'tiempo' });
+    await vi.advanceTimersByTimeAsync(4000);
+    await espera;
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(llamadas).toBe(1);
+  });
+
+  it('una respuesta lenta de 3,9 s (que el tope anterior de 2,5 s cortaba) termina bien', async () => {
+    vi.useFakeTimers();
+    const lento: Embed = (p) => new Promise((r) => setTimeout(() => r({ embeddings: p.contents.map(() => ({ values: [1] })) }), 3900));
+    const e = new EmbebedorVertex(cliente(lento));
+    const r = e.embeber(['a']);
+    await vi.advanceTimersByTimeAsync(3900);
+    expect(await r).toEqual([[1]]);
   });
 
   it('el tope es inyectable y el vencimiento no se reintenta', async () => {
@@ -273,12 +293,12 @@ describe('EmbebedorVertex: lotes', () => {
 });
 
 describe('EmbebedorVertex: indexación frente a consulta', () => {
-  it('la consulta vence a los 2,5 s y la indexación aguanta 30 s sin vencer, con el mismo cliente lento', async () => {
+  it('la consulta vence a los 4 s y la indexación aguanta 30 s sin vencer, con el mismo cliente lento', async () => {
     vi.useFakeTimers();
     const lento: Embed = (p) => new Promise((r) => setTimeout(() => r({ embeddings: p.contents.map(() => ({ values: [1] })) }), 20_000));
     const e = new EmbebedorVertex(cliente(lento));
     const consulta = expect(e.embeber(['a'])).rejects.toMatchObject({ causa: 'tiempo' });
-    await vi.advanceTimersByTimeAsync(2500);
+    await vi.advanceTimersByTimeAsync(4000);
     await consulta;
     const indexar = e.embeberParaIndexar(['a']);
     await vi.advanceTimersByTimeAsync(20_000);
