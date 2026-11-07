@@ -176,14 +176,14 @@ describe('AgenteKuaa', () => {
     expect(avisos).toEqual([]);
   });
 
-  it('el proveedor recibe una sola llamada sin herramientas, con temperatura baja y el prompt de Kuaa', async () => {
+  it('el proveedor recibe una sola llamada sin herramientas, con temperatura 0 y el prompt de Kuaa', async () => {
     const { agente, proveedor, config } = await armar(() => salidaJson(), true);
     await resp(agente, entrada());
     expect(proveedor.peticiones).toHaveLength(1);
     const p = proveedor.peticiones[0]!;
     expect(p.herramientas).toEqual([]);
-    expect(p.parametros.temperatura).toBe(0.2);
-    expect(config.modelo.temperatura).toBe(0.2);
+    expect(p.parametros.temperatura).toBe(0);
+    expect(config.modelo.temperatura).toBe(0);
     expect(p.sistema).toContain('CONTEXTO DE LA OPORTUNIDAD');
     expect(p.mensajes.at(-1)).toEqual({ rol: 'usuario', contenido: '¿Cómo es el proceso?' });
   });

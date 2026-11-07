@@ -45,7 +45,7 @@
     "proveedor": "vertex",
     "nombre": "gemini-2.5-flash",
     "modeloEmbeddings": "text-embedding-005",
-    "temperatura": 0.2,
+    "temperatura": 0,
     "maxTokensSalida": 1024,
     "razonamiento": "desactivado",
     "ttlConversacionSeg": 1800
