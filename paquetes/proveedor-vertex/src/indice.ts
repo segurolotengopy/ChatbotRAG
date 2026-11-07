@@ -56,8 +56,8 @@
  * PEOR CASO DE UN TURNO DE KUAA: `generar` ≤ ≈18,5 s. El reintento de JSON roto del agente (#80) solo se hace si desde
  * la llegada pasaron ≤ 3 s, y su segunda llamada tiene hasta ≈18,5 s propios: 3 + 18,5 ≈ 21,5 s, que SÍ pasa de los
  * 20 s del sitio. Ese valor vale para la vía del reintento de JSON roto, y la búsqueda en el índice va ANTES de `generar` y
- * ahora tiene cota (≈4,5 s por búsqueda del embebedor; antes no la tenía), que se suma: ≈4,5 + 18,5 ≈ 23 s sin JSON roto, y
- * ≈27,5 s con perfil `pruebas` y dos búsquedas (ver `EmbebedorVertex`). El reintento de JSON roto exige un primer intento de ≈3 s con JSON roto y una segunda llamada que agote su presupuesto; es
+ * ahora tiene cota (≈6 s por búsqueda del embebedor; antes no la tenía), que se suma: ≈6 + 18,5 ≈ 24,5 s sin JSON roto, y
+ * ≈30,5 s con perfil `pruebas` y dos búsquedas (ver `EmbebedorVertex`). El reintento de JSON roto exige un primer intento de ≈3 s con JSON roto y una segunda llamada que agote su presupuesto; es
  * improbable, pero NO se garantiza evitarlo.
  *
  * NO garantiza respuesta: si todos los intentos fallan, se lanza `ErrorProveedor` (con `causa`, sin el texto de la
@@ -433,11 +433,11 @@ export class ProveedorVertex implements ProveedorLLM {
 export interface OpcionesEmbebedorVertex {
   modelo?: string;
   dimension?: number;
-  /** CONSULTA. Tope de cada intento; por omisión 2 500 ms. Vencido, falla con causa `tiempo` (no se reintenta). */
+  /** CONSULTA. Tope de cada intento; por omisión 4 000 ms. Vencido, falla con causa `tiempo` (no se reintenta). */
   tiempoMaximoMs?: number;
   /** CONSULTA. Reintentos ante 429 y 503 (causas `cuota` y `saturacion`); por omisión 1 (espera ≈400-900 ms). */
   reintentosCuota?: number;
-  /** CONSULTA. Presupuesto de cada llamada (un lote), cola incluida; por omisión 4 500 ms. */
+  /** CONSULTA. Presupuesto de cada llamada (un lote), cola incluida; por omisión 6 000 ms. */
   presupuestoMs?: number;
   /** INDEXACIÓN. Tope de cada intento (lotes de hasta 20 000 caracteres); por omisión 30 000 ms. Sin reintento por tiempo. */
   tiempoMaximoIndexacionMs?: number;
@@ -472,10 +472,15 @@ interface PerfilLlamada {
  * llamada no tenía cota de tiempo. El modelo de lenguaje no falló gracias al reintento de `ProveedorVertex`; aquí se aplica
  * el mismo patrón, con valores propios, porque la búsqueda va ANTES de `generar` y suma a la latencia del turno.
  *
+ * AJUSTE DEL 2026-11-07: el tope de 2,5 s del #94 cortó llamadas lentas que antes terminaban bien (2 de 541 mensajes en la corrida
+ * de staging, rev 00071, causa `tiempo`, ≈0,37 %), y el agente las tomó por «sin información». Se sube a 4 s por intento y 6 s de
+ * presupuesto. SUPUESTO NO VERIFICADO: que 4 s alcance para la cola de latencia; hay que medirlo. Empeora el peor caso del turno
+ * (arriba) y NO está garantizado: queda por encima de los 20 s del sitio.
+ *
  * DOS PERFILES, porque consultar e indexar no se parecen:
- *  - CONSULTA (`embeber`, la usa `buscar` en cada turno; un texto): tope de 2,5 s por intento (`AbortController`; vencido,
+ *  - CONSULTA (`embeber`, la usa `buscar` en cada turno; un texto): tope de 4 s por intento (`AbortController`; vencido,
  *    causa `tiempo`, sin reintento), hasta 1 reintento del 429 y el 503 con espera ≈400-900 ms (jitter), solo si
- *    transcurrido + espera + 2,5 s ≤ presupuesto de 4,5 s por llamada (cola incluida), y semáforo de 4 simultáneas con cola
+ *    transcurrido + espera + 4 s ≤ presupuesto de 6 s por llamada (cola incluida), y semáforo de 4 simultáneas con cola
  *    de 2 s (agotada, falla rápido con causa `saturacion`).
  *  - INDEXACIÓN (`embeberParaIndexar`, la usan `indexar` del índice al cargar el corpus y el paquete; lotes de hasta 100
  *    textos y 20 000 caracteres, ~25 lotes en total): tope de 30 s por intento, SIN reintento por tiempo, hasta 2 reintentos
@@ -485,17 +490,17 @@ interface PerfilLlamada {
  * El lote se reintenta ENTERO, sin partirlo ni repetir lotes ya resueltos; cada lote tiene su propio presupuesto.
  * Un 400/401/403/404 o un error desconocido salen en el primer intento.
  *
- * PEOR CASO DE LA BÚSQUEDA DE UN TURNO: ≈4,5 s por búsqueda (más la imprecisión de los temporizadores); antes no tenía cota.
- * Sumado a `generar` (≈18,5 s) queda ≈23 s con UNA búsqueda, que ya pasa de los 20 s del sitio. Con perfil `pruebas`
- * y las dos colecciones con vectores hay DOS búsquedas, en serie: ≈9 s + 18,5 s ≈ 27,5 s. Ambos son peores casos
+ * PEOR CASO DE LA BÚSQUEDA DE UN TURNO: ≈6 s por búsqueda (más la imprecisión de los temporizadores); antes no tenía cota.
+ * Sumado a `generar` (≈18,5 s) queda ≈24,5 s con UNA búsqueda, que ya pasa de los 20 s del sitio. Con perfil `pruebas`
+ * y las dos colecciones con vectores hay DOS búsquedas, en serie: ≈12 s + 18,5 s ≈ 30,5 s. Ambos son peores casos
  * (todo agota su tope), no lo habitual (p50 de la búsqueda ≈ cientos de ms, sin medir aquí); NO se garantiza evitarlos.
  * Solo el índice EN MEMORIA, con la colección base vacía (`fuentes: []` en Kuaa), no llama al embebedor: en staging hoy solo
  * hay la búsqueda del paquete. pgvector embebe SIEMPRE la consulta: con perfil `pruebas` son dos búsquedas aunque la base esté
- * vacía, y el peor caso es ≈27,5 s.
+ * vacía, y el peor caso es ≈30,5 s.
  *
  * SEMÁFORO: es por agente Y por instancia (armar-agentes.ts crea un EmbebedorVertex por configuración), no por proceso ni
  * por proyecto. SUPUESTOS NO VERIFICADOS: que la cuota de embeddings sea por proyecto (entonces ni este semáforo ni el del
- * modelo la protegen del todo), que un 429 no se facture, y que 4 simultáneas, 2 s de cola y 4,5 s de presupuesto sean los
+ * modelo la protegen del todo), que un 429 no se facture, y que 4 simultáneas, 2 s de cola y 6 s de presupuesto sean los
  * valores correctos: deben medirse en staging. NO garantiza que la cuota se libere en esos segundos: si no, el agente
  * responde con la frase de alta demanda. Y si solo falla el paquete y la base aportó fragmentos, la respuesta se arma solo
  * con la base y puede ser poco pertinente (el agente lo deja en `indice_error`, no lo corrige).
@@ -532,7 +537,7 @@ export class EmbebedorVertex implements Embebedor {
     this.modelo = opciones.modelo ?? 'text-embedding-005';
     this.nombre = `vertex-embeddings:${this.modelo}`;
     this.dimension = opciones.dimension ?? 768;
-    this.consulta = { tiempoMaximoMs: opciones.tiempoMaximoMs ?? 2500, reintentosCuota: opciones.reintentosCuota ?? 1, presupuestoMs: opciones.presupuestoMs ?? 4500, conSemaforo: true };
+    this.consulta = { tiempoMaximoMs: opciones.tiempoMaximoMs ?? 4000, reintentosCuota: opciones.reintentosCuota ?? 1, presupuestoMs: opciones.presupuestoMs ?? 6000, conSemaforo: true };
     this.indexacion = { tiempoMaximoMs: opciones.tiempoMaximoIndexacionMs ?? 30_000, reintentosCuota: opciones.reintentosCuotaIndexacion ?? 2, presupuestoMs: opciones.presupuestoIndexacionMs ?? 40_000, conSemaforo: false };
     this.ahora = opciones.ahora ?? (() => performance.now());
     this.aleatorio = opciones.aleatorio ?? Math.random;

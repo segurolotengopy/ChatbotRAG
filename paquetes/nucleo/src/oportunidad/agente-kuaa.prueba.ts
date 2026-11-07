@@ -831,7 +831,45 @@ describe('índice que falla (forma real de kuaa.json: base vacía y respaldo en 
     expect(indice.busquedas).toEqual([base]);
   });
 
-  it.each<CausaErrorProveedor>(['autenticacion', 'modelo', 'servidor', 'tiempo', 'otro'])('con la base vacía y el paquete en %s sigue como sin_respaldo, igual que antes', async (causa) => {
+  it.each<CausaErrorProveedor>(['tiempo', 'servidor'])('con la base vacía y el paquete en %s responde errorTemporal, sin modelo, sin atención humana y sin guardar el turno', async (causa) => {
+    const indice = new IndiceFalso(delPaquete(causa));
+    const { agente, proveedor, bitacora, memoria } = armarFalso(indice);
+    const { salida, avisos } = await resp(agente, entrada({ mensaje: '¿Cuánto cubre el plan intermedio?' }));
+    expect(salida.texto).toBe(config.mensajes.errorTemporal);
+    expect(salida.texto).not.toContain(config.mensajes.sinRespaldo);
+    expect(salida).toMatchObject({ botones: [], propuestas: [] });
+    expect(proveedor.peticiones).toHaveLength(0);
+    expect(avisos).toEqual(expect.arrayContaining(['indice_error', 'error_temporal_indice']));
+    expect(avisos).not.toContain('sin_respaldo');
+    expect(avisos).not.toContain('alta_demanda_indice');
+    expect(bitacora.eventos.find((e) => e.codigo === 'indice')).toMatchObject({ tipo: 'error_modelo', causa });
+    expect(bitacora.eventos.map((e) => e.tipo)).not.toContain('sin_respaldo');
+    expect(await memoria.leer(MEMORIA, 10)).toEqual([]);
+    expect(JSON.stringify(bitacora.eventos)).not.toContain('centinela');
+    expect(indice.busquedas).toHaveLength(2);
+  });
+
+  it.each<CausaErrorProveedor>(['tiempo', 'servidor'])('con la base en %s responde errorTemporal y ni consulta el paquete', async (causa) => {
+    const indice = new IndiceFalso(() => causa);
+    const { agente, proveedor } = armarFalso(indice);
+    const { salida } = await resp(agente, entrada({ mensaje: '¿Cuánto cubre el plan intermedio?' }));
+    expect(salida.texto).toBe(config.mensajes.errorTemporal);
+    expect(proveedor.peticiones).toHaveLength(0);
+    expect(indice.busquedas).toEqual([base]);
+  });
+
+  it('si la base aportó fragmentos y el paquete falla por tiempo, responde con la base (con modelo)', async () => {
+    const { agente, proveedor, bitacora, memoria } = armarFalso(new IndiceFalso((c) => (c === base ? [fragmento('f1', base)] : 'tiempo')));
+    const { salida, avisos } = await resp(agente, entrada({ mensaje: 'proceso pasos sintéticos' }));
+    expect(proveedor.peticiones).toHaveLength(1);
+    expect(salida.texto).not.toBe(config.mensajes.errorTemporal);
+    expect(avisos).toContain('indice_error');
+    expect(avisos).not.toContain('error_temporal_indice');
+    expect(bitacora.eventos.find((e) => e.codigo === 'indice')).toMatchObject({ causa: 'tiempo' });
+    expect((await memoria.leer(MEMORIA, 10)).length).toBe(2);
+  });
+
+  it.each<CausaErrorProveedor>(['autenticacion', 'modelo', 'otro'])('con la base vacía y el paquete en %s sigue como sin_respaldo, igual que antes', async (causa) => {
     const { agente, bitacora } = armarFalso(new IndiceFalso(delPaquete(causa)));
     const { salida, avisos } = await resp(agente, entrada({ mensaje: '¿Cuánto cubre el plan intermedio?' }));
     expect(salida.texto).toContain(config.mensajes.sinRespaldo);
