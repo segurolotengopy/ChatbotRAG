@@ -162,6 +162,12 @@ export class AgenteKuaa {
     const ent = evaluarEntrada(texto, config.seguridad.bloquearEntrada, config.seguridad.vocabularioEntrada, config.seguridad.criterioSaludPep);
     if (ent.bloqueada) {
       const avisos = ent.bloqueantes.map((c) => `entrada:${c}`);
+      // D10: una emergencia gana sobre la regla de entrada. Solo con el enrutador encendido; el mensaje bloqueado no llega al
+      // modelo, a la memoria ni a la bitácora (solo enumerados). Si el enrutador falla o no hay término, sigue lo de siempre.
+      if (this.enrutador) {
+        const emergencia = this.responderEmergenciaBloqueada(this.enrutador, entrada, texto, config, base, avisos);
+        if (emergencia) return emergencia;
+      }
       this.deps.bitacora.registrar({ ...base, tipo: 'entrada_bloqueada', avisos });
       return { salida: { ...salidaFallback(config, etapa), texto: config.mensajes.entradaBloqueada }, avisos };
     }
@@ -469,6 +475,41 @@ export class AgenteKuaa {
     const salida = filtrarBotonesSalida(valida.data, entrada.estados);
     await this.deps.memoria.agregar(claveMemoria, [{ rol: 'usuario', contenido: texto }, { rol: 'asistente', contenido: JSON.stringify(salida) }], config.modelo.ttlConversacionSeg);
     return this.cerrar(base, { salida, avisos }, { tokensEntrada: 0, tokensSalida: 0 }, [], 0);
+  }
+
+  /**
+   * D10: respuesta de derivación de emergencia para un mensaje que la compuerta de entrada bloqueó. Corre SOLO la vía exacta de
+   * términos de emergencia. El turno NO se memoriza y no se llama al modelo ni al embebedor; el texto sale por D5 con las
+   * mismas compuertas y el verificador de Kuaa (es el texto aprobado del banco: jamás repite lo que escribió la persona).
+   * Devuelve `null` si no hay término de emergencia o algo falla: el llamador responde `entradaBloqueada` como siempre.
+   */
+  private responderEmergenciaBloqueada(
+    enrutador: EnrutadorKuaa,
+    entrada: EntradaKuaa,
+    texto: string,
+    config: ConfiguracionEfectiva,
+    base: BaseBitacora,
+    avisosEntrada: string[],
+  ): ResultadoKuaa | null {
+    try {
+      const inicio = performance.now();
+      const d = enrutador.emergencia(texto);
+      if (d === null) return null;
+      const evento = eventoEnrutador({ decision: d, via: 'exacta', similitud: null }, base, performance.now() - inicio);
+      const final = armarTextoConD5(d, enrutador.indice.banco, resolverVariablesPlataforma(entrada.plataforma, entrada.resumen.plan), { config }, verificadorKuaa(entrada.plataforma, entrada.estados, config.seguridad.marcasLiterales));
+      const rechazo = final.ok ? [] : [`texto_fijo_rechazado:${final.causa}`];
+      const textoSalida = final.ok ? final.texto : config.mensajes.derivacion;
+      const valida = SalidaOportunidad.safeParse({ texto: textoSalida, etapa_propuesta: entrada.etapa_actual, objecion: null, botones: [], propuestas: [PROPUESTA_DERIVACION_GENERAL] });
+      if (!valida.success) return null;
+      // Todo aviso es enumerado (categorías de entrada, carril, causa de rechazo, versión de plataforma validada por regex): nunca texto.
+      const avisos = [...avisosEntrada, 'derivacion:emergencia', ...rechazo, 'carril:derivacion', ...(entrada.plataforma ? [`plataforma:${entrada.plataforma.version}`] : [])];
+      this.deps.bitacora.registrar({ ...base, tipo: 'entrada_bloqueada', avisos: [...avisosEntrada, 'derivacion:emergencia'] });
+      this.deps.bitacora.registrar(final.ok ? evento : conCarrilFinal(evento, 'derivacion', rechazo));
+      // Cierre del turno: `mensaje_atendido` con iteraciones 0 y tokens 0, como el carril de derivación (solo enumerados).
+      return this.cerrar(base, { salida: filtrarBotonesSalida(valida.data, entrada.estados), avisos }, { tokensEntrada: 0, tokensSalida: 0 }, [], 0);
+    } catch {
+      return null;
+    }
   }
 
   private cerrar(base: BaseBitacora, resultado: ResultadoKuaa, tokens: { tokensEntrada: number; tokensSalida: number }, fragmentos: FragmentoRecuperado[], iteraciones = 1): ResultadoKuaa {

@@ -801,12 +801,30 @@ solo se enciende por ambiente.**
   como el carril IA; con el enrutador apagado no hay ningún aviso nuevo. el aviso de arranque agrega
   `semantica=si|no enrutador=<modo>` solo cuando el enrutador está solicitado. Jamás el texto de la persona ni el del banco; la
   prueba de bitácora sin texto cubre el evento y los dos carriles nuevos.
-- **Qué NO hace.** No recarga el banco en caliente (cambiarlo exige desplegar); no implementa D3 (aclaración «¿sobre qué plan?»); no
-  corre sobre un mensaje que la compuerta de entrada bloquea. **D10 (un término de emergencia gana sobre una entrada bloqueada)
-  queda PENDIENTE de decisión de Andres:** la causa es el ORDEN en `agente-kuaa.ts` (la compuerta de entrada va primero), no que
-  `enrutar` no lo defina. Verificado: un mensaje de emergencia que menciona salud («me quiero suicidar, tengo depresión», «tengo
-  cáncer y estoy muy mal, ayuda urgente», «estoy embarazada y tuve un sangrado fuerte») recibe `entradaBloqueada` hoy; es el
-  comportamiento previo, no una regresión, y hay una prueba que lo documenta. La memoria del embebedor es
+- **Qué NO hace.** No recarga el banco en caliente (cambiarlo exige desplegar); no implementa D3 (aclaración «¿sobre qué plan?»). **D10 está implementado
+  (decisión de Andres, 2026-11-07: «una emergencia gana sobre la regla de entrada»).** Antes, con `criterioSaludPep: declaracion`, un
+  mensaje como «me quiero suicidar, tengo depresión», «tengo cáncer y estoy muy mal, ayuda urgente» o una emergencia junto con una
+  cédula recibía `entradaBloqueada` y el enrutador nunca corría. Ahora, cuando la compuerta de entrada BLOQUEA y el enrutador está
+  efectivamente encendido con banco cargado, corre SOLO la vía exacta de términos de derivación con motivo `emergencia`
+  (`buscarEmergencia` en `banco/enrutador.ts`, pura; `enrutar` no cambió de contrato): sin embedding, sin semántica, sin calibración, sin
+  modelo y sin RAG. Si coincide, sale el texto aprobado de emergencia por `armarTextoConD5` y el verificador de Kuaa, con la propuesta
+  `atencion_humana_solicitada`; si una compuerta lo rechaza, el mensaje general `mensajes.derivacion` con la misma propuesta (nunca
+  `entradaBloqueada`). El turno NO se memoriza y el mensaje bloqueado no llega al modelo; la bitácora lleva solo enumerados:
+  `entrada:<categoría>` y `derivacion:emergencia` en `entrada_bloqueada`, más el evento `enrutador` (carril `derivacion`, vía `exacta`,
+  motivo `emergencia`, aviso `origen:termino_emergencia`) y el cierre `mensaje_atendido` con `carril:derivacion`, `iteraciones: 0`,
+  tokens en 0, sin fragmentos y, si la plataforma la envió, `plataforma:<versión>` (decisión: es seguro porque todo aviso es
+  enumerado; una prueba verifica que la bitácora no contiene texto). El turno no se guarda en la memoria. Sin término de emergencia, con el enrutador apagado, sin banco o con un
+  banco sin términos de emergencia el comportamiento es el de siempre (`entradaBloqueada`; una prueba lo compara). Cualquier fallo
+  interno del camino de emergencia cae también a `entradaBloqueada`. **Qué NO hace:** no cubre una emergencia que el banco no nombre
+  con un término (depende de los términos que apruebe Rodrigo/Legal en el banco real; los términos y textos reales NO van al repo);
+  no relaja ninguna otra regla de entrada; hereda los límites de `enrutar` (sinónimos, errores ortográficos, homóglifos). **Regla del banco:** un término
+  (normalizado como lo busca el enrutador) no puede repetirse ENTRE derivaciones; `BancoRespuestas` lo rechaza («término repetido
+  entre derivaciones») porque el índice conserva el primero y un término de emergencia repetido tras el de otro motivo quedaría
+  oculto. El banco real debe cumplirlo. **Para la plataforma (SLT):** con D10 una derivación puede generarse desde un mensaje que la
+  compuerta bloqueó (tarjeta, clave, OTP, cédula, salud); la consola del operador humano NO debe mostrar ese mensaje sin enmascarar.
+  Observación heredada (guion blando, U+00AD): el enrutador lo trata como invisible (se borra dentro de la palabra o separa, en las
+  dos variantes), de modo que «sui\u00ADcidar» sigue coincidiendo; la plataforma no debe asumir que el texto recibido y el
+  texto buscado son idénticos. Los guiones visibles («sui-cidio») sí siguen siendo un límite de `enrutar`. La memoria del embebedor es
   por instancia; no verifica que el banco real sea correcto.
 - **Observaciones.** (a) Una derivación emite la propuesta `atencion_humana_solicitada` también cuando `estados.atencion_humana` ya
   está en `en_curso` o `solicitada`: la plataforma debe deduplicarla. (b) El hueco «deducible del IRP» de la gramática tributaria
