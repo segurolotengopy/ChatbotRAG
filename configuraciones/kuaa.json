@@ -41,6 +41,7 @@
     "entradaBloqueada": "Por tu seguridad, por este chat no recibo cédula, datos de salud, tarjetas ni códigos. Contame tu consulta sin esos datos y te ayudo.",
     "suspendido": "En este momento el asistente no está disponible. Podés escribir al contacto de atención."
   },
+  "enrutador": { "activo": true, "carrilFijo": false },
   "modelo": {
     "proveedor": "vertex",
     "nombre": "gemini-2.5-flash",

@@ -21,6 +21,10 @@ import { join, resolve } from 'node:path';
 import {
   Agente,
   AgenteKuaa,
+  EmbebedorConMemoria,
+  type IndiceSemantico,
+  prepararIndiceSemantico,
+  causaDeError,
   BitacoraConsola,
   cargarConfiguracionDesdeJson,
   cargarCorpus,
@@ -28,6 +32,7 @@ import {
   coleccionPaquete,
   coleccionDe,
   type LectorPaquete,
+  type OpcionesEnrutadorKuaa,
   type ConfiguracionAgente,
   type Embebedor,
   ErrorConfiguracion,
@@ -60,8 +65,8 @@ export interface AgenteArmado {
   /** Versión del paquete no validado cargado; `null` si no se cargó (siempre `null` con `produccion`). */
   versionPaquete: string | null;
   /**
-   * Resultado de la carga del banco desde el bucket (H4c), o `null` si el agente no tiene banco declarado. Aún NO lo
-   * usa el agente: lo conectará H4d. `indice` es `null` si el banco no se pudo cargar.
+   * Resultado de la carga del banco desde el bucket (H4c), o `null` si el agente no tiene banco declarado. El agente solo lo
+   * usa si `CHATBOTRAG_ENRUTADOR` lo enciende (H4d). `indice` es `null` si el banco no se pudo cargar.
    */
   enrutadorBanco: ResultadoBancoGcs | null;
 }
@@ -112,7 +117,28 @@ function crearLectorPaqueteGcs(entorno: Entorno): LectorPaquete {
 /** Tiempo máximo por defecto de la carga del banco de un agente: una llamada a GCS colgada no debe colgar el arranque. */
 const TIEMPO_BANCO_MS = 10_000;
 
+/** Espera antes del único reintento del índice semántico ante cuota o saturación (inyectable en pruebas). */
+const ESPERA_REINTENTO_SEMANTICA_MS = 2000;
+
+const esperarPorDefecto = (ms: number): Promise<void> => new Promise((resolver) => setTimeout(resolver, ms));
+
 class TiempoAgotado extends Error {}
+
+/**
+ * Prepara el índice semántico con UN reintento tras una espera si el embebedor falló por cuota o saturación (una ráfaga de
+ * arranques en frío puede toparse con el límite). Todo dentro del tope de tiempo que aplica quien llama. Cada instancia lo
+ * prepara por su cuenta: el costo es un lote de embeddings (uno por pregunta del banco) por arranque en frío.
+ */
+async function prepararSemanticaConReintento(banco: Parameters<typeof prepararIndiceSemantico>[0], embebedor: Embebedor, esperar: (ms: number) => Promise<void>): Promise<IndiceSemantico> {
+  try {
+    return await prepararIndiceSemantico(banco, embebedor);
+  } catch (e) {
+    const causa = causaDeError(e);
+    if (causa !== 'cuota' && causa !== 'saturacion') throw e;
+    await esperar(ESPERA_REINTENTO_SEMANTICA_MS);
+    return prepararIndiceSemantico(banco, embebedor);
+  }
+}
 
 function conTiempoLimite<T>(promesa: Promise<T>, ms: number): Promise<T> {
   let temporizador: NodeJS.Timeout | undefined;
@@ -131,7 +157,7 @@ function crearLectorBancoGcs(entorno: Entorno): LectorBanco {
 
 export async function armarAgentes(
   entorno: Entorno,
-  opciones: { bitacora?: Bitacora; fabricas?: FabricasNube; ejecutorExterno?: EjecutorHerramientas | null; pool?: ReturnType<typeof crearPool>; lectorPaquete?: (entorno: Entorno) => LectorPaquete; lectorBanco?: (entorno: Entorno) => LectorBanco; tiempoBancoMs?: number } = {},
+  opciones: { bitacora?: Bitacora; fabricas?: FabricasNube; ejecutorExterno?: EjecutorHerramientas | null; pool?: ReturnType<typeof crearPool>; lectorPaquete?: (entorno: Entorno) => LectorPaquete; lectorBanco?: (entorno: Entorno) => LectorBanco; tiempoBancoMs?: number; esperar?: (ms: number) => Promise<void> } = {},
 ): Promise<Map<string, AgenteArmado>> {
   const bitacora = opciones.bitacora ?? new BitacoraConsola();
   const fabricas = opciones.fabricas ?? FABRICAS_REALES;
@@ -167,7 +193,12 @@ export async function armarAgentes(
   // Segunda pasada: armado de cada agente.
   for (const { archivo, config } of configuraciones) {
     const nube = elegirNube(config, entorno, fabricas);
-    const indice: IndiceConocimiento = pool ? new IndicePgvector(pool, nube.embebedor) : new IndiceEnMemoria(nube.embebedor);
+    // Enrutador híbrido (H4d): solo si la variable lo enciende, la configuración lo declara activo y hay banco declarado.
+    // Entonces el RAG y el enrutador comparten UN embebedor con memoria (una llamada de embedding por mensaje). Sin la variable
+    // no se construye nada nuevo.
+    const enrutadorSolicitado = entorno.enrutador !== 'apagado' && config.tipoAgente === 'kuaa' && config.enrutador.activo && Object.hasOwn(entorno.bancos, config.id);
+    const embebedorCompartido: Embebedor | null = enrutadorSolicitado && nube.embebedor ? new EmbebedorConMemoria(nube.embebedor) : nube.embebedor;
+    const indice: IndiceConocimiento = pool ? new IndicePgvector(pool, embebedorCompartido) : new IndiceEnMemoria(embebedorCompartido);
     await cargarCorpus(config, lector, indice, bitacora);
 
     // Paquete no validado: SOLO Kuaa, SOLO con perfil `pruebas`, y nunca sobre pgvector (la vía de producción).
@@ -200,6 +231,7 @@ export async function armarAgentes(
 
     // Banco aprobado (H4c): solo si hay declaración para este agente. Nunca lanza ni cambia al agente.
     let enrutadorBanco: ResultadoBancoGcs | null = null;
+    let opcionesEnrutador: OpcionesEnrutadorKuaa | undefined;
     // `hasOwn`: un agente llamado `constructor` no debe heredar propiedades del prototipo.
     const declaracionBanco = Object.hasOwn(entorno.bancos, config.id) ? entorno.bancos[config.id] : undefined;
     if (declaracionBanco) {
@@ -210,9 +242,30 @@ export async function armarAgentes(
       } catch (e) {
         enrutadorBanco = { indice: null, calibracion: null, motivo: e instanceof TiempoAgotado ? 'banco_tiempo' : 'banco_error' };
       }
+      // Índice semántico (H4d): cuesta un embedding por pregunta del banco, una sola vez al arrancar. Sin calibración o sin
+      // embebedor no hay semántica que preparar. Un fallo o un tiempo vencido no detiene el arranque: sin semántica.
+      let indiceSemantico: IndiceSemantico | null = null;
+      if (enrutadorSolicitado && enrutadorBanco.indice !== null && enrutadorBanco.calibracion !== null && nube.embebedor !== null) {
+        try {
+          indiceSemantico = await conTiempoLimite(prepararSemanticaConReintento(enrutadorBanco.indice.banco, nube.embebedor, opciones.esperar ?? esperarPorDefecto), opciones.tiempoBancoMs ?? TIEMPO_BANCO_MS);
+        } catch {
+          indiceSemantico = null;
+        }
+      }
+      if (enrutadorSolicitado && enrutadorBanco.indice !== null) {
+        opcionesEnrutador = {
+          modo: entorno.enrutador === 'activo_fijo' ? 'activo_fijo' : 'activo',
+          indice: enrutadorBanco.indice,
+          calibracion: enrutadorBanco.calibracion,
+          indiceSemantico,
+          embebedor: embebedorCompartido,
+          admitirSimulado: (entorno.APP_ENV ?? '').trim().toLowerCase() === 'test',
+        };
+      }
       // Solo enumerados: ni rutas ni texto del banco ni de las derivaciones.
       const cargado = enrutadorBanco.indice !== null;
-      bitacora.registrar({ ...baseEvento, tipo: cargado ? 'banco_cargado' : 'banco_no_cargado', codigo: enrutadorBanco.motivo ?? 'ok', detalle: `calibracion=${enrutadorBanco.calibracion ? 'si' : 'no'}` });
+      const marcaSemantica = enrutadorSolicitado ? ` semantica=${indiceSemantico ? 'si' : 'no'} enrutador=${entorno.enrutador}` : '';
+      bitacora.registrar({ ...baseEvento, tipo: cargado ? 'banco_cargado' : 'banco_no_cargado', codigo: enrutadorBanco.motivo ?? 'ok', detalle: `calibracion=${enrutadorBanco.calibracion ? 'si' : 'no'}${marcaSemantica}` });
     }
 
     const memoria = new MemoriaEnProceso();
@@ -225,7 +278,7 @@ export async function armarAgentes(
       bitacora,
     };
     const agente = new Agente(dependencias);
-    const agenteKuaa = config.tipoAgente === 'kuaa' ? new AgenteKuaa(dependencias, { perfilConocimiento: entorno.perfilConocimiento, versionPaquete }) : undefined;
+    const agenteKuaa = config.tipoAgente === 'kuaa' ? new AgenteKuaa(dependencias, { perfilConocimiento: entorno.perfilConocimiento, versionPaquete, enrutador: opcionesEnrutador }) : undefined;
     agentes.set(config.id, { config, agente, ...(agenteKuaa ? { agenteKuaa } : {}), memoria, indice, proveedor: nube.proveedor.nombre, perfilConocimiento: entorno.perfilConocimiento, versionPaquete, enrutadorBanco });
     bitacora.registrar({ tipo: 'configuracion_cargada', agenteId: config.id, perfilId: null, conversacionHash: '-', canal: '-', detalle: `archivo=${archivo} proveedor=${nube.proveedor.nombre} indice=${indice.nombre} perfiles=${Object.keys(config.perfiles).length} perfil_conocimiento=${entorno.perfilConocimiento} paquete=${versionPaquete ?? 'ninguno'} fragmentos_paquete=${fragmentosPaquete}` });
   }
