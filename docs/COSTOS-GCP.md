@@ -140,3 +140,62 @@ son cero o centavos en ese rango: **todo el costo es Vertex AI**.
 El riesgo no está en el precio unitario, está en tres decisiones de configuración que lo
 multiplican: una instancia mínima (USD 8,20/mes de piso), Artifact Analysis en staging (USD
 0,26 por push) y un modelo más caro de lo necesario. Ninguna está activada hoy.
+
+## 8. Actualización con la facturación medida (FinOps, 2026-11-07)
+
+Las secciones 1 a 7 son del 2026-09-30 y salen de tarifas y de mediciones sobre el código. Este
+apartado las **corrige con lo medido en la facturación real de octubre** (exportación de Google,
+informada por FinOps) y con lo leído en GCP el 2026-11-07. No reemplaza la tarifa oficial: las
+páginas de precios de Google no se pudieron reverificar ese día, así que las tarifas siguen
+siendo las del 30/09. Detalle y fuentes: informe de costos de Kuaa y GCP del 2026-11-07.
+
+### Lo medido en octubre (bruto, USD)
+
+| Concepto | Octubre |
+|---|---:|
+| Vertex (Gemini y embeddings) | ≈ 0,97 |
+| Artifact Registry (almacenamiento 0,01 + egreso 1,63) | ≈ 1,64 |
+| Cloud Run | ≈ 0,09 |
+| **Bruto** | **2,70** |
+| Crédito de Google (igual al bruto) | −2,70 |
+| **Neto a pagar** | **0,00** |
+
+### Correcciones a lo escrito antes
+
+- **Embeddings (§2).** No «redondean a cero»: se midieron ≈ 0,19 en octubre. Parece costo por
+  arranque y por pruebas, no por conversación. Sigue siendo pequeño.
+- **Transferencia del registro (§4).** No es «USD 0»: el egreso de Artifact Registry fue ≈ 1,63 en
+  octubre (≈ 16,6 GB entre el 10 y el 26/10, «América del Norte a América del Norte»). Crece con el
+  número de despliegues.
+- **Imagen y almacenamiento (§4 y §6).** El repositorio de imágenes pesa hoy **2.727 MB** con
+  **67 revisiones** de Cloud Run: con 0,10 USD por GiB-mes y 0,5 GiB gratis son ≈ 0,22 USD al mes.
+  Conservar las últimas 10 etiquetas lo llevaría a ≈ 0,01. Es una escritura en GCP y se autoriza
+  antes.
+- **Costo del modelo por conversación (§1 y §2).** La configuración vigente tiene
+  `razonamiento: desactivado`. Medido en octubre, sin razonamiento, el modelo cuesta ≈ **0,78 USD por
+  100 conversaciones** de 6 turnos (≈ 0,0013 por mensaje), coherente con los 0,87 modelados el 30/09.
+  Con el razonamiento encendido, como estaba en octubre, sube a ≈ 1,4 por 100 (+74 %).
+
+### Proyección mensual ajustada (bruto)
+
+| Escenario | Modelo | Fijo | Total |
+|---|---:|---:|---:|
+| 1.000 conversaciones | ≈ 7,8 | ≈ 2,0 a 2,5 | ≈ 10 |
+| 10.000 conversaciones | ≈ 78 | ≈ 2,0 a 2,5 | ≈ 80 |
+| Tope de la demo (300 mensajes por día, ≈ 9.000 al mes) | ≈ 11,7 | ≈ 2,0 a 2,5 | ≈ 14 |
+
+Con una instancia mínima de Cloud Run se suman ≈ 8,20 USD al mes.
+
+### Efecto del enrutador y de la robustez
+
+El embedding del enrutador se comparte con el RAG (1 llamada por mensaje, sin costo extra), las
+respuestas fijas y las derivaciones no llaman al modelo, y los reintentos del 429/503 solo ocurren en
+limitación (4 de 215 mensajes en la prueba de carga). Que un 429 no se factura es un supuesto no
+verificado.
+
+### Lo que sigue sin verificar
+
+- Las tarifas del 30/09 no se reverificaron en las páginas oficiales.
+- Noviembre no tiene exportación de facturación todavía.
+- Las 56 conversaciones de octubre son una deducción de la tanda de 335 mensajes del 12/10.
+- No se verificó hasta cuándo dura el crédito de Google.
