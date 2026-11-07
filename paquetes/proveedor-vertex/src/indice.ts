@@ -55,8 +55,9 @@
  *
  * PEOR CASO DE UN TURNO DE KUAA: `generar` ≤ ≈18,5 s. El reintento de JSON roto del agente (#80) solo se hace si desde
  * la llegada pasaron ≤ 3 s, y su segunda llamada tiene hasta ≈18,5 s propios: 3 + 18,5 ≈ 21,5 s, que SÍ pasa de los
- * 20 s del sitio. Ese valor vale para la vía del reintento de JSON roto, y la búsqueda en el índice (el embebedor no tiene
- * tiempo máximo) va ANTES de `generar` y no tiene cota real. Exige un primer intento de ≈3 s con JSON roto y una segunda llamada que agote su presupuesto; es
+ * 20 s del sitio. Ese valor vale para la vía del reintento de JSON roto, y la búsqueda en el índice va ANTES de `generar` y
+ * ahora tiene cota (≈4,5 s por búsqueda del embebedor; antes no la tenía), que se suma: ≈4,5 + 18,5 ≈ 23 s sin JSON roto, y
+ * ≈27,5 s con perfil `pruebas` y dos búsquedas (ver `EmbebedorVertex`). El reintento de JSON roto exige un primer intento de ≈3 s con JSON roto y una segunda llamada que agote su presupuesto; es
  * improbable, pero NO se garantiza evitarlo.
  *
  * NO garantiza respuesta: si todos los intentos fallan, se lanza `ErrorProveedor` (con `causa`, sin el texto de la
@@ -65,7 +66,7 @@
  * (orquestador/agente.ts) sí registra hasta 200 caracteres del mensaje: defecto previo, para otro PR. El tope vale POR
  * LLAMADA al modelo, no por turno: el agente genérico puede llamar hasta `maxIteraciones` veces (Kuaa usa una sola).
  * En el peor caso el reintento duplica las llamadas facturables. `crearClienteVertex` NO pasa `httpOptions.retryOptions`
- * a propósito: si se añadiera, el factor sería 2×5. El embebedor no tiene tiempo máximo, reintento ni semáforo.
+ * a propósito: si se añadiera, el factor sería 2×5. El embebedor tiene los suyos (ver `EmbebedorVertex`).
  */
 import { GoogleGenAI, type Content, type FunctionDeclaration, type GenerateContentResponse, type Part, type Schema, Type } from '@google/genai';
 import type { CausaErrorProveedor, DefinicionHerramientaLLM, Embebedor, MensajeLLM, MotivoFin, PeticionLLM, ProveedorLLM, RespuestaLLM } from '@chatbotrag/nucleo';
@@ -85,7 +86,7 @@ export interface ClienteGemini {
     contents: Content[];
     config: { systemInstruction: string; temperature: number; maxOutputTokens: number; thinkingConfig?: { thinkingBudget: number }; tools?: Array<{ functionDeclarations: FunctionDeclaration[] }>; abortSignal?: AbortSignal };
   }): Promise<GenerateContentResponse>;
-  embedContent(peticion: { model: string; contents: string[]; config?: { outputDimensionality?: number } }): Promise<{ embeddings?: Array<{ values?: number[] }> }>;
+  embedContent(peticion: { model: string; contents: string[]; config?: { outputDimensionality?: number; abortSignal?: AbortSignal } }): Promise<{ embeddings?: Array<{ values?: number[] }> }>;
 }
 
 export class ErrorProveedor extends Error {
@@ -170,7 +171,7 @@ export interface OpcionesLlamadaVertex {
   reintentosCuota?: number;
   /** Presupuesto de latencia de `generar` para decidir un reintento por cuota; por omisión 18 500 ms. */
   presupuestoMs?: number;
-  /** Llamadas simultáneas por instancia; por omisión 4. */
+  /** Llamadas simultáneas por agente y por instancia (un proveedor por configuración); por omisión 4. */
   maxConcurrentes?: number;
   /** Espera máxima por un cupo antes de fallar con causa `saturacion`; por omisión 3 000 ms. */
   esperaMaxColaMs?: number;
@@ -428,36 +429,204 @@ export class ProveedorVertex implements ProveedorLLM {
   }
 }
 
+/** Opciones de las llamadas de embeddings (no del cliente): consulta de un turno e indexación, cada una con sus topes. */
+export interface OpcionesEmbebedorVertex {
+  modelo?: string;
+  dimension?: number;
+  /** CONSULTA. Tope de cada intento; por omisión 2 500 ms. Vencido, falla con causa `tiempo` (no se reintenta). */
+  tiempoMaximoMs?: number;
+  /** CONSULTA. Reintentos ante 429 y 503 (causas `cuota` y `saturacion`); por omisión 1 (espera ≈400-900 ms). */
+  reintentosCuota?: number;
+  /** CONSULTA. Presupuesto de cada llamada (un lote), cola incluida; por omisión 4 500 ms. */
+  presupuestoMs?: number;
+  /** INDEXACIÓN. Tope de cada intento (lotes de hasta 20 000 caracteres); por omisión 30 000 ms. Sin reintento por tiempo. */
+  tiempoMaximoIndexacionMs?: number;
+  /** INDEXACIÓN. Reintentos ante 429 y 503; por omisión 2. */
+  reintentosCuotaIndexacion?: number;
+  /** INDEXACIÓN. Presupuesto por lote; por omisión 40 000 ms. */
+  presupuestoIndexacionMs?: number;
+  /** Solo CONSULTA: llamadas simultáneas por agente y por instancia; por omisión 4. */
+  maxConcurrentes?: number;
+  /** Solo CONSULTA: espera máxima por un cupo antes de fallar con causa `saturacion`; por omisión 2 000 ms. */
+  esperaMaxColaMs?: number;
+  /** Inyectables para pruebas: reloj en milisegundos, número en [0, 1) y espera. */
+  ahora?: () => number;
+  aleatorio?: () => number;
+  esperar?: (ms: number) => Promise<void>;
+}
+
+/** Topes de una llamada de embeddings; la consulta y la indexación usan perfiles distintos. */
+interface PerfilLlamada {
+  tiempoMaximoMs: number;
+  reintentosCuota: number;
+  presupuestoMs: number;
+  /** La indexación es en serie y fuera del tráfico: no usa el semáforo de las consultas. */
+  conSemaforo: boolean;
+}
+
+/**
+ * EMBEBEDOR VERTEX — tope, reintento y semáforo propios (2026-11-06; ajustado tras la revisión).
+ *
+ * ORIGEN: en la prueba de staging (rev 00066, 5 hilos × 47 críticas = 265 respuestas) la API de embeddings devolvió 429
+ * cuatro veces; el agente lo trató como «sin información» (`sin_respaldo`) aunque era una falla de infraestructura, y la
+ * llamada no tenía cota de tiempo. El modelo de lenguaje no falló gracias al reintento de `ProveedorVertex`; aquí se aplica
+ * el mismo patrón, con valores propios, porque la búsqueda va ANTES de `generar` y suma a la latencia del turno.
+ *
+ * DOS PERFILES, porque consultar e indexar no se parecen:
+ *  - CONSULTA (`embeber`, la usa `buscar` en cada turno; un texto): tope de 2,5 s por intento (`AbortController`; vencido,
+ *    causa `tiempo`, sin reintento), hasta 1 reintento del 429 y el 503 con espera ≈400-900 ms (jitter), solo si
+ *    transcurrido + espera + 2,5 s ≤ presupuesto de 4,5 s por llamada (cola incluida), y semáforo de 4 simultáneas con cola
+ *    de 2 s (agotada, falla rápido con causa `saturacion`).
+ *  - INDEXACIÓN (`embeberParaIndexar`, la usan `indexar` del índice al cargar el corpus y el paquete; lotes de hasta 100
+ *    textos y 20 000 caracteres, ~25 lotes en total): tope de 30 s por intento, SIN reintento por tiempo, hasta 2 reintentos
+ *    del 429 y el 503 dentro de 40 s por lote, y sin semáforo (es en serie y no compite con el tráfico). Con el tope corto de
+ *    la consulta, un lote grande vencería y tumbaría `cargarCorpus` o dejaría `paquete_no_cargado`. SUPUESTO NO VERIFICADO:
+ *    no se midió la latencia real de un lote de 20 000 caracteres; los 30 s son un margen razonado, no un dato.
+ * El lote se reintenta ENTERO, sin partirlo ni repetir lotes ya resueltos; cada lote tiene su propio presupuesto.
+ * Un 400/401/403/404 o un error desconocido salen en el primer intento.
+ *
+ * PEOR CASO DE LA BÚSQUEDA DE UN TURNO: ≈4,5 s por búsqueda (más la imprecisión de los temporizadores); antes no tenía cota.
+ * Sumado a `generar` (≈18,5 s) queda ≈23 s con UNA búsqueda, que ya pasa de los 20 s del sitio. Con perfil `pruebas`
+ * y las dos colecciones con vectores hay DOS búsquedas, en serie: ≈9 s + 18,5 s ≈ 27,5 s. Ambos son peores casos
+ * (todo agota su tope), no lo habitual (p50 de la búsqueda ≈ cientos de ms, sin medir aquí); NO se garantiza evitarlos.
+ * Solo el índice EN MEMORIA, con la colección base vacía (`fuentes: []` en Kuaa), no llama al embebedor: en staging hoy solo
+ * hay la búsqueda del paquete. pgvector embebe SIEMPRE la consulta: con perfil `pruebas` son dos búsquedas aunque la base esté
+ * vacía, y el peor caso es ≈27,5 s.
+ *
+ * SEMÁFORO: es por agente Y por instancia (armar-agentes.ts crea un EmbebedorVertex por configuración), no por proceso ni
+ * por proyecto. SUPUESTOS NO VERIFICADOS: que la cuota de embeddings sea por proyecto (entonces ni este semáforo ni el del
+ * modelo la protegen del todo), que un 429 no se facture, y que 4 simultáneas, 2 s de cola y 4,5 s de presupuesto sean los
+ * valores correctos: deben medirse en staging. NO garantiza que la cuota se libere en esos segundos: si no, el agente
+ * responde con la frase de alta demanda. Y si solo falla el paquete y la base aportó fragmentos, la respuesta se arma solo
+ * con la base y puede ser poco pertinente (el agente lo deja en `indice_error`, no lo corrige).
+ *
+ * VÍA DE INDEXACIÓN Y ENVOLTORIOS: `embeberParaIndexar` es opcional en el puerto. `EmbebedorConMemoria` (banco) la delega en
+ * el interno sin memoria: H4d envuelve el embebedor con memoria y se lo pasa al índice, y sin esa delegación `indexar` caería
+ * en `embeber` y heredaría los topes cortos de la consulta. También la usan `prepararIndiceSemantico` y el script de medición.
+ *
+ * ARRANQUE (H4d, rama aparte, no integrada aquí): `prepararSemanticaConReintento` reintenta tras 2 s ante cuota y el embebedor
+ * ya agota su presupuesto de consulta, así que el reintento del arranque se suma a los suyos; además `conTiempoLimite` del
+ * arranque NO cancela: al vencer su tope de 10 s el `embeber` sigue en segundo plano ocupando cupos del semáforo y
+ * llamadas a Vertex. Hay que coordinarlo al integrar H4d (p. ej. pasar una señal de cancelación o usar la vía de indexación).
+ *
+ * MENSAJE DEL ERROR: `ErrorProveedor.message` incluye el mensaje del SDK, que podría citar texto de la petición en un 400
+ * (SOSPECHA NO VERIFICADA). Los consumidores deben registrar solo `causa`, como hace Kuaa. `CUOTA_EN_TEXTO`
+ * (RESOURCE_EXHAUSTED) solo decide cuando el error del SDK no trae `status` ni `code` numéricos: el número manda siempre.
+ */
 export class EmbebedorVertex implements Embebedor {
   /** `vertex-embeddings:<modelo>`: el modelo forma parte del nombre, y con él la calibración del banco (H4b). */
   readonly nombre: string;
   readonly dimension: number;
   private readonly modelo: string;
+  private readonly consulta: PerfilLlamada;
+  private readonly indexacion: PerfilLlamada;
+  private readonly semaforo: Semaforo;
+  private readonly ahora: () => number;
+  private readonly aleatorio: () => number;
+  private readonly esperar: (ms: number) => Promise<void>;
 
   constructor(
     private readonly cliente: ClienteGemini,
-    opciones: { modelo?: string; dimension?: number } = {},
+    opciones: OpcionesEmbebedorVertex = {},
   ) {
     this.modelo = opciones.modelo ?? 'text-embedding-005';
     this.nombre = `vertex-embeddings:${this.modelo}`;
     this.dimension = opciones.dimension ?? 768;
+    this.consulta = { tiempoMaximoMs: opciones.tiempoMaximoMs ?? 2500, reintentosCuota: opciones.reintentosCuota ?? 1, presupuestoMs: opciones.presupuestoMs ?? 4500, conSemaforo: true };
+    this.indexacion = { tiempoMaximoMs: opciones.tiempoMaximoIndexacionMs ?? 30_000, reintentosCuota: opciones.reintentosCuotaIndexacion ?? 2, presupuestoMs: opciones.presupuestoIndexacionMs ?? 40_000, conSemaforo: false };
+    this.ahora = opciones.ahora ?? (() => performance.now());
+    this.aleatorio = opciones.aleatorio ?? Math.random;
+    this.esperar = opciones.esperar ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+    const maxConcurrentes = opciones.maxConcurrentes ?? 4;
+    const esperaMaxColaMs = opciones.esperaMaxColaMs ?? 2000;
+    if (!Number.isInteger(maxConcurrentes) || maxConcurrentes < 1) throw new Error('maxConcurrentes debe ser un entero de al menos 1');
+    if (!Number.isInteger(esperaMaxColaMs) || esperaMaxColaMs < 1) throw new Error('esperaMaxColaMs debe ser un entero de al menos 1 milisegundo');
+    for (const [etiqueta, perfil] of [['', this.consulta], ['Indexacion', this.indexacion]] as const) {
+      if (!Number.isInteger(perfil.reintentosCuota) || perfil.reintentosCuota < 0 || perfil.reintentosCuota > ESPERA_CUOTA_MS.length) throw new Error(`reintentosCuota${etiqueta} debe ser un entero entre 0 y ${ESPERA_CUOTA_MS.length}`);
+      if (!Number.isInteger(perfil.presupuestoMs) || perfil.presupuestoMs < 1) throw new Error(`presupuesto${etiqueta}Ms debe ser un entero de al menos 1 milisegundo`);
+      if (!Number.isInteger(perfil.tiempoMaximoMs) || perfil.tiempoMaximoMs < 1) throw new Error(`tiempoMaximo${etiqueta}Ms debe ser un entero de al menos 1 milisegundo`);
+    }
+    this.semaforo = new Semaforo(maxConcurrentes, esperaMaxColaMs);
   }
 
-  async embeber(textos: string[]): Promise<number[][]> {
+  /** Un intento con su propio AbortController y temporizador; el temporizador se limpia siempre. */
+  private async intentar(lote: string[], tiempoMaximoMs: number): Promise<{ embeddings?: Array<{ values?: number[] }> }> {
+    const control = new AbortController();
+    let temporizador: ReturnType<typeof setTimeout> | undefined;
+    const vencimiento = new Promise<never>((_, rechazar) => {
+      temporizador = setTimeout(() => {
+        rechazar(new TiempoAgotado(tiempoMaximoMs));
+        control.abort();
+      }, tiempoMaximoMs);
+    });
+    try {
+      const llamada = this.cliente.embedContent({ model: this.modelo, contents: lote, config: { outputDimensionality: this.dimension, abortSignal: control.signal } });
+      llamada.catch(() => undefined);
+      return await Promise.race([llamada, vencimiento]);
+    } finally {
+      clearTimeout(temporizador);
+    }
+  }
+
+  private fallo(e: unknown, causa: CausaErrorProveedor): ErrorProveedor {
+    return new ErrorProveedor(`Vertex embeddings (${this.modelo}): ${e instanceof Error ? e.message : String(e)}`, 'vertex', this.modelo, causa);
+  }
+
+  /** Una llamada de embeddings (un lote entero) con cola, reintento por cuota y presupuesto. */
+  private async llamarLote(lote: string[], perfil: PerfilLlamada): Promise<{ embeddings?: Array<{ values?: number[] }> }> {
+    const inicio = this.ahora();
+    let liberar: () => void = () => undefined;
+    if (perfil.conSemaforo) {
+      try {
+        liberar = await this.semaforo.adquirir();
+      } catch (e) {
+        throw this.fallo(e, clasificarCausa(e));
+      }
+    }
+    try {
+      let porCuota = 0;
+      for (;;) {
+        try {
+          return await this.intentar(lote, perfil.tiempoMaximoMs);
+        } catch (e) {
+          const causa = clasificarCausa(e);
+          if ((causa === 'cuota' || causa === 'saturacion') && porCuota < perfil.reintentosCuota) {
+            const { base, jitter } = ESPERA_CUOTA_MS[porCuota]!;
+            const espera = Math.round(base + this.aleatorio() * jitter);
+            if (this.ahora() - inicio + espera + perfil.tiempoMaximoMs <= perfil.presupuestoMs) {
+              porCuota += 1;
+              await this.esperar(espera);
+              continue;
+            }
+          }
+          throw this.fallo(e, causa);
+        }
+      }
+    } finally {
+      liberar();
+    }
+  }
+
+  private async embeberCon(textos: string[], perfil: PerfilLlamada): Promise<number[][]> {
     if (textos.length === 0) return [];
     const salida: number[][] = [];
     for (const lote of agruparPorPresupuesto(textos)) {
-      let r: { embeddings?: Array<{ values?: number[] }> };
-      try {
-        r = await this.cliente.embedContent({ model: this.modelo, contents: lote, config: { outputDimensionality: this.dimension } });
-      } catch (e) {
-        throw new ErrorProveedor(`Vertex embeddings (${this.modelo}): ${e instanceof Error ? e.message : String(e)}`, 'vertex', this.modelo, clasificarCausa(e));
-      }
+      const r = await this.llamarLote(lote, perfil);
       const vectores = r.embeddings ?? [];
       if (vectores.length !== lote.length) throw new ErrorProveedor(`Vertex embeddings devolvió ${vectores.length} vectores para ${lote.length} textos`, 'vertex', this.modelo);
       for (const v of vectores) salida.push(v.values ?? []);
     }
     return salida;
+  }
+
+  /** Vía de CONSULTA (tope corto). */
+  embeber(textos: string[]): Promise<number[][]> {
+    return this.embeberCon(textos, this.consulta);
+  }
+
+  /** Vía de INDEXACIÓN (tope largo, sin semáforo): la usa `indexar` del índice, no los turnos. */
+  embeberParaIndexar(textos: string[]): Promise<number[][]> {
+    return this.embeberCon(textos, this.indexacion);
   }
 }
 

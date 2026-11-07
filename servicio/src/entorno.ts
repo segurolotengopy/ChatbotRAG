@@ -28,6 +28,18 @@ export const esquemaCliente = z
 
 export type Cliente = z.infer<typeof esquemaCliente>;
 
+/** Declaración de un banco aprobado por agente: versión y huellas esperadas (no es secreto). */
+export const esquemaDeclaracionBanco = z
+  .object({
+    version: z.string().regex(/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/),
+    sha256Calibracion: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  })
+  .strict();
+export type DeclaracionBancoEntorno = z.infer<typeof esquemaDeclaracionBanco>;
+
+const esquemaBancos = z.record(z.string().regex(/^[a-z0-9][a-z0-9-]{2,59}$/), esquemaDeclaracionBanco);
+
 /** Ambientes no productivos donde se admite el paquete no validado. */
 const AMBIENTES_PRUEBAS: readonly string[] = ['staging', 'development', 'test'];
 
@@ -56,6 +68,10 @@ export const esquemaEntorno = z.object({
   CHATBOTRAG_BUCKET_PAQUETE: z.string().regex(/^[a-z0-9][a-z0-9._-]{2,62}$/).optional(),
   /** Versión X.Y.Z del paquete dentro del bucket. Solo con perfil `pruebas`. */
   CHATBOTRAG_VERSION_PAQUETE: z.string().regex(/^[0-9]+\.[0-9]+\.[0-9]+$/).optional(),
+  /** Bucket privado con el banco aprobado y su calibración (H4c). Exige `CHATBOTRAG_BANCOS`. */
+  CHATBOTRAG_BUCKET_BANCO: z.string().regex(/^[a-z0-9][a-z0-9._-]{2,62}$/).optional(),
+  /** JSON `{"<agenteId>":{"version":"X.Y.Z","sha256":"<hex64>","sha256Calibracion":"<hex64>"}}`. No es secreto. */
+  CHATBOTRAG_BANCOS: z.string().optional(),
   GCP_PROYECTO: z.string().optional(),
   GCP_REGION: z.string().default('us-central1'),
   AWS_REGION: z.string().default('us-east-1'),
@@ -66,6 +82,8 @@ export interface Entorno extends z.infer<typeof esquemaEntorno> {
   clientes: Cliente[];
   /** Perfil efectivo del conocimiento: `produccion` salvo que la variable valga exactamente `pruebas`. */
   perfilConocimiento: 'produccion' | 'pruebas';
+  /** Bancos declarados por agente (H4c); vacío si no hay `CHATBOTRAG_BANCOS`. */
+  bancos: Record<string, DeclaracionBancoEntorno>;
 }
 
 export class ErrorEntorno extends Error {
@@ -73,6 +91,27 @@ export class ErrorEntorno extends Error {
     super(`Entorno inválido: ${detalles.join('; ')}`);
     this.name = 'ErrorEntorno';
   }
+}
+
+function leerBancos(crudo: string | undefined, bucket: string | undefined): Record<string, DeclaracionBancoEntorno> {
+  if (crudo === undefined || crudo.trim() === '') {
+    if (bucket !== undefined) throw new ErrorEntorno(['CHATBOTRAG_BANCOS y CHATBOTRAG_BUCKET_BANCO deben ir juntas y con al menos un agente']);
+    return {};
+  }
+  if (bucket === undefined) throw new ErrorEntorno(['CHATBOTRAG_BANCOS exige CHATBOTRAG_BUCKET_BANCO']);
+  let analizado: unknown;
+  try {
+    analizado = JSON.parse(crudo);
+  } catch {
+    throw new ErrorEntorno(['CHATBOTRAG_BANCOS no es JSON válido']);
+  }
+  const r = esquemaBancos.safeParse(analizado);
+  if (!r.success) {
+    // Ni la clave inválida del record (podría ser un secreto pegado) ni el valor sobrante se repiten en el error.
+    throw new ErrorEntorno(r.error.issues.map((i) => (i.code === 'invalid_key' ? 'CHATBOTRAG_BANCOS: clave de agente no admitida' : `CHATBOTRAG_BANCOS.${i.path.join('.')}: ${i.code === 'unrecognized_keys' ? 'clave no admitida' : i.message}`)));
+  }
+  if (Object.keys(r.data).length === 0) throw new ErrorEntorno(['CHATBOTRAG_BANCOS y CHATBOTRAG_BUCKET_BANCO deben ir juntas y con al menos un agente']);
+  return r.data;
 }
 
 export function leerEntorno(fuente: NodeJS.ProcessEnv = process.env): Entorno {
@@ -111,5 +150,6 @@ export function leerEntorno(fuente: NodeJS.ProcessEnv = process.env): Entorno {
   // Combinaciones incoherentes: fallan el arranque en vez de adivinar la intención.
   if (perfilConocimiento === 'pruebas' && (!bucket || !version)) throw new ErrorEntorno(['CHATBOTRAG_PERFIL_CONOCIMIENTO=pruebas exige CHATBOTRAG_BUCKET_PAQUETE y CHATBOTRAG_VERSION_PAQUETE']);
   if (perfilConocimiento === 'produccion' && (bucket || version)) throw new ErrorEntorno(['CHATBOTRAG_BUCKET_PAQUETE y CHATBOTRAG_VERSION_PAQUETE solo se admiten con CHATBOTRAG_PERFIL_CONOCIMIENTO=pruebas']);
-  return { ...r.data, clientes: clientes.data, perfilConocimiento };
+  const bancos = leerBancos(r.data.CHATBOTRAG_BANCOS, r.data.CHATBOTRAG_BUCKET_BANCO);
+  return { ...r.data, clientes: clientes.data, perfilConocimiento, bancos };
 }

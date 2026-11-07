@@ -182,4 +182,11 @@ describe('cargarBanco', () => {
       for (const e of [e1, e2, e3]) expect(`${e.message} ${e.detalles.join(' ')}`).not.toContain(marca);
     });
   });
+
+  it('el error lleva un código enumerado, además del mensaje', () => {
+    expect(falla('no es json').codigo).toBe('json_invalido');
+    expect(falla(texto({ formato: 1 })).codigo).toBe('forma_invalida');
+    expect(falla(texto(banco()), { sha256Esperado: 'a'.repeat(64) }).codigo).toBe('sha_distinto');
+    expect(falla(texto(banco()), { admitirSintetico: false }).codigo).toBe('sintetico');
+  });
 });

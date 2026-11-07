@@ -24,7 +24,9 @@ export type TipoEvento =
   | 'corpus_indexado'
   | 'paquete_no_cargado'
   | 'respuesta_no_validada'
-  | 'enrutador';
+  | 'enrutador'
+  | 'banco_cargado'
+  | 'banco_no_cargado';
 
 export interface EventoBitacora {
   tipo: TipoEvento;

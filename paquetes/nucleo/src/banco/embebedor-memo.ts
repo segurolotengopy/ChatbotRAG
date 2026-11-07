@@ -15,7 +15,8 @@
  * Qué NO garantiza: que el tope de tiempo cancele la llamada al servicio (solo deja de esperarla; ver
  * `embeberConTiempo`), que dos procesos compartan memoria (es por instancia), ni que el vector devuelto no se muestre
  * en otra parte (se entregan copias para que nadie mute la memoria). No sirve para indexar un banco entero (32
- * entradas); eso lo hace `prepararIndiceSemantico` con el embebedor sin envolver.
+ * entradas): su `embeberParaIndexar` delega en el interno sin memoria, para que un índice al que se le pase el embebedor
+ * envuelto no herede los topes cortos de la consulta.
  */
 import { createHash } from 'node:crypto';
 import type { Embebedor } from '../puertos/proveedor-llm.js';
@@ -66,6 +67,15 @@ export class EmbebedorConMemoria implements Embebedor {
   private purgar(): void {
     const t = this.ahora();
     for (const [clave, e] of this.memoria) if (t - e.creada >= this.vidaMs) this.memoria.delete(clave);
+  }
+
+  /**
+   * Vía de indexación: delega en el embebedor interno SIN memoria (32 entradas no sirven para un banco ni un corpus) y
+   * conserva así sus topes largos de indexación. Existe porque H4d envuelve el embebedor con memoria y se lo pasa al índice:
+   * sin este método `indexar` caería en `embeber` y heredaría los topes cortos de la consulta.
+   */
+  embeberParaIndexar(textos: string[]): Promise<number[][]> {
+    return (this.interno.embeberParaIndexar ?? this.interno.embeber).call(this.interno, textos);
   }
 
   async embeber(textos: string[]): Promise<number[][]> {

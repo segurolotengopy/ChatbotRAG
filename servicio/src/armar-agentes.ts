@@ -44,7 +44,7 @@ import {
 import { crearClienteVertex, EmbebedorVertex, ProveedorVertex } from '@chatbotrag/proveedor-vertex';
 import { crearClienteBedrock, EmbebedorBedrock, ProveedorBedrock } from '@chatbotrag/proveedor-bedrock';
 import { crearPool, IndicePgvector } from '@chatbotrag/conocimiento-pgvector';
-import { ErrorPaqueteGcs, LectorPaqueteGcs } from '@chatbotrag/conocimiento-gcs';
+import { ErrorPaqueteGcs, LectorBancoGcs, LectorPaqueteGcs, type DeclaracionBanco, type ResultadoBancoGcs } from '@chatbotrag/conocimiento-gcs';
 import type { Entorno } from './entorno.js';
 
 export interface AgenteArmado {
@@ -59,6 +59,16 @@ export interface AgenteArmado {
   perfilConocimiento: 'produccion' | 'pruebas';
   /** Versión del paquete no validado cargado; `null` si no se cargó (siempre `null` con `produccion`). */
   versionPaquete: string | null;
+  /**
+   * Resultado de la carga del banco desde el bucket (H4c), o `null` si el agente no tiene banco declarado. Aún NO lo
+   * usa el agente: lo conectará H4d. `indice` es `null` si el banco no se pudo cargar.
+   */
+  enrutadorBanco: ResultadoBancoGcs | null;
+}
+
+/** Costura de inyección del lector del banco (pruebas sin red). */
+export interface LectorBanco {
+  cargar(agenteId: string, declaracion: DeclaracionBanco, opciones: { admitirSintetico: boolean }): Promise<ResultadoBancoGcs>;
 }
 
 export interface FabricasNube {
@@ -99,9 +109,29 @@ function crearLectorPaqueteGcs(entorno: Entorno): LectorPaquete {
   return new LectorPaqueteGcs({ bucket: entorno.CHATBOTRAG_BUCKET_PAQUETE ?? '', version: entorno.CHATBOTRAG_VERSION_PAQUETE ?? '' });
 }
 
+/** Tiempo máximo por defecto de la carga del banco de un agente: una llamada a GCS colgada no debe colgar el arranque. */
+const TIEMPO_BANCO_MS = 10_000;
+
+class TiempoAgotado extends Error {}
+
+function conTiempoLimite<T>(promesa: Promise<T>, ms: number): Promise<T> {
+  let temporizador: NodeJS.Timeout | undefined;
+  const limite = new Promise<never>((_, rechazar) => {
+    temporizador = setTimeout(() => rechazar(new TiempoAgotado('tiempo agotado')), ms);
+  });
+  // Si la carga termina después del límite, su rechazo tardío no debe quedar sin atender.
+  promesa.catch(() => undefined);
+  return Promise.race([promesa, limite]).finally(() => clearTimeout(temporizador));
+}
+
+function crearLectorBancoGcs(entorno: Entorno): LectorBanco {
+  // `leerEntorno` garantiza que con bancos declarados el bucket existe.
+  return new LectorBancoGcs({ bucket: entorno.CHATBOTRAG_BUCKET_BANCO ?? '' });
+}
+
 export async function armarAgentes(
   entorno: Entorno,
-  opciones: { bitacora?: Bitacora; fabricas?: FabricasNube; ejecutorExterno?: EjecutorHerramientas | null; pool?: ReturnType<typeof crearPool>; lectorPaquete?: (entorno: Entorno) => LectorPaquete } = {},
+  opciones: { bitacora?: Bitacora; fabricas?: FabricasNube; ejecutorExterno?: EjecutorHerramientas | null; pool?: ReturnType<typeof crearPool>; lectorPaquete?: (entorno: Entorno) => LectorPaquete; lectorBanco?: (entorno: Entorno) => LectorBanco; tiempoBancoMs?: number } = {},
 ): Promise<Map<string, AgenteArmado>> {
   const bitacora = opciones.bitacora ?? new BitacoraConsola();
   const fabricas = opciones.fabricas ?? FABRICAS_REALES;
@@ -113,6 +143,10 @@ export async function armarAgentes(
   const lector = { leer: (ruta: string) => readFile(join(dir, 'corpus', ruta), 'utf8') };
   const agentes = new Map<string, AgenteArmado>();
 
+  // Primera pasada: se leen y validan TODAS las configuraciones y se comprueba que cada agente de CHATBOTRAG_BANCOS exista,
+  // antes de gastar una sola lectura del bucket o de emitir un evento en un arranque que va a fallar.
+  const configuraciones: Array<{ archivo: string; config: ConfiguracionAgente }> = [];
+  const idsConfigurados = new Set<string>();
   for (const archivo of archivos) {
     let config: ConfiguracionAgente;
     try {
@@ -123,8 +157,15 @@ export async function armarAgentes(
     }
     const problemas = validarHerramientas(config);
     if (problemas.length) throw new Error(`Herramientas inválidas en ${archivo}: ${problemas.join('; ')}`);
-    if (agentes.has(config.id)) throw new Error(`Id de agente duplicado: ${config.id} (${archivo})`);
+    if (idsConfigurados.has(config.id)) throw new Error(`Id de agente duplicado: ${config.id} (${archivo})`);
+    idsConfigurados.add(config.id);
+    configuraciones.push({ archivo, config });
+  }
+  const huerfanos = Object.keys(entorno.bancos).filter((id) => !idsConfigurados.has(id));
+  if (huerfanos.length > 0) throw new Error(`CHATBOTRAG_BANCOS declara agentes inexistentes: ${huerfanos.join(', ')}`);
 
+  // Segunda pasada: armado de cada agente.
+  for (const { archivo, config } of configuraciones) {
     const nube = elegirNube(config, entorno, fabricas);
     const indice: IndiceConocimiento = pool ? new IndicePgvector(pool, nube.embebedor) : new IndiceEnMemoria(nube.embebedor);
     await cargarCorpus(config, lector, indice, bitacora);
@@ -157,6 +198,23 @@ export async function armarAgentes(
       }
     }
 
+    // Banco aprobado (H4c): solo si hay declaración para este agente. Nunca lanza ni cambia al agente.
+    let enrutadorBanco: ResultadoBancoGcs | null = null;
+    // `hasOwn`: un agente llamado `constructor` no debe heredar propiedades del prototipo.
+    const declaracionBanco = Object.hasOwn(entorno.bancos, config.id) ? entorno.bancos[config.id] : undefined;
+    if (declaracionBanco) {
+      const baseEvento = { agenteId: config.id, perfilId: null, conversacionHash: '-', canal: '-' };
+      try {
+        const lectorBanco = (opciones.lectorBanco ?? crearLectorBancoGcs)(entorno);
+        enrutadorBanco = await conTiempoLimite(lectorBanco.cargar(config.id, declaracionBanco, { admitirSintetico: (entorno.APP_ENV ?? '').trim().toLowerCase() === 'test' }), opciones.tiempoBancoMs ?? TIEMPO_BANCO_MS);
+      } catch (e) {
+        enrutadorBanco = { indice: null, calibracion: null, motivo: e instanceof TiempoAgotado ? 'banco_tiempo' : 'banco_error' };
+      }
+      // Solo enumerados: ni rutas ni texto del banco ni de las derivaciones.
+      const cargado = enrutadorBanco.indice !== null;
+      bitacora.registrar({ ...baseEvento, tipo: cargado ? 'banco_cargado' : 'banco_no_cargado', codigo: enrutadorBanco.motivo ?? 'ok', detalle: `calibracion=${enrutadorBanco.calibracion ? 'si' : 'no'}` });
+    }
+
     const memoria = new MemoriaEnProceso();
     const dependencias = {
       config,
@@ -168,7 +226,7 @@ export async function armarAgentes(
     };
     const agente = new Agente(dependencias);
     const agenteKuaa = config.tipoAgente === 'kuaa' ? new AgenteKuaa(dependencias, { perfilConocimiento: entorno.perfilConocimiento, versionPaquete }) : undefined;
-    agentes.set(config.id, { config, agente, ...(agenteKuaa ? { agenteKuaa } : {}), memoria, indice, proveedor: nube.proveedor.nombre, perfilConocimiento: entorno.perfilConocimiento, versionPaquete });
+    agentes.set(config.id, { config, agente, ...(agenteKuaa ? { agenteKuaa } : {}), memoria, indice, proveedor: nube.proveedor.nombre, perfilConocimiento: entorno.perfilConocimiento, versionPaquete, enrutadorBanco });
     bitacora.registrar({ tipo: 'configuracion_cargada', agenteId: config.id, perfilId: null, conversacionHash: '-', canal: '-', detalle: `archivo=${archivo} proveedor=${nube.proveedor.nombre} indice=${indice.nombre} perfiles=${Object.keys(config.perfiles).length} perfil_conocimiento=${entorno.perfilConocimiento} paquete=${versionPaquete ?? 'ninguno'} fragmentos_paquete=${fragmentosPaquete}` });
   }
   return agentes;
