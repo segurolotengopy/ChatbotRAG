@@ -70,7 +70,7 @@ export class IndiceEnMemoria implements IndiceConocimiento {
   constructor(private readonly embebedor: Embebedor | null = null) {}
 
   async indexar(fragmentos: Fragmento[]): Promise<void> {
-    const vectores = this.embebedor && fragmentos.length ? await this.embebedor.embeber(fragmentos.map((f) => f.texto)) : null;
+    const vectores = this.embebedor && fragmentos.length ? await (this.embebedor.embeberParaIndexar ?? this.embebedor.embeber).call(this.embebedor, fragmentos.map((f) => f.texto)) : null;
     fragmentos.forEach((f, i) => {
       const lista = this.colecciones.get(f.coleccion) ?? [];
       const ts = terminos(f.texto);

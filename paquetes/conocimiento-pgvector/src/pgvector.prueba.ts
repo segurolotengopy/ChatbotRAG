@@ -24,6 +24,30 @@ describe('IndicePgvector', () => {
     expect(consultas[0]!.valores![7]).toBeNull();
   });
 
+  it('indexa con la vía de indexación del embebedor y busca con la de consulta', async () => {
+    const { db, consultas } = dbFalsa();
+    const vias: string[] = [];
+    const embebedor = {
+      nombre: 'falso', dimension: 2,
+      async embeber(t: string[]) { vias.push('consulta'); return t.map(() => [0, 1]); },
+      async embeberParaIndexar(t: string[]) { vias.push('indexar'); return t.map(() => [1, 0]); },
+    };
+    const i = new IndicePgvector(db, embebedor);
+    await i.indexar([{ id: 'a', coleccion: 'c', fuenteId: 'f', fuenteTitulo: 'T', fuenteVersion: '1', orden: 0, texto: 'hola' }]);
+    expect(vias).toEqual(['indexar']);
+    expect(consultas[0]!.valores![7]).toBe('[1,0]');
+    await i.buscar('hola', { coleccion: 'c', topK: 3, umbral: 0 });
+    expect(vias).toEqual(['indexar', 'consulta']);
+  });
+
+  it('sin embeberParaIndexar indexa con embeber', async () => {
+    const { db } = dbFalsa();
+    const vias: string[] = [];
+    const i = new IndicePgvector(db, { nombre: 'falso', dimension: 2, async embeber(t) { vias.push('embeber'); return t.map(() => [1, 0]); } });
+    await i.indexar([{ id: 'a', coleccion: 'c', fuenteId: 'f', fuenteTitulo: 'T', fuenteVersion: '1', orden: 0, texto: 'hola' }]);
+    expect(vias).toEqual(['embeber']);
+  });
+
   it('rechaza los fragmentos con marca de validación y no toca la base', async () => {
     const { db, consultas } = dbFalsa();
     const i = new IndicePgvector(db);
