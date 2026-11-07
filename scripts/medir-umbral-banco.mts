@@ -314,7 +314,7 @@ async function principal(): Promise<void> {
       salir(1, 'El nombre del embebedor no cabe en el campo modelo de calibracion.json (máximo 100 caracteres).');
     }
     const indice = await prepararIndiceSemantico(banco, embebedor);
-    const vectores = await embebedor.embeber(evaluacion.casos.map((c) => c.texto));
+    const vectores = await (embebedor.embeberParaIndexar ?? embebedor.embeber).call(embebedor, evaluacion.casos.map((c) => c.texto));
     if (vectores.length !== evaluacion.casos.length) throw new Error('cantidad de vectores distinta de la de casos');
     const casos: CasoMedible[] = evaluacion.casos.map((c, i) => ({ id: c.id, vector: vectores[i] as number[], esperado: c.esperado, particion: c.particion }));
 

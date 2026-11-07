@@ -105,4 +105,9 @@ export interface Embebedor {
   readonly nombre: string;
   readonly dimension: number;
   embeber(textos: string[]): Promise<number[][]>;
+  /**
+   * Opcional: embeber para INDEXAR (corpus y paquete, lotes grandes, fuera del tráfico), con topes más holgados que los de la
+   * consulta de un turno. Si no existe, el índice usa `embeber`. El núcleo no sabe de topes: solo elige la vía.
+   */
+  embeberParaIndexar?(textos: string[]): Promise<number[][]>;
 }
