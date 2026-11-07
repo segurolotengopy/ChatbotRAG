@@ -8,10 +8,11 @@ import { coleccionDe } from '../conocimiento/cargar-corpus.js';
 import { coleccionPaquete } from '../conocimiento/cargar-paquete.js';
 import { FRASE_ALTA_DEMANDA, FRASE_PAQUETE_NO_VALIDADO } from './frases-kuaa.js';
 import { IndiceEnMemoria } from '../conocimiento/indice-memoria.js';
+import type { Fragmento, FragmentoRecuperado, IndiceConocimiento, OpcionesBusqueda } from '../puertos/indice-conocimiento.js';
 import { MemoriaEnProceso } from '../memoria/memoria-en-proceso.js';
 import { CAUSAS_ERROR_PROVEEDOR, causaDeError, type CausaErrorProveedor, type PeticionLLM, type ProveedorLLM, type RespuestaLLM } from '../puertos/proveedor-llm.js';
 import { RegistroHerramientas } from '../herramientas/registro.js';
-import { AgenteKuaa } from './agente-kuaa.js';
+import { AgenteKuaa, claveMemoriaKuaa } from './agente-kuaa.js';
 import { ESTADOS_OPERATIVOS_DESCONOCIDOS, EntradaKuaa, RESUMEN_DESCONOCIDO } from './esquemas.js';
 import { normalizarEntradaKuaa } from './normalizar-entrada.js';
 import { afirmaHechoNoRespaldado, contieneEnlaceOPrecio, patronEnlaceOPrecio, filtraPrompt, interpretarSalidaModelo, retirarCodigosInternos, permitidosDe, salidaFallback, salidaSinCifras, TEXTO_SIN_CIFRAS, textoSinRespaldo } from './salida-kuaa.js';
@@ -175,14 +176,14 @@ describe('AgenteKuaa', () => {
     expect(avisos).toEqual([]);
   });
 
-  it('el proveedor recibe una sola llamada sin herramientas, con temperatura baja y el prompt de Kuaa', async () => {
+  it('el proveedor recibe una sola llamada sin herramientas, con temperatura 0 y el prompt de Kuaa', async () => {
     const { agente, proveedor, config } = await armar(() => salidaJson(), true);
     await resp(agente, entrada());
     expect(proveedor.peticiones).toHaveLength(1);
     const p = proveedor.peticiones[0]!;
     expect(p.herramientas).toEqual([]);
-    expect(p.parametros.temperatura).toBe(0.2);
-    expect(config.modelo.temperatura).toBe(0.2);
+    expect(p.parametros.temperatura).toBe(0);
+    expect(config.modelo.temperatura).toBe(0);
     expect(p.sistema).toContain('CONTEXTO DE LA OPORTUNIDAD');
     expect(p.mensajes.at(-1)).toEqual({ rol: 'usuario', contenido: '¿Cómo es el proceso?' });
   });
@@ -770,5 +771,92 @@ describe('perfil pruebas con paquete no validado', () => {
     const r = await resp(agente, entrada({ mensaje: 'proceso pasos sintéticos' }));
     expect(r.avisos).toContain('indice_error');
     expect(bitacora.eventos.some((e) => e.codigo === 'indice')).toBe(true);
+  });
+});
+
+/** Índice falso: cada colección responde con fragmentos o con un error de causa dada. Cuenta las búsquedas. */
+class IndiceFalso implements IndiceConocimiento {
+  readonly nombre = 'falso';
+  readonly busquedas: string[] = [];
+  constructor(private readonly porColeccion: (coleccion: string) => FragmentoRecuperado[] | CausaErrorProveedor) {}
+  async indexar(): Promise<void> {}
+  async buscar(_c: string, o: OpcionesBusqueda): Promise<FragmentoRecuperado[]> {
+    this.busquedas.push(o.coleccion);
+    const r = this.porColeccion(o.coleccion);
+    if (typeof r === 'string') throw Object.assign(new Error('texto-centinela'), { causa: r });
+    return r;
+  }
+  async fragmentosDeFuente(): Promise<Fragmento[]> {
+    return [];
+  }
+}
+
+describe('índice que falla (forma real de kuaa.json: base vacía y respaldo en el paquete)', () => {
+  const config = cargarConfiguracionDesdeJson(JSON_KUAA);
+  const base = coleccionDe(config, null);
+  const fragmento = (id: string, coleccion: string, extra: Partial<FragmentoRecuperado> = {}): FragmentoRecuperado => ({ id, coleccion, fuenteId: 'doc', fuenteTitulo: 'Doc', fuenteVersion: 'v1', orden: 0, texto: 'El proceso tiene cuatro pasos sintéticos.', puntaje: 0.9, ...extra }) as FragmentoRecuperado;
+
+  function armarFalso(indice: IndiceFalso, perfil: 'pruebas' | 'produccion' = 'pruebas') {
+    const proveedor = new ProveedorGuionado(() => salidaJson({ texto: 'El proceso tiene cuatro pasos sintéticos y puede seguir.' }));
+    const bitacora = new BitacoraEnMemoria();
+    const memoria = new MemoriaEnProceso();
+    const agente = new AgenteKuaa({ config, proveedor, indice, memoria, herramientas: new RegistroHerramientas(null), bitacora }, { perfilConocimiento: perfil, versionPaquete: perfil === 'pruebas' ? '1.0.0' : null });
+    return { agente, proveedor, bitacora, memoria };
+  }
+  const delPaquete = (causa: CausaErrorProveedor) => (c: string) => (c === base ? [] : causa);
+  const MEMORIA = claveMemoriaKuaa('cliente-a', 'op-sintetica-1');
+
+  it.each<CausaErrorProveedor>(['cuota', 'saturacion'])('con la base vacía y el paquete en %s responde alta demanda, sin modelo, sin atención humana y sin guardar el turno', async (causa) => {
+    const indice = new IndiceFalso(delPaquete(causa));
+    const { agente, proveedor, bitacora, memoria } = armarFalso(indice);
+    const { salida, avisos } = await resp(agente, entrada({ mensaje: '¿Cuánto cubre el plan intermedio?' }));
+    expect(salida.texto).toBe(FRASE_ALTA_DEMANDA.vos);
+    expect(salida).toMatchObject({ botones: [], propuestas: [] });
+    expect(proveedor.peticiones).toHaveLength(0);
+    expect(avisos).toEqual(expect.arrayContaining(['indice_error', 'alta_demanda_indice']));
+    expect(avisos).not.toContain('sin_respaldo');
+    expect(bitacora.eventos.find((e) => e.codigo === 'indice')).toMatchObject({ tipo: 'error_modelo', causa });
+    expect(bitacora.eventos.map((e) => e.tipo)).not.toContain('sin_respaldo');
+    expect(await memoria.leer(MEMORIA, 10)).toEqual([]);
+    expect(JSON.stringify(bitacora.eventos)).not.toContain('centinela');
+    expect(indice.busquedas).toHaveLength(2);
+  });
+
+  it.each<CausaErrorProveedor>(['cuota', 'saturacion'])('con la base en %s responde alta demanda y ni consulta el paquete', async (causa) => {
+    const indice = new IndiceFalso(() => causa);
+    const { agente, proveedor } = armarFalso(indice);
+    const { salida } = await resp(agente, entrada({ mensaje: '¿Cuánto cubre el plan intermedio?' }));
+    expect(salida.texto).toBe(FRASE_ALTA_DEMANDA.vos);
+    expect(proveedor.peticiones).toHaveLength(0);
+    expect(indice.busquedas).toEqual([base]);
+  });
+
+  it.each<CausaErrorProveedor>(['autenticacion', 'modelo', 'servidor', 'tiempo', 'otro'])('con la base vacía y el paquete en %s sigue como sin_respaldo, igual que antes', async (causa) => {
+    const { agente, bitacora } = armarFalso(new IndiceFalso(delPaquete(causa)));
+    const { salida, avisos } = await resp(agente, entrada({ mensaje: '¿Cuánto cubre el plan intermedio?' }));
+    expect(salida.texto).toContain(config.mensajes.sinRespaldo);
+    expect(salida.texto).not.toBe(FRASE_ALTA_DEMANDA.vos);
+    expect(avisos).toEqual(expect.arrayContaining(['indice_error', 'sin_respaldo']));
+    expect(avisos).not.toContain('alta_demanda_indice');
+    expect(bitacora.eventos.find((e) => e.codigo === 'indice')).toMatchObject({ causa });
+  });
+
+  it('si la base aportó fragmentos y solo el paquete falla por cuota, responde con la base (con modelo) y deja el error a la vista', async () => {
+    const { agente, proveedor, bitacora, memoria } = armarFalso(new IndiceFalso((c) => (c === base ? [fragmento('f1', base)] : 'cuota')));
+    const { salida, avisos } = await resp(agente, entrada({ mensaje: 'proceso pasos sintéticos' }));
+    expect(proveedor.peticiones).toHaveLength(1);
+    expect(salida.texto).not.toBe(FRASE_ALTA_DEMANDA.vos);
+    expect(avisos).toContain('indice_error');
+    expect(avisos).not.toContain('sin_respaldo');
+    expect(bitacora.eventos.find((e) => e.codigo === 'indice')).toMatchObject({ causa: 'cuota' });
+    expect((await memoria.leer(MEMORIA, 10)).length).toBe(2);
+  });
+
+  it('igualdad con carga normal: el paquete responde, hay una llamada al modelo y el turno se guarda', async () => {
+    const { agente, proveedor, memoria } = armarFalso(new IndiceFalso((c) => (c === base ? [] : [fragmento('p1', c, { validacion: 'no_validado', versionPaquete: '1.0.0' })])));
+    const { avisos } = await resp(agente, entrada({ mensaje: 'proceso pasos sintéticos' }));
+    expect(proveedor.peticiones).toHaveLength(1);
+    expect(avisos).not.toContain('indice_error');
+    expect((await memoria.leer(MEMORIA, 10)).length).toBe(2);
   });
 });

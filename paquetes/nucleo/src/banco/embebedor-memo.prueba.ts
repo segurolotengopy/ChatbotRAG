@@ -21,6 +21,31 @@ function falso(dimension = 2) {
   return { e, llamadas, pendientes, responder };
 }
 
+describe('EmbebedorConMemoria: vía de indexación', () => {
+  it('delega en embeberParaIndexar del interno, sin memoria (dos llamadas iguales = dos llamadas)', async () => {
+    const vias: string[][] = [];
+    const interno: Embebedor = {
+      nombre: 'falso', dimension: 2,
+      async embeber() { throw new Error('no debe usarse'); },
+      async embeberParaIndexar(t) { vias.push([...t]); return t.map(() => [1, 0]); },
+    };
+    const e = new EmbebedorConMemoria(interno);
+    await e.embeberParaIndexar(['a', 'b']);
+    await e.embeberParaIndexar(['a', 'b']);
+    expect(vias).toEqual([['a', 'b'], ['a', 'b']]);
+    expect(e.tamano).toBe(0);
+  });
+
+  it('sin embeberParaIndexar en el interno usa embeber (con el this correcto)', async () => {
+    const interno = {
+      nombre: 'falso', dimension: 2, visto: 0,
+      async embeber(this: { visto: number }, t: string[]) { this.visto += 1; return t.map(() => [1, 0]); },
+    };
+    expect(await new EmbebedorConMemoria(interno as Embebedor).embeberParaIndexar(['a'])).toEqual([[1, 0]]);
+    expect(interno.visto).toBe(1);
+  });
+});
+
 describe('EmbebedorConMemoria', () => {
   it('dos pedidos simultáneos del mismo texto hacen UNA sola llamada (enrutador y RAG comparten el vector)', async () => {
     const f = falso();

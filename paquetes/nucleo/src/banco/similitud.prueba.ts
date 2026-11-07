@@ -1,6 +1,7 @@
 /** Pruebas del emparejamiento semántico. Vectores a mano; sin embeddings reales. */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import type { Embebedor } from '../puertos/proveedor-llm.js';
 import { EmbebedorSimulado } from '../proveedores/simulado.js';
 import { cargarBanco } from './cargar.js';
 import { ErrorSimilitud, coseno, decidirEmparejamiento, emparejarSemantico, prepararIndiceSemantico } from './similitud.js';
@@ -316,6 +317,20 @@ describe('emparejarSemantico', () => {
 });
 
 describe('prepararIndiceSemantico', () => {
+  it('usa la vía de indexación del embebedor si existe, y embeber si no', async () => {
+    const vias: string[] = [];
+    const conVia: Embebedor = {
+      nombre: 'falso', dimension: 2,
+      async embeber(t) { vias.push('consulta'); return t.map(() => [1, 0]); },
+      async embeberParaIndexar(t) { vias.push('indexar'); return t.map(() => [1, 0]); },
+    };
+    await prepararIndiceSemantico(BANCO, conVia);
+    expect(vias).toEqual(['indexar']);
+    const sinVia: Embebedor = { nombre: 'falso', dimension: 2, async embeber(t) { vias.push('embeber'); return t.map(() => [1, 0]); } };
+    await prepararIndiceSemantico(BANCO, sinVia);
+    expect(vias).toEqual(['indexar', 'embeber']);
+  });
+
   it('embebe las preguntas de respuestas y derivaciones, sin mutar el banco', async () => {
     const antes = JSON.stringify(BANCO);
     const emb = new EmbebedorSimulado(16);

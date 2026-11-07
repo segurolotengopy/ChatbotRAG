@@ -38,7 +38,7 @@ import { aplicarCompuertasSalida, extraerMarcas } from '../compuertas/salida.js'
 import { sanearTexto } from '../compuertas/saneo.js';
 import { ErrorPeticion, hashConversacion, type DependenciasAgente } from '../orquestador/agente.js';
 import type { EventoBitacora } from '../puertos/bitacora.js';
-import { causaDeError } from '../puertos/proveedor-llm.js';
+import { causaDeError, type CausaErrorProveedor } from '../puertos/proveedor-llm.js';
 import type { FragmentoRecuperado } from '../puertos/indice-conocimiento.js';
 import { EntradaKuaa, SalidaOportunidad, filtrarBotonesSalida } from './esquemas.js';
 import { normalizarEntradaKuaa } from './normalizar-entrada.js';
@@ -67,6 +67,11 @@ const REINTENTOS_FORMATO = 1;
 const TIEMPO_MAXIMO_PARA_REINTENTAR_MS = 3000;
 /** Lo que debe quedar de una respuesta tras quitarle una frase para seguir valiendo («¿Ok?» solo no ayuda a nadie). */
 const RESTO_MINIMO = 30;
+
+/** Cuota o saturación: falla de infraestructura que se dice como «alta demanda». */
+function esAltaDemanda(causa: CausaErrorProveedor): boolean {
+  return causa === 'cuota' || causa === 'saturacion';
+}
 
 export class AgenteKuaa {
   private readonly reloj: () => Date;
@@ -122,7 +127,12 @@ export class AgenteKuaa {
         fragmentos = await this.deps.indice.buscar(texto, { coleccion: coleccionDe(this.deps.config, null), topK: config.conocimiento.topK, umbral: config.conocimiento.umbral });
       } catch (e) {
         avisos.push('indice_error');
-        this.deps.bitacora.registrar({ ...base, tipo: 'error_modelo', codigo: 'indice', causa: causaDeError(e) });
+        const causa = causaDeError(e);
+        this.deps.bitacora.registrar({ ...base, tipo: 'error_modelo', codigo: 'indice', causa });
+        // Cuota o saturación del embebedor es una falla de infraestructura, no «no hay información»: se dice alta demanda,
+        // sin llamar al modelo (sin fragmentos no hay respaldo, y RAG es obligatorio) y sin ofrecer atención humana.
+        // Como el fallo del modelo en 429, el turno NO se guarda en la memoria. Los demás fallos siguen a `sin_respaldo`.
+        if (esAltaDemanda(causa)) return { salida: salidaFallback(config, etapa, causa), avisos: [...avisos, 'alta_demanda_indice'] };
       }
       if (this.opciones.perfilConocimiento === 'pruebas' && this.opciones.versionPaquete) {
         try {
@@ -130,7 +140,12 @@ export class AgenteKuaa {
           fragmentos = [...fragmentos, ...delPaquete].sort((a, b) => b.puntaje - a.puntaje).slice(0, config.conocimiento.topK);
         } catch (e) {
           avisos.push('indice_error');
-          this.deps.bitacora.registrar({ ...base, tipo: 'error_modelo', codigo: 'indice', causa: causaDeError(e) });
+          const causa = causaDeError(e);
+          this.deps.bitacora.registrar({ ...base, tipo: 'error_modelo', codigo: 'indice', causa });
+          // Es la vía real de staging (la colección base está vacía y todo el respaldo viene del paquete). Mismo criterio si no
+          // hay NADA de la base. Si la base sí aportó fragmentos, se responde con ellos (RAG cumplido, nada inventado); la
+          // respuesta puede ignorar el paquete, y el aviso `indice_error` y el evento lo dejan a la vista.
+          if (esAltaDemanda(causa) && fragmentos.length === 0) return { salida: salidaFallback(config, etapa, causa), avisos: [...avisos, 'alta_demanda_indice'] };
         }
       }
     }
