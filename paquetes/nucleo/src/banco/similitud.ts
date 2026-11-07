@@ -117,7 +117,7 @@ export async function prepararIndiceSemantico(banco: BancoRespuestas, embebedor:
       textos.push(p);
     }
   }
-  const matriz = textos.length === 0 ? [] : await embebedor.embeber(textos);
+  const matriz = textos.length === 0 ? [] : await (embebedor.embeberParaIndexar ?? embebedor.embeber).call(embebedor, textos);
   if (matriz.length !== textos.length) throw new ErrorSimilitud('el embebedor devolvió una cantidad distinta de vectores');
   const vectores = etiquetas.map((et, i) => {
     const vector = matriz[i] as number[];
