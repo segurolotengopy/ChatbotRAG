@@ -23,6 +23,8 @@ Monorepo pnpm (Node 22, TypeScript estricto, ESM):
 
 Flujo: trabajo en ramas `feat/*`, `fix/*`, `chore/*`, `hotfix/*` → PR hacia `main` (squash) → merge despliega automáticamente a **staging** → tag `vX.Y.Z` despliega a **producción** con aprobación humana. El manifiesto `.devsecops.yml` declara componentes, proveedores y ambientes; léalo antes de tocar workflows o scripts de despliegue.
 
+PR: los abre la cuenta `segurolotengopy` (`GH_CONFIG_DIR=$HOME/.config/gh-pro`) y los aprueba la cuenta por omisión de `gh` (`AndresAlberdi`), sin `gh auth switch`; Claude aprueba y fusiona solo con la autorización del propietario por PR, nombrando el PR y su cabeza (regla global del 08/11/2026).
+
 ## Comandos
 
 | Acción | Comando |
