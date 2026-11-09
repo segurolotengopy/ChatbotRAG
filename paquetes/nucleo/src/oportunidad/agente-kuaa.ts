@@ -209,6 +209,9 @@ export class AgenteKuaa {
     let intento = 0;
     let reintentosFormato = 0;
     let reintentosContraBase = 0;
+    // Primera salida válida que contradecía la base: si el reintento falla (error del proveedor, JSON roto, corte), se sigue
+    // con ella y la detección posterior retira la oración; un «problema técnico» o «mucha demanda» serían falsos aquí.
+    let primera: ReturnType<typeof analizarSalida> | null = null;
     let analizada: ReturnType<typeof analizarSalida>;
     for (;;) {
       try {
@@ -227,9 +230,23 @@ export class AgenteKuaa {
         // Solo la causa enumerada llega a la bitácora y decide el texto; jamás el mensaje del error.
         const causa = causaDeError(e);
         this.deps.bitacora.registrar({ ...base, tipo: 'error_modelo', codigo: 'proveedor', causa, iteraciones: intento + 1, ...(intento > 0 ? tokens : {}) });
+        if (primera) {
+          analizada = primera;
+          cortado = false;
+          motivoFin = 'fin';
+          avisos.push('reintento_contra_base_fallido');
+          break;
+        }
         return { salida: salidaFallback(config, etapa, causa), avisos: [...avisos, 'error_modelo'] };
       }
       analizada = cortado ? { causa: 'json_roto' } : analizarSalida(textoModelo);
+      if (primera && (cortado || motivoFin !== 'fin' || 'causa' in analizada)) {
+        analizada = primera;
+        cortado = false;
+        motivoFin = 'fin';
+        avisos.push('reintento_contra_base_fallido');
+        break;
+      }
       const formatoRoto = 'causa' in analizada && (analizada.causa === 'json_roto' || analizada.causa === 'sin_objeto');
       // Solo una terminación normal: un bloqueo de seguridad del proveedor (texto vacío) es casi determinista y no se repite.
       const puedeReintentar = !cortado && motivoFin === 'fin' && intento < MAX_REINTENTOS_POR_TURNO && performance.now() - llegada <= TIEMPO_MAXIMO_PARA_REINTENTAR_MS;
@@ -244,6 +261,7 @@ export class AgenteKuaa {
         if (motivo) {
           intento += 1;
           reintentosContraBase += 1;
+          primera = analizada;
           contenidoPersona = `${texto}\n\n${CORRECCION_POR_MOTIVO[motivo]}`;
           avisos.push(`reintento_contra_base:${motivo}`);
           continue;

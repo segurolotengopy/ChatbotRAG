@@ -40,7 +40,7 @@ const R168 = 'Las exclusiones pueden variar según la cobertura. Por ejemplo, pa
 const R168_BUENO = 'Las exclusiones pueden variar según la cobertura. Por ejemplo, para la cobertura de cáncer, se excluyen los diagnósticos que se inicien o detecten durante el período de carencia.';
 const R192 = 'El sistema te permite iniciar una solicitud. Si ya tenés una póliza de VIVE, te recomiendo consultar con Interseguros para saber si podés contratar otra o si es necesario que un asesor revise tu situación. Podés contactarlos al +595 991 478 468.';
 const R200 = 'Sí, podés pagar el seguro de un familiar, siempre y cuando él sea quien complete y firme su propia solicitud.';
-const R36 = 'No puedo indicarte medicamentos ni hacer un diagnóstico. Consultá a un profesional de salud; si hay peligro inmediato, buscá atención de emergencia local. Puedo orientarte sobre información de tu seguro.';
+const R36 = 'No puedo recomendarte fármacos ni dar un diagnóstico. Consultá con un profesional de la salud; si hay un peligro inmediato, acudí a emergencias locales. Puedo orientarte con información sobre tu seguro.';
 
 describe('afirmaContraBase: respuestas reales del informe que deben detectarse', () => {
   it.each([
@@ -92,9 +92,42 @@ describe('afirmaContraBase: variantes de redacción y de trato', () => {
   ] as const)('«%s»', (texto, motivo) => {
     expect(afirmaContraBase(texto)).toBe(motivo);
   });
-  it('variante NO cubierta (verbo detrás del sustantivo): «Los montos se suman» no se detecta', () => {
-    // Límite declarado: es una lista, no una demostración.
-    expect(afirmaContraBase('Los montos se suman.')).toBeNull();
+  it.each([
+    ['La compañía aseguradora de VIVE es Interseguros S.A.', 'rol_corredor'],
+    ['Interseguros, la aseguradora, emite tu póliza.', 'rol_corredor'],
+    ['La empresa que te asegura es Interseguros.', 'rol_corredor'],
+    ['Interseguros evalúa y decide si acepta tu solicitud.', 'rol_corredor'],
+    ['Interseguros tiene la facultad de rechazar tu solicitud.', 'rol_corredor'],
+    ['La aprobación de tu solicitud depende de Interseguros.', 'rol_corredor'],
+    ['No se cubren los accidentes sin hospitalización.', 'exclusion_trasladada'],
+    ['La aseguradora tiene 30 días para pagarte.', 'plazo_siniestro'],
+    ['La compañía paga la renta hospitalaria dentro de 30 días de presentado el reclamo.', 'plazo_siniestro'],
+    ['Una vez aprobada la internación, la aseguradora te paga en 15 días.', 'plazo_siniestro'],
+    ['Sin carencia para fallecimiento ni para accidentes.', 'carencia_accidente'],
+    ['Fallecimiento no tiene carencia y la renta tampoco.', 'carencia_accidente'],
+    ['Ni la renta ni los gastos médicos tienen carencia.', 'carencia_accidente'],
+    ['Solo se permite una póliza VIVE por persona.', 'multiples_polizas'],
+    ['Cada persona puede tener una sola póliza.', 'multiples_polizas'],
+    ['Los montos no se acumulan entre pólizas.', 'multiples_polizas'],
+    ['Los montos se suman.', 'multiples_polizas'],
+    ['Cualquier persona puede pagar el seguro por vos.', 'pago_terceros'],
+    ['No, la tarjeta tiene que estar a tu nombre.', 'pago_terceros'],
+  ] as const)('variante ampliada «%s»', (texto, motivo) => {
+    expect(afirmaContraBase(texto)).toBe(motivo);
+  });
+});
+
+describe('afirmaContraBase: interrogativas y atenuantes', () => {
+  it.each([
+    '¿Interseguros es la aseguradora? No, es el corredor.',
+    '¿Querés saber si podés contratar dos pólizas?',
+    'Para pagar con la tarjeta de tu pareja, consultá antes con Interseguros.',
+    'Para pagar con la tarjeta de tu pareja, consulte con Interseguros.',
+    'Para cáncer hay 90 días de carencia y para fallecimiento no hay carencia, ni para la renta 90 días.',
+    'La renta se paga por cada día de internación, hasta 30 días por año.',
+    'La aseguradora evalúa el reclamo caso por caso.',
+  ])('«%s» no se detecta', (texto) => {
+    expect(afirmaContraBase(texto)).toBeNull();
   });
 });
 
@@ -176,6 +209,8 @@ describe('tabla de correcciones', () => {
       expect(CORRECCION_POR_MOTIVO[m].length).toBeGreaterThan(40);
       expect(CORRECCION_POR_MOTIVO[m]).not.toMatch(/\d/);
       expect(CORRECCION_POR_MOTIVO[m]).not.toMatch(/alianza|QA\d|C04/i);
+      expect(CORRECCION_POR_MOTIVO[m]).toContain('No mencione esta corrección ni se disculpe');
+      expect(CORRECCION_POR_MOTIVO[m]).toContain('solo a la pregunta original');
     }
   });
 });
@@ -356,19 +391,36 @@ describe('agente: corrección de afirmaciones contrarias a la base', () => {
       expect(avisos.filter((a) => a.startsWith('reintento_contra_base'))).toHaveLength(1);
       expect(avisos).toContain('frase_contra_base_retirada');
     });
-    it('contenido malo y luego formato roto: un reintento de formato y se cae al error temporal, tope de tres llamadas', async () => {
-      const { agente, proveedor, config } = await armar(salidaJson(R45), '{"texto": a}');
+    it('contenido malo y luego formato roto en el reintento: se sigue con la primera salida y se retira la oración, sin error temporal', async () => {
+      const { agente, proveedor, bitacora } = await armar(salidaJson(R45), '{"texto": a}');
       const { salida, avisos } = await agente.responder(entrada(), 'c');
-      expect(proveedor.peticiones).toHaveLength(3);
-      expect(salida.texto).toBe(config.mensajes.errorTemporal);
-      expect(avisos).toContain('salida_invalida');
+      expect(proveedor.peticiones).toHaveLength(2);
+      expect(salida.texto).toBe(`${R45_BUENO} ${DERIV_VOS}`);
+      expect(avisos).toEqual(expect.arrayContaining(['reintento_contra_base:carencia_accidente', 'reintento_contra_base_fallido', 'contra_base:carencia_accidente', 'frase_contra_base_retirada']));
+      expect(avisos).not.toContain('salida_invalida');
+      expect(bitacora.eventos.find((e) => e.tipo === 'mensaje_atendido')).toMatchObject({ iteraciones: 2, tokensEntrada: 20, tokensSalida: 10 });
     });
-    it('error del proveedor en el reintento: fallback del error con 2 iteraciones, no un texto de contenido', async () => {
+    it('contenido malo y luego corte por max_tokens en el reintento: también se sigue con la primera salida', async () => {
+      const { agente } = await armar(salidaJson(R45), { texto: '{"texto": "a"', motivoFin: 'max_tokens' });
+      const { salida, avisos } = await agente.responder(entrada(), 'c');
+      expect(salida.texto).toBe(`${R45_BUENO} ${DERIV_VOS}`);
+      expect(avisos).toContain('reintento_contra_base_fallido');
+      expect(avisos).not.toContain('respuesta_incompleta');
+    });
+    it('error del proveedor en el reintento: se sigue con la primera salida (nunca «problema técnico» ni «mucha demanda»), con 2 iteraciones y los tokens de la primera', async () => {
       const { agente, bitacora, config } = await armar(salidaJson(R45), new Error('falla'));
       const { salida, avisos } = await agente.responder(entrada(), 'c');
-      expect(salida.texto).toBe(config.mensajes.errorTemporal);
-      expect(avisos).toContain('error_modelo');
+      expect(salida.texto).toBe(`${R45_BUENO} ${DERIV_VOS}`);
+      expect(salida.texto).not.toBe(config.mensajes.errorTemporal);
+      expect(avisos).toEqual(expect.arrayContaining(['reintento_contra_base_fallido', 'frase_contra_base_retirada']));
+      expect(avisos).not.toContain('error_modelo');
       expect(bitacora.eventos.find((e) => e.tipo === 'error_modelo')).toMatchObject({ iteraciones: 2, tokensEntrada: 10, tokensSalida: 5 });
+      expect(bitacora.eventos.find((e) => e.tipo === 'mensaje_atendido')).toMatchObject({ iteraciones: 2, tokensEntrada: 10, tokensSalida: 5 });
+    });
+    it('error del proveedor en el reintento con 106: reemplazo total por «sin respaldo»', async () => {
+      const { agente, config } = await armar(salidaJson(R106), new Error('falla'));
+      const { salida } = await agente.responder(entrada(), 'c');
+      expect(salida.texto).toBe(textoSinRespaldo(config, entrada().plataforma));
     });
     it('sin respaldo documental no se gasta un reintento: el turno termina en «sin respaldo»', async () => {
       const config = cargarConfiguracionDesdeJson(JSON_KUAA);
