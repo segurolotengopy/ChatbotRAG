@@ -77,7 +77,7 @@ const R8 = /\binterseguros(?:\s{1,3}s\.?\s{0,2}a\.?)?\s{1,3}(?:tiene|tendra|cuen
 const R9 = /\b(?:aprobacion|aceptacion|rechazo|decision|emision)\b[^.!?]{0,40}\bdepende(?:n)?\s{1,3}de\s{1,3}interseguros\b/;
 const R3 = /\ba\s{1,3}nombre\s{1,3}de\s{1,3}interseguros\b/;
 const R3_NEG = /\bno\s{1,3}(?:(?:va|van|esta|estan|estara|queda|sera|figura)\s{1,3}(?:\S+\s{1,3}){0,2})?a\s{1,3}nombre\s{1,3}de\s{1,3}interseguros\b/;
-const R4 = /\binterseguros(?:\s{1,3}s\.?\s{0,2}a\.?)?\s{1,3}(?:(?:puede|podra|podria|va\s{1,3}a|es\s{1,3}quien|es\s{1,3}la\s{1,3}que|decide\s{1,3}si|se\s{1,3}encarga\s{1,3}de)\s{1,3}(?:aceptar|rechazar|aprobar|emitir)|(?:acepta|rechaza|aprueba)\b|emite\s{1,3}(?:\S{1,10}\s{1,3}){0,2}(?:poliza|seguro|contrato|solicitud)\b)/;
+const R4 = /\binterseguros(?:\s{1,3}s\.?\s{0,2}a\.?)?\s{1,3}(?:(?:puede|podra|podria|va\s{1,3}a|es\s{1,3}quien|es\s{1,3}la\s{1,3}que|decide\s{1,3}si|se\s{1,3}encarga\s{1,3}de)\s{1,3}(?:aceptar|rechazar|aprobar|emitir)|(?:acepta|rechaza|aprueba)\b|emite\s{1,3}(?:\S{1,10}\s{1,3}){0,2}(?:polizas?|seguros?|contratos?|solicitud(?:es)?)\b)/;
 
 function rolCorredor(t: string): boolean {
   return [R1, R2, R5, R6, R7, R8, R9, R4].some((re) => re.test(t)) || (R3.test(t) && !R3_NEG.test(t));
@@ -118,21 +118,22 @@ function exclusionTrasladada(t: string): boolean {
 
 // ---- titular_facturas ----
 const DOC = /\b(?:facturas?|boletas?|comprobantes?|recibos?)\b/;
-const A_NOMBRE = /\ba\s{1,3}(?:tu|su|vuestro|mi)\s{1,3}nombre\b|\ba\s{1,3}nombre\s{1,3}(?:tuyo|suyo|propio|del\s{1,3}(?:asegurado|titular|contratante|paciente)|de\s{1,3}(?:la\s{1,3}aseguradora|alianza|interseguros|la\s{1,3}compania|quien\s{1,3}\w+))\b/;
+const A_NOMBRE = /\ba\s{1,3}(?:tu|su|vuestro|mi)\s{1,3}(?:propio\s{1,3})?nombre\b|\ba\s{1,3}nombre\s{1,3}(?:tuyo|suyo|propio|del\s{1,3}(?:asegurado|titular|contratante|paciente|beneficiario)|de\s{1,3}(?:la\s{1,3}persona\s{1,3}asegurada|la\s{1,3}aseguradora|alianza|interseguros|la\s{1,3}compania|quien\s{1,3}\w+))\b/;
 const HEDGE_TIT = /\bno\s{1,3}(?:puedo|podemos|se\s{1,3}puede|te\s{1,3}puedo|le\s{1,3}puedo)\s{1,3}(?:confirmar|asegurar|afirmar|precisar|garantizar)\b|\b(?:requiere|requieren|necesita|falta|pendiente\s{1,3}de)\s{1,3}(?:una\s{1,3})?confirmacion\b|\bpendiente\b|\bno\s{1,3}estan?\s{1,3}(?:confirmad|definid)\w*|\bconsult\w*\s{1,3}(?:a|con)\s{1,3}interseguros\s{1,3}(?:antes|como)\b/;
 
 const A_NOMBRE_G = new RegExp(A_NOMBRE.source, 'g');
 const DOC_G = new RegExp(DOC.source, 'g');
-const OBJETO_PROPIO = /\b(?:poliza|contrato|seguro)\s{1,3}(?:\S{1,15}\s{1,3})?$/;
+const OBJETO_PROPIO = /\b(?:recibis|recibes|recibe|recibira|recibiras|obtenes|obtienes|queda|quedan|esta|estan|figura|sale)\b[^.!?]{0,20}\b(?:poliza|contrato|seguro)\s{1,3}(?:\S{1,15}\s{1,3})?$|\b(?:poliza|contrato|seguro)\s{1,3}(?:queda|quedan|esta|estan|figura|sale|va)\s{1,3}$/;
 
 /**
- * El «a tu nombre» cuenta solo si un documento (factura, boleta, comprobante) está a menos de 60 letras, y no cuando el
- * nombre es el de la póliza o el contrato («recibís una póliza a tu nombre y la factura»): eso no dice de quién son las facturas.
+ * El «a tu nombre» cuenta solo si un documento (factura, boleta, comprobante) está a menos de 60 letras, y no cuando es el de la
+ * póliza o el contrato en una oración de recepción o estado («recibís una póliza a tu nombre», «el contrato queda a tu nombre»):
+ * eso no dice de quién son las facturas. «Las facturas del seguro a tu nombre» sí se detecta.
  */
 function titularFacturas(t: string): boolean {
   if (!DOC.test(t) || HEDGE_TIT.test(t)) return false;
   for (const n of t.matchAll(A_NOMBRE_G)) {
-    if (OBJETO_PROPIO.test(t.slice(Math.max(0, n.index - 25), n.index))) continue;
+    if (OBJETO_PROPIO.test(t.slice(Math.max(0, n.index - 60), n.index))) continue;
     for (const d of t.matchAll(DOC_G)) {
       if (d.index <= n.index ? n.index - (d.index + d[0].length) <= 60 : d.index - (n.index + n[0].length) <= 60) return true;
     }
@@ -207,10 +208,10 @@ const DETECTORES: Record<MotivoContraBase, (t: string) => boolean> = {
 
 /** El motivo de la primera regla que marca la oración (en el orden de `MOTIVOS_CONTRA_BASE`), o null. */
 export function motivoContraBaseEnOracion(oracion: string): MotivoContraBase | null {
-  // Una pregunta no afirma nada («¿Interseguros es la aseguradora? No, es el corredor.»): solo se evalúa lo que va ANTES del
-  // primer «¿», para que una afirmación con pregunta de cierre («…, ¿te ayudo con algo más?») no se escape.
-  const apertura = oracion.indexOf('¿');
-  const afirmacion = apertura >= 0 ? oracion.slice(0, apertura) : oracion;
+  // Una pregunta no afirma nada («¿Interseguros es la aseguradora? No, es el corredor.»): se quitan solo los tramos «¿…?» y se
+  // evalúa el resto, para que una afirmación con una pregunta de cierre o intercalada («Interseguros, ¿sabés?, es la
+  // aseguradora») no se escape. Un «¿» sin cierre no se quita: se evalúa el texto completo.
+  const afirmacion = oracion.replace(/¿[^¿?]*\?/g, ' ').replace(/,\s*,/g, ',').replace(/\s{2,}/g, ' ');
   if (afirmacion.trim() === '') return null;
   const t = paraDetectar(afirmacion);
   for (const motivo of MOTIVOS_CONTRA_BASE) if (DETECTORES[motivo](t)) return motivo;

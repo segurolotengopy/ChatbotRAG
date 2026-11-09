@@ -117,6 +117,34 @@ describe('afirmaContraBase: variantes de redacción y de trato', () => {
   });
 });
 
+describe('afirmaContraBase: ronda 4', () => {
+  it.each([
+    ['Claro ¿viste?, Interseguros acepta o rechaza tu solicitud.', 'rol_corredor'],
+    ['Interseguros, ¿sabés?, es la aseguradora de VIVE.', 'rol_corredor'],
+    ['Las facturas, ¿sabés?, deben estar a tu nombre.', 'titular_facturas'],
+    ['Ojo ¿eh?: la compañía te paga el reclamo en 30 días.', 'plazo_siniestro'],
+    ['Interseguros emite las pólizas de VIVE.', 'rol_corredor'],
+    ['Interseguros emite los contratos de seguro.', 'rol_corredor'],
+    ['Para el reembolso del seguro a tu nombre deben estar las facturas.', 'titular_facturas'],
+    ['Las facturas del seguro a tu nombre, siempre.', 'titular_facturas'],
+    ['Las facturas deben estar a tu propio nombre.', 'titular_facturas'],
+    ['Las facturas van a nombre de la persona asegurada.', 'titular_facturas'],
+    ['Los comprobantes van a nombre del beneficiario.', 'titular_facturas'],
+    ['Interseguros es la aseguradora ¿Querés que te cuente más', 'rol_corredor'],
+  ] as const)('se detecta «%s»', (texto, motivo) => {
+    expect(afirmaContraBase(texto)).toBe(motivo);
+  });
+  it.each([
+    'Al contratar, recibís una póliza a tu nombre y la factura.',
+    'El contrato queda a tu nombre; la factura te llega en 24 horas.',
+    'Interseguros emite la factura de la comisión.',
+    '¿Interseguros es la aseguradora? No, es el corredor.',
+    'Claro ¿viste?, Interseguros es el corredor y te asesora.',
+  ])('pasa «%s»', (texto) => {
+    expect(afirmaContraBase(texto)).toBeNull();
+  });
+});
+
 describe('afirmaContraBase: ronda 3', () => {
   it.each([
     ['Interseguros es la aseguradora, ¿te ayudo con algo más?', 'rol_corredor'],
