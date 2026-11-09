@@ -76,8 +76,8 @@ const R7 = /\binterseguros(?:\s{1,3}s\.?\s{0,2}a\.?)?\s{1,3}(?:evalua|analiza|de
 const R8 = /\binterseguros(?:\s{1,3}s\.?\s{0,2}a\.?)?\s{1,3}(?:tiene|tendra|cuenta\s{1,3}con)\s{1,3}(?:la\s{1,3}|el\s{1,3})?(?:facultad|derecho|potestad|atribucion|poder)\s{1,3}de\s{1,3}(?:aceptar|rechazar|aprobar|emitir)\b/;
 const R9 = /\b(?:aprobacion|aceptacion|rechazo|decision|emision)\b[^.!?]{0,40}\bdepende(?:n)?\s{1,3}de\s{1,3}interseguros\b/;
 const R3 = /\ba\s{1,3}nombre\s{1,3}de\s{1,3}interseguros\b/;
-const R3_NEG = /\bno\s{1,3}(?:va|van|esta|estan|estara|queda|sera|figura)\s{1,3}(?:\S+\s{1,3}){0,2}a\s{1,3}nombre\s{1,3}de\s{1,3}interseguros\b/;
-const R4 = /\binterseguros(?:\s{1,3}s\.?\s{0,2}a\.?)?\s{1,3}(?:(?:puede|podra|podria|va\s{1,3}a|es\s{1,3}quien|es\s{1,3}la\s{1,3}que|decide\s{1,3}si|se\s{1,3}encarga\s{1,3}de)\s{1,3}(?:aceptar|rechazar|aprobar|emitir)|(?:acepta|rechaza|aprueba|emite)\b)/;
+const R3_NEG = /\bno\s{1,3}(?:(?:va|van|esta|estan|estara|queda|sera|figura)\s{1,3}(?:\S+\s{1,3}){0,2})?a\s{1,3}nombre\s{1,3}de\s{1,3}interseguros\b/;
+const R4 = /\binterseguros(?:\s{1,3}s\.?\s{0,2}a\.?)?\s{1,3}(?:(?:puede|podra|podria|va\s{1,3}a|es\s{1,3}quien|es\s{1,3}la\s{1,3}que|decide\s{1,3}si|se\s{1,3}encarga\s{1,3}de)\s{1,3}(?:aceptar|rechazar|aprobar|emitir)|(?:acepta|rechaza|aprueba)\b|emite\s{1,3}(?:\S{1,10}\s{1,3}){0,2}(?:poliza|seguro|contrato|solicitud)\b)/;
 
 function rolCorredor(t: string): boolean {
   return [R1, R2, R5, R6, R7, R8, R9, R4].some((re) => re.test(t)) || (R3.test(t) && !R3_NEG.test(t));
@@ -90,7 +90,7 @@ const NEG_CAR_SING = '(?:sin|no\\s{1,3}(?:hay|tiene|aplica|existe|corre|rige|lle
 const OTRA_DESPUES = '(?!\\s{0,3}(?:,|y|e|o|ni(?:\\s{1,3}para)?)\\s{0,3}(?:la\\s{1,3}|el\\s{1,3}|los\\s{1,3})?(?:renta|gastos?|cancer|oncolog|accidente))';
 const CAR_NEGADA = new RegExp(`\\b${NEG_CAR}|\\bni\\b[^.!?]{1,60}\\bni\\b[^.!?]{1,40}\\b(?:tiene|tienen|hay|aplica|aplican|corre|corren|lleva|llevan|requiere|requieren)\\s{1,3}(?:ninguna\\s{1,3})?carencias?\\b|\\bcarencias?\\s{0,3}:\\s{0,3}(?:no|ninguna|sin)\\b|\\bcarencias?\\s{1,3}(?:de\\s{1,3})?(?:cero|0)\\s{1,3}dias?\\b`);
 const FALLEC_LIGADO = new RegExp(
-  `\\b${NEG_CAR}\\s{1,3}(?:para|en)\\s{1,3}(?:el\\s{1,3}|la\\s{1,3}cobertura\\s{1,3}de\\s{1,3}|la\\s{1,3}de\\s{1,3})?fallecimiento\\b${OTRA_DESPUES}|\\b(?:el\\s{1,3}|la\\s{1,3}cobertura\\s{1,3}de\\s{1,3})?fallecimiento(?:\\s{1,3}por\\s{1,3}(?:accidente|enfermedad|cualquier\\s{1,3}causa))?\\s{0,3}[,:]?\\s{0,3}(?:es\\s{1,3}|va\\s{1,3})?${NEG_CAR_SING}${OTRA_DESPUES}`,
+  `\\b${NEG_CAR}\\s{1,3}(?:ni\\s{1,3})?(?:para|en)\\s{1,3}(?:el\\s{1,3}|la\\s{1,3}cobertura\\s{1,3}de\\s{1,3}|la\\s{1,3}de\\s{1,3})?fallecimiento\\b${OTRA_DESPUES}|\\b(?:el\\s{1,3}|la\\s{1,3}cobertura\\s{1,3}de\\s{1,3})?fallecimiento(?:\\s{1,3}por\\s{1,3}(?:accidente|enfermedad|cualquier\\s{1,3}causa))?\\s{0,3}[,:]?\\s{0,3}(?:es\\s{1,3}|va\\s{1,3})?${NEG_CAR_SING}${OTRA_DESPUES}`,
   'g',
 );
 const SUJETO_CAR = /\brenta\b|\bgastos?\s{1,3}medicos?\b|\bcancer\b|\boncologic\w*|\b(?:demas|otras|todas\s{1,3}las|resto\s{1,3}de\s{1,3}las)\s{1,3}coberturas\b|\bningun[ao]?\s{1,3}cobertura\b|\baccidentes?\b|\bhospitaliza\w*|\binternacion\b/;
@@ -121,8 +121,23 @@ const DOC = /\b(?:facturas?|boletas?|comprobantes?|recibos?)\b/;
 const A_NOMBRE = /\ba\s{1,3}(?:tu|su|vuestro|mi)\s{1,3}nombre\b|\ba\s{1,3}nombre\s{1,3}(?:tuyo|suyo|propio|del\s{1,3}(?:asegurado|titular|contratante|paciente)|de\s{1,3}(?:la\s{1,3}aseguradora|alianza|interseguros|la\s{1,3}compania|quien\s{1,3}\w+))\b/;
 const HEDGE_TIT = /\bno\s{1,3}(?:puedo|podemos|se\s{1,3}puede|te\s{1,3}puedo|le\s{1,3}puedo)\s{1,3}(?:confirmar|asegurar|afirmar|precisar|garantizar)\b|\b(?:requiere|requieren|necesita|falta|pendiente\s{1,3}de)\s{1,3}(?:una\s{1,3})?confirmacion\b|\bpendiente\b|\bno\s{1,3}estan?\s{1,3}(?:confirmad|definid)\w*|\bconsult\w*\s{1,3}(?:a|con)\s{1,3}interseguros\s{1,3}(?:antes|como)\b/;
 
+const A_NOMBRE_G = new RegExp(A_NOMBRE.source, 'g');
+const DOC_G = new RegExp(DOC.source, 'g');
+const OBJETO_PROPIO = /\b(?:poliza|contrato|seguro)\s{1,3}(?:\S{1,15}\s{1,3})?$/;
+
+/**
+ * El «a tu nombre» cuenta solo si un documento (factura, boleta, comprobante) está a menos de 60 letras, y no cuando el
+ * nombre es el de la póliza o el contrato («recibís una póliza a tu nombre y la factura»): eso no dice de quién son las facturas.
+ */
 function titularFacturas(t: string): boolean {
-  return DOC.test(t) && A_NOMBRE.test(t) && !HEDGE_TIT.test(t);
+  if (!DOC.test(t) || HEDGE_TIT.test(t)) return false;
+  for (const n of t.matchAll(A_NOMBRE_G)) {
+    if (OBJETO_PROPIO.test(t.slice(Math.max(0, n.index - 25), n.index))) continue;
+    for (const d of t.matchAll(DOC_G)) {
+      if (d.index <= n.index ? n.index - (d.index + d[0].length) <= 60 : d.index - (n.index + n[0].length) <= 60) return true;
+    }
+  }
+  return false;
 }
 
 // ---- plazo_siniestro ----
@@ -135,7 +150,7 @@ const EXENTO = /\b(?:aviso|avisos|avisar|avises|avisa|denunciar|gracia|primas?|p
 const EXENTO_DEBIL = /\b(?:renta|internacion|internad\w*|hospitaliza\w*|cancer|oncologic\w*)\b/;
 const VERBO_PAGO = /\b(?:pag(?:a|an|ar|ara|aran|aria|arian|o|os|ue|uen)(?:te|le|lo|la|los|las|nos|telo|selo)?|abon\w*|liquid\w*|reembols\w*|desembols\w*)\b/;
 const PLAZO_DE_PAGO = /\b(?:en|dentro\s{1,3}de|tiene|tienen|plazo\s{1,3}de|despues\s{1,3}de)\s{1,3}(?:un\s{1,3}plazo\s{1,3}de\s{1,3})?(?:\d{1,3}|un|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|quince|veinte|treinta|cuarenta|sesenta|noventa)\s{1,3}(?:dias?|semanas?|mes(?:es)?|horas?)\b/;
-const HEDGE_PLAZO = /\bno\s{1,3}(?:puedo|podemos|se\s{1,3}puede|te\s{1,3}puedo|le\s{1,3}puedo)\s{1,3}(?:prometer|garantizar|asegurar|confirmar)\b|\bno\s{1,3}hay\s{1,3}(?:un\s{1,3})?plazo\s{1,3}(?:fijo|garantizado|confirmado|prometido)\b/;
+const HEDGE_PLAZO = /\bno\s{1,3}(?:es\s{1,3}posible|puedo|podemos|se\s{1,3}puede|te\s{1,3}puedo|le\s{1,3}puedo)\s{1,3}(?:prometer|garantizar|asegurar|confirmar)(?:te|le|les)?\b|\bnadie\s{1,3}puede\s{1,3}(?:prometer|garantizar|asegurar|confirmar)(?:te|le|les)?\b|\bno\s{1,3}hay\s{1,3}(?:un\s{1,3})?plazo\s{1,3}(?:fijo|garantizado|confirmado|prometido)\b/;
 
 function plazoSiniestro(t: string): boolean {
   if (!(CANT_TIEMPO.test(t) && RESOL.test(t) && OBJ.test(t)) || EXENTO.test(t) || HEDGE_PLAZO.test(t)) return false;
@@ -192,9 +207,12 @@ const DETECTORES: Record<MotivoContraBase, (t: string) => boolean> = {
 
 /** El motivo de la primera regla que marca la oración (en el orden de `MOTIVOS_CONTRA_BASE`), o null. */
 export function motivoContraBaseEnOracion(oracion: string): MotivoContraBase | null {
-  // Una pregunta no afirma nada («¿Interseguros es la aseguradora? No, es el corredor.»): no se evalúa.
-  if (/^\s*¿/.test(oracion) || /\?\s*$/.test(oracion)) return null;
-  const t = paraDetectar(oracion);
+  // Una pregunta no afirma nada («¿Interseguros es la aseguradora? No, es el corredor.»): solo se evalúa lo que va ANTES del
+  // primer «¿», para que una afirmación con pregunta de cierre («…, ¿te ayudo con algo más?») no se escape.
+  const apertura = oracion.indexOf('¿');
+  const afirmacion = apertura >= 0 ? oracion.slice(0, apertura) : oracion;
+  if (afirmacion.trim() === '') return null;
+  const t = paraDetectar(afirmacion);
   for (const motivo of MOTIVOS_CONTRA_BASE) if (DETECTORES[motivo](t)) return motivo;
   return null;
 }

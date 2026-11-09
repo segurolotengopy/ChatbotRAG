@@ -117,6 +117,37 @@ describe('afirmaContraBase: variantes de redacción y de trato', () => {
   });
 });
 
+describe('afirmaContraBase: ronda 3', () => {
+  it.each([
+    ['Interseguros es la aseguradora, ¿te ayudo con algo más?', 'rol_corredor'],
+    ['Interseguros emite tu póliza.', 'rol_corredor'],
+    ['La compañía te paga en 15 días, ¿querés que te explique cómo reclamar?', 'plazo_siniestro'],
+    ['Solo podés tener una póliza por persona, ¿te sirve?', 'multiples_polizas'],
+    ['Las facturas deben estar a tu nombre, ¿tenés alguna otra duda?', 'titular_facturas'],
+    ['La compañía te paga en 15 días, no a tu nombre.', 'plazo_siniestro'],
+    ['Las facturas y boletas originales deben estar a tu nombre.', 'titular_facturas'],
+    ['Tu contrato va a nombre de Interseguros, ¿no?', 'rol_corredor'],
+    ['Sin carencia para fallecimiento ni para la renta.', 'carencia_accidente'],
+    ['No hay carencia ni para fallecimiento ni para la renta.', 'carencia_accidente'],
+  ] as const)('se detecta «%s»', (texto, motivo) => {
+    expect(afirmaContraBase(texto)).toBe(motivo);
+  });
+  it.each([
+    '¿Interseguros es la aseguradora? No, es el corredor.',
+    'No podemos garantizarte que la aseguradora resuelva tu reclamo en 30 días.',
+    'No es posible prometer que te paguen en 15 días.',
+    'Nadie puede asegurarte que la compañía pague en 15 días.',
+    'No puedo prometerte que la compañía te pague en 15 días.',
+    'No te puedo prometer que la compañía te pague en 15 días.',
+    'Al contratar, recibís una póliza a tu nombre y la factura.',
+    'Interseguros emite la factura de la comisión.',
+    'El contrato queda a nombre de Alianza como aseguradora, no a nombre de Interseguros.',
+    'No hay carencia ni para fallecimiento por accidente ni por enfermedad.',
+  ])('pasa «%s»', (texto) => {
+    expect(afirmaContraBase(texto)).toBeNull();
+  });
+});
+
 describe('afirmaContraBase: interrogativas y atenuantes', () => {
   it.each([
     '¿Interseguros es la aseguradora? No, es el corredor.',
