@@ -187,6 +187,19 @@ export function textoSinRespaldo(config: ConfiguracionEfectiva, plataforma: Para
 }
 
 /**
+ * Derivación sola (sin `mensajes.sinRespaldo`): con el WhatsApp de la plataforma, la frase fija por trato; si no hay
+ * WhatsApp o el detector la objetara, `mensajes.derivacion`. La usa la corrección de afirmaciones contrarias a la base.
+ * Qué NO garantiza: que el número sea el vigente (lo informa SLT).
+ */
+export function fraseDerivacionKuaa(config: ConfiguracionEfectiva, plataforma: Parameters<typeof permitidosDe>[0]): string {
+  const tel = plataforma?.contacto.whatsapp_e164;
+  if (tel === undefined) return config.mensajes.derivacion;
+  const [antes, despues] = FRASE_DERIVACION_WHATSAPP[config.voz.tratamiento];
+  const texto = `${antes} ${formatearTelefono(tel)} ${despues}`.trim();
+  return patronEnlaceOPrecio(texto, permitidosDe(plataforma)) === null ? texto : config.mensajes.derivacion;
+}
+
+/**
  * Corte de oraciones. «Gs.» lleva punto pero no siempre cierra frase: en «es Gs. 390.000» (el importe sigue) no se
  * corta; en «390.000 Gs. Visita...» (lo que sigue no es un dígito) sí. Qué NO garantiza: otras abreviaturas con punto.
  * El espacio posterior excluye otro espacio para que el retroceso no parta en medio de una tanda de espacios.

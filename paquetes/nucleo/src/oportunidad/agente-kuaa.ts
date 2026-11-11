@@ -8,7 +8,9 @@
  * Fallan cerrado: si el modelo no devuelve JSON válido, se corta por `max_tokens`, el texto trae un
  * enlace, un precio, una afirmación de hecho que solo el sistema conoce (pago, póliza, agenda, traspaso,
  * cobertura) o una fuga del prompt, o algo falla, la persona recibe el mensaje de error temporal con
- * botones y propuestas vacíos; jamás el texto crudo del modelo. `continuar_pago` solo sobrevive si SLT
+ * botones y propuestas vacíos; jamás el texto crudo del modelo. Una afirmación contraria a la base
+ * (`afirmaciones-contra-base.ts`) primero se corrige reintentando al modelo UNA vez con una frase fija por motivo; si
+ * persiste, se retira la oración (más la derivación) o, si no queda nada útil, se responde «sin respaldo» con la derivación. `continuar_pago` solo sobrevive si SLT
  * informó `solicitud: completada`. La entrada se normaliza ANTES de las compuertas (invisibles, marcas
  * combinantes, homóglifos) y el modelo recibe el texto normalizado.
  *
@@ -40,10 +42,11 @@ import { ErrorPeticion, hashConversacion, type DependenciasAgente } from '../orq
 import type { EventoBitacora } from '../puertos/bitacora.js';
 import { causaDeError, type CausaErrorProveedor } from '../puertos/proveedor-llm.js';
 import type { FragmentoRecuperado } from '../puertos/indice-conocimiento.js';
+import { afirmaContraBase, CORRECCION_POR_MOTIVO, quitarAfirmacionesContraBase } from './afirmaciones-contra-base.js';
 import { EntradaKuaa, SalidaOportunidad, filtrarBotonesSalida } from './esquemas.js';
 import { normalizarEntradaKuaa } from './normalizar-entrada.js';
 import { armarPromptKuaa } from './prompt-kuaa.js';
-import { afirmaHechoNoRespaldado, afirmaTratamientoTributario, quitarFrases, salvarQuitandoBloqueado, quitarPromesasDeEntrega, quitarSaludoInicial, retirarNumerosDeRegistro, salidaTributaria, patronEnlaceOPrecio, permitidosDe, analizarSalida, filtraPrompt, retirarCodigosInternos, salidaFallback, salidaSinCifras, textoSinRespaldo } from './salida-kuaa.js';
+import { fraseDerivacionKuaa, afirmaHechoNoRespaldado, afirmaTratamientoTributario, quitarFrases, salvarQuitandoBloqueado, quitarPromesasDeEntrega, quitarSaludoInicial, retirarNumerosDeRegistro, salidaTributaria, patronEnlaceOPrecio, permitidosDe, analizarSalida, filtraPrompt, retirarCodigosInternos, salidaFallback, salidaSinCifras, textoSinRespaldo } from './salida-kuaa.js';
 
 export interface ResultadoKuaa {
   salida: SalidaOportunidad;
@@ -61,9 +64,12 @@ export function claveMemoriaKuaa(clienteId: string, oportunidadId: string): stri
 /**
  * Reintentos ante una salida que no es JSON legible: una llamada extra como máximo, y solo si desde que llegó la petición
  * pasaron como mucho `TIEMPO_MAXIMO_PARA_REINTENTAR_MS` (búsqueda RAG incluida). Reduce la probabilidad de pasar el tope de
- * 20 s del sitio; NO lo garantiza (ver docs/ARQUITECTURA.md).
+ * 20 s del sitio; NO lo garantiza (ver docs/ARQUITECTURA.md). El reintento por afirmación contraria a la base (uno solo)
+ * comparte esa guarda de tiempo, y entre los dos nunca pasan de `MAX_REINTENTOS_POR_TURNO` llamadas extra.
  */
 const REINTENTOS_FORMATO = 1;
+const REINTENTOS_CONTRA_BASE = 1;
+const MAX_REINTENTOS_POR_TURNO = 2;
 const TIEMPO_MAXIMO_PARA_REINTENTAR_MS = 3000;
 /** Lo que debe quedar de una respuesta tras quitarle una frase para seguir valiendo («¿Ok?» solo no ayuda a nadie). */
 const RESTO_MINIMO = 30;
@@ -194,13 +200,24 @@ export class AgenteKuaa {
     let motivoFin: string = 'fin';
     // Una salida que no es JSON legible («json_roto», «sin_objeto») es un fallo aleatorio del formato, no del contenido: se
     // reintenta UNA vez, y solo si la primera llamada fue rápida (el sitio corta a los 20 s). Los tokens de ambas se suman.
+    // Una salida válida que contradice la base (`afirmaciones-contra-base.ts`) también se reintenta UNA vez, con la misma guarda
+    // de tiempo: se agrega al mensaje de la persona una corrección fija por motivo (jamás texto del modelo ni de la base). La
+    // memoria guarda siempre el mensaje original de la persona y el texto final ya corregido. Si el reintento falla, la
+    // detección posterior retira la oración. `intento` cuenta todos los reintentos del turno.
+    const habraRespaldo = !(config.conocimiento.modo === 'rag' && config.conocimiento.exigirRespaldo && fragmentos.length === 0 && !esCortesia(texto));
+    let contenidoPersona = texto;
     let intento = 0;
+    let reintentosFormato = 0;
+    let reintentosContraBase = 0;
+    // Primera salida válida que contradecía la base: si el reintento falla (error del proveedor, JSON roto, corte), se sigue
+    // con ella y la detección posterior retira la oración; un «problema técnico» o «mucha demanda» serían falsos aquí.
+    let primera: ReturnType<typeof analizarSalida> | null = null;
     let analizada: ReturnType<typeof analizarSalida>;
     for (;;) {
       try {
         const r = await this.deps.proveedor.generar({
           sistema,
-          mensajes: [...historial.map((t) => ({ rol: t.rol, contenido: t.contenido })), { rol: 'usuario' as const, contenido: texto }],
+          mensajes: [...historial.map((t) => ({ rol: t.rol, contenido: t.contenido })), { rol: 'usuario' as const, contenido: contenidoPersona }],
           herramientas: [],
           parametros: { modelo: config.modelo.nombre, temperatura: config.modelo.temperatura, maxTokensSalida: config.modelo.maxTokensSalida, razonamiento: config.modelo.razonamiento },
         });
@@ -213,14 +230,44 @@ export class AgenteKuaa {
         // Solo la causa enumerada llega a la bitácora y decide el texto; jamás el mensaje del error.
         const causa = causaDeError(e);
         this.deps.bitacora.registrar({ ...base, tipo: 'error_modelo', codigo: 'proveedor', causa, iteraciones: intento + 1, ...(intento > 0 ? tokens : {}) });
+        if (primera) {
+          analizada = primera;
+          cortado = false;
+          motivoFin = 'fin';
+          avisos.push('reintento_contra_base_fallido');
+          break;
+        }
         return { salida: salidaFallback(config, etapa, causa), avisos: [...avisos, 'error_modelo'] };
       }
       analizada = cortado ? { causa: 'json_roto' } : analizarSalida(textoModelo);
+      if (primera && (cortado || motivoFin !== 'fin' || 'causa' in analizada)) {
+        analizada = primera;
+        cortado = false;
+        motivoFin = 'fin';
+        avisos.push('reintento_contra_base_fallido');
+        break;
+      }
       const formatoRoto = 'causa' in analizada && (analizada.causa === 'json_roto' || analizada.causa === 'sin_objeto');
       // Solo una terminación normal: un bloqueo de seguridad del proveedor (texto vacío) es casi determinista y no se repite.
-      if (cortado || motivoFin !== 'fin' || !formatoRoto || intento >= REINTENTOS_FORMATO || performance.now() - llegada > TIEMPO_MAXIMO_PARA_REINTENTAR_MS) break;
-      intento += 1;
-      avisos.push('reintento_formato');
+      const puedeReintentar = !cortado && motivoFin === 'fin' && intento < MAX_REINTENTOS_POR_TURNO && performance.now() - llegada <= TIEMPO_MAXIMO_PARA_REINTENTAR_MS;
+      if (puedeReintentar && formatoRoto && reintentosFormato < REINTENTOS_FORMATO) {
+        intento += 1;
+        reintentosFormato += 1;
+        avisos.push('reintento_formato');
+        continue;
+      }
+      if (puedeReintentar && habraRespaldo && !('causa' in analizada) && reintentosContraBase < REINTENTOS_CONTRA_BASE) {
+        const motivo = afirmaContraBase(sanearTexto(analizada.salida.texto, 4000));
+        if (motivo) {
+          intento += 1;
+          reintentosContraBase += 1;
+          primera = analizada;
+          contenidoPersona = `${texto}\n\n${CORRECCION_POR_MOTIVO[motivo]}`;
+          avisos.push(`reintento_contra_base:${motivo}`);
+          continue;
+        }
+      }
+      break;
     }
 
     const cierre = (r: ResultadoKuaa): ResultadoKuaa => this.cerrar(base, r, tokens, fragmentos, intento + 1);
@@ -276,10 +323,29 @@ export class AgenteKuaa {
       }
     }
     if (hecho) return cierre(fallback(avisos, `hecho_no_respaldado:${hecho}`));
+    // Red de seguridad tras el reintento: una afirmación que contradice la base aprobada (o inventa una regla donde calla)
+    // se retira con su derivación; si no queda respuesta útil, «sin respaldo» con la derivación. Nunca el «problema
+    // técnico», que sería falso. A la bitácora solo van códigos.
+    let reemplazoContraBase = false;
+    const contraBase = afirmaContraBase(textoSaneado) ?? (saludoQuitado ? afirmaContraBase(conSaludo) : null);
+    if (contraBase) {
+      const { texto: resto, motivos } = quitarAfirmacionesContraBase(textoSaneado);
+      for (const m of new Set([contraBase, ...motivos])) avisos.push(`contra_base:${m}`);
+      if (resto.length >= RESTO_MINIMO && afirmaContraBase(resto) === null) {
+        const derivacion = fraseDerivacionKuaa(config, entrada.plataforma);
+        textoSaneado = resto.includes(derivacion) ? resto : `${resto} ${derivacion}`;
+        avisos.push('frase_contra_base_retirada');
+      } else {
+        textoSaneado = textoSinRespaldo(config, entrada.plataforma);
+        reemplazoContraBase = true;
+        avisos.push('respuesta_contra_base_reemplazada');
+      }
+    }
     if (filtraPrompt(textoSaneado) || filtraPrompt(conSaludo)) return cierre(fallback(avisos, 'fuga_prompt'));
 
     // Sin respaldo no se afirma nada, sea cual sea la forma del texto: no hay excepción por «pregunta».
     let salida: SalidaOportunidad = { ...interpretada, texto: textoSaneado };
+    if (reemplazoContraBase) salida = { ...salidaFallback(config, etapa), texto: textoSaneado, propuestas: interpretada.propuestas.filter((p) => p === 'atencion_humana_solicitada') };
     if (config.conocimiento.modo === 'rag' && config.conocimiento.exigirRespaldo && fragmentos.length === 0 && !esCortesia(texto)) {
       salida = { ...salidaFallback(config, etapa), texto: textoSinRespaldo(config, entrada.plataforma), propuestas: salida.propuestas.filter((p) => p === 'atencion_humana_solicitada') };
       avisos.push('sin_respaldo');
