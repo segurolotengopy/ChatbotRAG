@@ -110,3 +110,18 @@ describe('bancos aprobados (H4c)', () => {
     throw new Error('debía fallar');
   });
 });
+
+describe('interruptor del enrutador (CHATBOTRAG_ENRUTADOR)', () => {
+  it('ausente o vacío = apagado', () => {
+    expect(leerEntorno(base()).enrutador).toBe('apagado');
+    expect(leerEntorno(base({ CHATBOTRAG_ENRUTADOR: '' })).enrutador).toBe('apagado');
+  });
+
+  it.each(['apagado', 'activo', 'activo_fijo'] as const)('acepta «%s»', (valor) => {
+    expect(leerEntorno(base({ CHATBOTRAG_ENRUTADOR: valor })).enrutador).toBe(valor);
+  });
+
+  it.each(['ACTIVO', 'encendido', 'true', 'fijo'])('un valor desconocido («%s») detiene el arranque, no se toma por apagado', (valor) => {
+    expect(() => leerEntorno(base({ CHATBOTRAG_ENRUTADOR: valor }))).toThrow(ErrorEntorno);
+  });
+});

@@ -41,6 +41,10 @@ import { sanearTexto } from '../compuertas/saneo.js';
 import { ErrorPeticion, hashConversacion, type DependenciasAgente } from '../orquestador/agente.js';
 import type { EventoBitacora } from '../puertos/bitacora.js';
 import { causaDeError, type CausaErrorProveedor } from '../puertos/proveedor-llm.js';
+import { armarTextoConD5, PROPUESTA_DERIVACION_GENERAL } from '../banco/texto-fijo.js';
+import { eventoEnrutador } from '../banco/enrutador-semantico.js';
+import { EnrutadorKuaa, verificadorKuaa, type OpcionesEnrutadorKuaa } from './enrutador-kuaa.js';
+import { resolverVariablesPlataforma } from './variables-plataforma.js';
 import type { FragmentoRecuperado } from '../puertos/indice-conocimiento.js';
 import { afirmaContraBase, CORRECCION_POR_MOTIVO, quitarAfirmacionesContraBase } from './afirmaciones-contra-base.js';
 import { EntradaKuaa, SalidaOportunidad, filtrarBotonesSalida } from './esquemas.js';
@@ -97,6 +101,18 @@ function avisoCorteIndice(causa: CausaErrorProveedor): string | null {
   return null;
 }
 
+/** Copia del evento sin su `motivo` (con `exactOptionalPropertyTypes` no se puede dejar en `undefined`). */
+function sinMotivo(e: EventoBitacora): EventoBitacora {
+  const copia: EventoBitacora = { ...e };
+  delete copia.motivo;
+  return copia;
+}
+
+/** Evento con el carril FINAL: reemplaza el aviso `carril:*` de la decisión propuesta y agrega `extras` (solo enumerados). */
+function conCarrilFinal(e: EventoBitacora, carril: 'fijo' | 'derivacion' | 'ia', extras: string[]): EventoBitacora {
+  return { ...sinMotivo(e), carril, avisos: [...(e.avisos ?? []).filter((a) => !a.startsWith('carril:')), `carril:${carril}`, `carril_final:${carril}`, ...extras] };
+}
+
 export class AgenteKuaa {
   private readonly reloj: () => Date;
 
@@ -106,11 +122,19 @@ export class AgenteKuaa {
    * el cargador ya no debería haberlo indexado). Con `pruebas` y `versionPaquete`, además de la colección base se
    * consulta la del paquete (`coleccionPaquete`) y se mezclan por puntaje.
    */
+  private readonly enrutador: EnrutadorKuaa | null;
+
+  /**
+   * `enrutador` (H4d) conecta el enrutador híbrido: solo tiene efecto si la configuración del agente lo declara
+   * `activo` Y quien arma el agente entrega las opciones (la variable de entorno `CHATBOTRAG_ENRUTADOR` y un banco cargado).
+   * Sin ellas, el recorrido es idéntico al anterior.
+   */
   constructor(
     private readonly deps: DependenciasAgente,
-    private readonly opciones: { perfilConocimiento?: PerfilValidacion; versionPaquete?: string | null } = {},
+    private readonly opciones: { perfilConocimiento?: PerfilValidacion; versionPaquete?: string | null; enrutador?: OpcionesEnrutadorKuaa | undefined } = {},
   ) {
     this.reloj = deps.reloj ?? (() => new Date());
+    this.enrutador = opciones.enrutador && deps.config.enrutador.activo ? new EnrutadorKuaa(opciones.enrutador, deps.config.enrutador) : null;
   }
 
   async responder(crudo: EntradaKuaa, clienteId: string): Promise<ResultadoKuaa> {
@@ -142,6 +166,12 @@ export class AgenteKuaa {
       return { salida: { ...salidaFallback(config, etapa), texto: config.mensajes.entradaBloqueada }, avisos };
     }
     const avisos: string[] = ent.detectadas.map((c) => `detectada:${c}`);
+
+    // Enrutador híbrido (H4d): antes de la memoria, del RAG y del modelo. `fijo` y `derivacion` no llaman al modelo.
+    if (this.enrutador) {
+      const carril = await this.responderPorCarril(this.enrutador, entrada, texto, config, base, claveMemoria, avisos);
+      if (carril) return carril;
+    }
 
     const historial = await this.deps.memoria.leer(claveMemoria, config.modelo.ventanaMemoria);
 
@@ -374,6 +404,71 @@ export class AgenteKuaa {
     // Se guarda el JSON validado: el historial le enseña al modelo el formato que debe seguir.
     await this.deps.memoria.agregar(claveMemoria, [{ rol: 'usuario', contenido: texto }, { rol: 'asistente', contenido: JSON.stringify(final) }], config.modelo.ttlConversacionSeg);
     return cierre({ salida: final, avisos });
+  }
+
+  /**
+   * Devuelve la respuesta del carril `fijo` o `derivacion`, o `null` si el mensaje sigue por la IA (carril `ia`, falla del
+   * enrutador o texto fijo no crítico rechazado). Nada de lo que registra lleva el texto de la persona ni el del banco.
+   */
+  private async responderPorCarril(
+    enrutador: EnrutadorKuaa,
+    entrada: EntradaKuaa,
+    texto: string,
+    config: ConfiguracionEfectiva,
+    base: BaseBitacora,
+    claveMemoria: string,
+    avisos: string[],
+  ): Promise<ResultadoKuaa | null> {
+    let resultado: Awaited<ReturnType<EnrutadorKuaa['decidir']>>;
+    const inicio = performance.now();
+    try {
+      // Una cortesía («gracias», «hola») no es una consulta: no gasta embedding (igual que el RAG, que tampoco la busca).
+      resultado = await enrutador.decidir(texto, { atencionHumanaSolicitada: entrada.estados.atencion_humana === 'solicitada' || entrada.estados.atencion_humana === 'en_curso' }, esCortesia(texto));
+    } catch {
+      avisos.push('enrutador_error');
+      this.deps.bitacora.registrar({ tipo: 'enrutador', ...base, carril: 'ia', via: 'exacta', latenciaMs: Math.max(0, Math.round(performance.now() - inicio)), avisos: ['carril:ia', 'motivo_ia:enrutador_error'] });
+      return null;
+    }
+    const evento = eventoEnrutador(resultado.resultado, base, resultado.latenciaMs);
+    const d = resultado.resultado.decision;
+    if (d.carril === 'ia') {
+      this.deps.bitacora.registrar(evento);
+      avisos.push('carril:ia');
+      return null;
+    }
+
+    const etapa = entrada.etapa_actual;
+    const final = armarTextoConD5(d, enrutador.indice.banco, resolverVariablesPlataforma(entrada.plataforma, entrada.resumen.plan), { config }, verificadorKuaa(entrada.plataforma, entrada.estados, config.seguridad.marcasLiterales));
+    let textoSalida: string;
+    let propuestas: SalidaOportunidad['propuestas'] = [];
+    let carrilFinal: 'fijo' | 'derivacion' = 'derivacion';
+    if (final.ok) {
+      carrilFinal = final.carril;
+      textoSalida = final.texto;
+      if (final.carril === 'derivacion') propuestas = [PROPUESTA_DERIVACION_GENERAL];
+      // D5 puede haber convertido un fijo crítico en derivación: el evento dice el carril FINAL.
+      this.deps.bitacora.registrar(final.carril === d.carril ? evento : { ...conCarrilFinal(evento, final.carril, []), ...(final.carril === 'derivacion' ? { motivo: final.motivo } : {}) });
+    } else {
+      avisos.push(`texto_fijo_rechazado:${final.causa}`, ...final.avisos);
+      // El evento dice el carril final y el rechazo (enumerados), no el carril que se propuso y no se entregó.
+      this.deps.bitacora.registrar(conCarrilFinal(evento, final.carril, [`texto_fijo_rechazado:${final.causa}`]));
+      // Solo una respuesta fija no crítica rechazada sigue a la IA; todo lo demás se deriva con el mensaje general (D5).
+      if (final.carril === 'ia') {
+        avisos.push('carril:ia');
+        return null;
+      }
+      textoSalida = config.mensajes.derivacion;
+      propuestas = [final.propuesta];
+    }
+
+    avisos.push(`carril:${carrilFinal}`);
+    // De la plataforma solo la versión llega a la bitácora, igual que en el carril IA.
+    if (entrada.plataforma) avisos.push(`plataforma:${entrada.plataforma.version}`);
+    const valida = SalidaOportunidad.safeParse({ texto: textoSalida, etapa_propuesta: etapa, objecion: null, botones: [], propuestas });
+    if (!valida.success) return this.cerrar(base, { salida: salidaFallback(config, etapa), avisos: [...avisos, 'causa_salida:validacion_final'] }, { tokensEntrada: 0, tokensSalida: 0 }, [], 0);
+    const salida = filtrarBotonesSalida(valida.data, entrada.estados);
+    await this.deps.memoria.agregar(claveMemoria, [{ rol: 'usuario', contenido: texto }, { rol: 'asistente', contenido: JSON.stringify(salida) }], config.modelo.ttlConversacionSeg);
+    return this.cerrar(base, { salida, avisos }, { tokensEntrada: 0, tokensSalida: 0 }, [], 0);
   }
 
   private cerrar(base: BaseBitacora, resultado: ResultadoKuaa, tokens: { tokensEntrada: number; tokensSalida: number }, fragmentos: FragmentoRecuperado[], iteraciones = 1): ResultadoKuaa {

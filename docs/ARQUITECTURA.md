@@ -722,7 +722,7 @@ contrato de `calibracion.ts` (formato 1, `regla` = `VERSION_REGLA_DECISION`, SHA
 ### Carga del banco desde el bucket (modelo híbrido, H4c)
 
 El banco aprobado y su calibración se leen de un bucket privado al arrancar, con la identidad del servicio (ADC), solo
-lectura. **H4c solo carga y verifica: todavía no conecta nada al agente** (eso es H4d); el resultado queda en
+lectura. **H4c solo carga y verifica; la conexión al agente es H4d** (ver más abajo); el resultado queda en
 `AgenteArmado.enrutadorBanco`.
 
 - **Ruta**: `<CHATBOTRAG_BUCKET_BANCO>/<agenteId>/<X.Y.Z>/banco.json` y `calibracion.json` (esta última opcional).
@@ -756,6 +756,65 @@ lectura. **H4c solo carga y verifica: todavía no conecta nada al agente** (eso 
 - **Cómo se invalida o actualiza**: se publica una versión nueva en el bucket (carpeta `X.Y.Z` nueva, nunca se pisa una
   existente), se actualiza `CHATBOTRAG_BANCOS` con la versión y los SHA nuevos y se despliega. Quitar la entrada del agente (o
   las variables) y desplegar vuelve al comportamiento anterior.
+
+### Enrutador conectado a Kuaa (H4d)
+
+Conecta el enrutador de H2 a H4c al agente Kuaa (`oportunidad/enrutador-kuaa.ts` y `agente-kuaa.ts`). **Apagado por defecto:
+solo se enciende por ambiente.**
+
+- **Activación efectiva = configuración Y variable de entorno.** `enrutador.activo` en la configuración (`kuaa.json` lo
+  declara `activo: true, carrilFijo: false`) y `CHATBOTRAG_ENRUTADOR` ∈ `apagado | activo | activo_fijo` (ausente o vacío =
+  `apagado`; otro valor detiene el arranque). Además debe haber un banco declarado en `CHATBOTRAG_BANCOS` que haya cargado.
+  `activo_fijo` solo enciende el carril fijo si la configuración también declara `carrilFijo: true`; ninguna de las dos lo
+  enciende sola. Con `apagado`, sin banco o con la configuración apagada el recorrido de Kuaa es IDÉNTICO al anterior (una
+  prueba compara los argumentos a `generar`, la salida, los eventos y las llamadas de embedding) y no se construye nada nuevo.
+- **Dónde corre.** Tras la compuerta de entrada y ANTES de la memoria, el RAG y el modelo. `fijo` y `derivacion` no llaman al
+  modelo: el texto sale por `armarTextoConD5` (D5), pasa por las compuertas de salida y por un verificador propio de Kuaa
+  (enlaces y precios con los permitidos de la plataforma, tratamiento tributario, hechos no respaldados, fuga del prompt).
+  El verificador además rechaza (descarta, no corrige) un texto aprobado que los retoques del modelo cambiarían: una marca
+  literal como `[DERIVAR]` (salvo las `marcasLiterales`), un código interno, una promesa de entrega, un número de registro o un
+  saludo inicial, con igualdad estricta y códigos enumerados (`marca_del_modelo`, `codigo_interno`, `promesa_entrega`,
+  `numero_registro`, `saludo_inicial`). Las variables de la plantilla resueltas desde `plataforma`. Una derivación agrega la propuesta
+  `atencion_humana_solicitada`; si ningún texto aprobado sirve, sale `mensajes.derivacion` con la misma propuesta. Un fijo no
+  crítico rechazado sigue a la IA. La memoria de conversación se guarda como siempre. El tratamiento (vos, tú, usted) lo da
+  el banco aprobado y la configuración.
+- **Fallo seguro.** La semántica se usa solo si `verificarCalibracion` da `semanticaApta` con el modelo y la dimensión REALES del
+  embebedor (y sin `admitirSimulado`, que solo vale con `APP_ENV=test`). El índice semántico se prepara UNA vez al arrancar
+  (un embedding por pregunta del banco, con tope de 10 s) y solo si hay calibración; si falla no detiene el servicio y queda sin
+  semántica (`semantica_no_disponible`). Si falla por cuota o saturación hay UN reintento tras una espera (2 s; reloj/espera
+  inyectables), dentro del mismo tope. Cada instancia de Cloud Run lo prepara por su cuenta: el costo es un lote de N embeddings
+  (N = preguntas del banco) por arranque en frío. Conviene alertar sobre `semantica=no` en el aviso de arranque. Sin calibración no
+  se prepara nada. Embebedor caído, tiempo vencido, vector de otra dimensión o calibración no apta: el
+  mensaje sigue por la IA de siempre, con el motivo enumerado en el evento `enrutador`. La coincidencia exacta nunca gasta embedding.
+- **Latencia.** Solo el mensaje sin coincidencia exacta paga el embedding de la consulta, con tope de 1500 ms (inyectable). Con
+  IA + RAG el vector se COMPARTE: la espera es la de esa única llamada (el RAG la habría hecho igual) y no se suma una segunda. Los
+  ≈1,5 s se suman de verdad solo donde el RAG no corre (conocimiento sin RAG o sin índice). El tope deja de ESPERAR la llamada, no
+  la cancela; si el servicio de embeddings está lento, el RAG espera la misma llamada compartida sin ese tope (como ya hacía con
+  la suya). Una cortesía («gracias», «hola») salta la vía semántica y no gasta embedding.
+- **Costo.** Un embedding por mensaje que no coincide de forma exacta, compartido con el RAG: ambos usan el mismo
+  `EmbebedorConMemoria` (clave SHA-256 del texto, 60 s, 32 entradas), de modo que el vector se calcula una sola vez. Más el
+  costo único de indexar las preguntas del banco al arrancar.
+- **Bitácora.** Evento `enrutador` con carril, vía, similitud redondeada, motivo y latencia. El evento dice el carril FINAL: un
+  fijo rechazado que sigue a la IA queda `carril:ia` con `carril_final:ia` y `texto_fijo_rechazado:<causa>`; un fijo crítico que D5
+  deriva queda `derivacion`. También se registra si el enrutador falla por dentro (`motivo_ia:enrutador_error`). Con el enrutador
+  encendido `mensaje_atendido` anota `carril:ia|fijo|derivacion` y, en los carriles fijo y derivación, `plataforma:<versión>`
+  como el carril IA; con el enrutador apagado no hay ningún aviso nuevo. el aviso de arranque agrega
+  `semantica=si|no enrutador=<modo>` solo cuando el enrutador está solicitado. Jamás el texto de la persona ni el del banco; la
+  prueba de bitácora sin texto cubre el evento y los dos carriles nuevos.
+- **Qué NO hace.** No recarga el banco en caliente (cambiarlo exige desplegar); no implementa D3 (aclaración «¿sobre qué plan?»); no
+  corre sobre un mensaje que la compuerta de entrada bloquea. **D10 (un término de emergencia gana sobre una entrada bloqueada)
+  queda PENDIENTE de decisión de Andres:** la causa es el ORDEN en `agente-kuaa.ts` (la compuerta de entrada va primero), no que
+  `enrutar` no lo defina. Verificado: un mensaje de emergencia que menciona salud («me quiero suicidar, tengo depresión», «tengo
+  cáncer y estoy muy mal, ayuda urgente», «estoy embarazada y tuve un sangrado fuerte») recibe `entradaBloqueada` hoy; es el
+  comportamiento previo, no una regresión, y hay una prueba que lo documenta. La memoria del embebedor es
+  por instancia; no verifica que el banco real sea correcto.
+- **Observaciones.** (a) Una derivación emite la propuesta `atencion_humana_solicitada` también cuando `estados.atencion_humana` ya
+  está en `en_curso` o `solicitada`: la plataforma debe deduplicarla. (b) El hueco «deducible del IRP» de la gramática tributaria
+  (`afirmaTratamientoTributario`) es previo a H4d y sigue pendiente; el verificador de Kuaa hereda ese límite.
+- **Cómo medirlo en staging sin riesgo.** La bandera está apagada por defecto y en producción no se declara. En staging se pone
+  `CHATBOTRAG_ENRUTADOR=activo` (primero sin `carrilFijo`: solo derivaciones y críticos) con el banco y la calibración reales del
+  bucket, y se observan los eventos `enrutador` (carril, vía, similitud, latencia) frente a los `mensaje_atendido`. Para apagarlo
+  basta quitar la variable y desplegar.
 
 ## 7. Aplicación a segurolotengo-demo
 

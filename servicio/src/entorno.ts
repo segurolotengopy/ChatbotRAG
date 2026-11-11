@@ -72,6 +72,12 @@ export const esquemaEntorno = z.object({
   CHATBOTRAG_BUCKET_BANCO: z.string().regex(/^[a-z0-9][a-z0-9._-]{2,62}$/).optional(),
   /** JSON `{"<agenteId>":{"version":"X.Y.Z","sha256":"<hex64>","sha256Calibracion":"<hex64>"}}`. No es secreto. */
   CHATBOTRAG_BANCOS: z.string().optional(),
+  /**
+   * Interruptor del enrutador híbrido de Kuaa (H4d): `apagado` (por omisión), `activo` o `activo_fijo`. Ausente o vacío =
+   * `apagado`; cualquier otro valor es un error de entorno. `activo_fijo` solo enciende el carril fijo si la configuración
+   * del agente lo declara.
+   */
+  CHATBOTRAG_ENRUTADOR: z.string().optional(),
   GCP_PROYECTO: z.string().optional(),
   GCP_REGION: z.string().default('us-central1'),
   AWS_REGION: z.string().default('us-east-1'),
@@ -82,6 +88,8 @@ export interface Entorno extends z.infer<typeof esquemaEntorno> {
   clientes: Cliente[];
   /** Perfil efectivo del conocimiento: `produccion` salvo que la variable valga exactamente `pruebas`. */
   perfilConocimiento: 'produccion' | 'pruebas';
+  /** Modo efectivo del enrutador híbrido (H4d). */
+  enrutador: 'apagado' | 'activo' | 'activo_fijo';
   /** Bancos declarados por agente (H4c); vacío si no hay `CHATBOTRAG_BANCOS`. */
   bancos: Record<string, DeclaracionBancoEntorno>;
 }
@@ -150,6 +158,11 @@ export function leerEntorno(fuente: NodeJS.ProcessEnv = process.env): Entorno {
   // Combinaciones incoherentes: fallan el arranque en vez de adivinar la intención.
   if (perfilConocimiento === 'pruebas' && (!bucket || !version)) throw new ErrorEntorno(['CHATBOTRAG_PERFIL_CONOCIMIENTO=pruebas exige CHATBOTRAG_BUCKET_PAQUETE y CHATBOTRAG_VERSION_PAQUETE']);
   if (perfilConocimiento === 'produccion' && (bucket || version)) throw new ErrorEntorno(['CHATBOTRAG_BUCKET_PAQUETE y CHATBOTRAG_VERSION_PAQUETE solo se admiten con CHATBOTRAG_PERFIL_CONOCIMIENTO=pruebas']);
+  const crudoEnrutador = r.data.CHATBOTRAG_ENRUTADOR?.trim();
+  if (crudoEnrutador !== undefined && crudoEnrutador !== '' && crudoEnrutador !== 'apagado' && crudoEnrutador !== 'activo' && crudoEnrutador !== 'activo_fijo') {
+    throw new ErrorEntorno(['CHATBOTRAG_ENRUTADOR debe ser «apagado», «activo» o «activo_fijo»']);
+  }
+  const enrutador: 'apagado' | 'activo' | 'activo_fijo' = crudoEnrutador === 'activo' || crudoEnrutador === 'activo_fijo' ? crudoEnrutador : 'apagado';
   const bancos = leerBancos(r.data.CHATBOTRAG_BANCOS, r.data.CHATBOTRAG_BUCKET_BANCO);
-  return { ...r.data, clientes: clientes.data, perfilConocimiento, bancos };
+  return { ...r.data, clientes: clientes.data, perfilConocimiento, enrutador, bancos };
 }

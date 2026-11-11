@@ -75,10 +75,10 @@ describe('enrutador', () => {
   it('un perfil no puede definirlo', () => {
     expect(() => validarConfiguracion({ ...CONFIG_PRUEBA, perfiles: { PA: { nombre: 'A', enrutador: { activo: true } } } })).toThrow();
   });
-  it('las configuraciones de ejemplo cargan con el enrutador apagado', () => {
+  it('las configuraciones de ejemplo cargan con el enrutador apagado, salvo Kuaa que lo declara activo (el interruptor real es CHATBOTRAG_ENRUTADOR) y sin carril fijo', () => {
     for (const f of ['segurolotengo.json', 'comercio-agendamiento.json', 'kuaa.json']) {
       const c = cargarConfiguracionDesdeJson(readFileSync(RAIZ + f, 'utf8'));
-      expect(c.enrutador.activo).toBe(false);
+      expect(c.enrutador.activo).toBe(f === 'kuaa.json');
       expect(c.enrutador.carrilFijo).toBe(false);
     }
   });

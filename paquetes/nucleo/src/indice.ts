@@ -40,3 +40,4 @@ export * from './banco/embebedor-memo.js';
 export * from './banco/evaluacion.js';
 export * from './banco/medir.js';
 export * from './oportunidad/variables-plataforma.js';
+export * from './oportunidad/enrutador-kuaa.js';
