@@ -18,14 +18,14 @@
  *
  * Qué NO garantiza: que el banco sea correcto (lo aprueba su `aprobado_por`); que la bandera de entorno se haya
  * encendido en el ambiente correcto; recargar el banco en caliente; ni la aclaración «¿sobre qué plan?» (D3). D10 (un término de
- * emergencia gana sobre una entrada bloqueada) NO está implementado y queda pendiente de decisión de Andres: la causa es el ORDEN
- * en `agente-kuaa.ts` (la compuerta de entrada va primero y devuelve `entradaBloqueada` antes de llegar aquí), no que `enrutar`
- * no lo defina. Es el comportamiento previo, no una regresión.
+ * emergencia gana sobre una entrada bloqueada, decisión de Andres del 2026-11-07) lo resuelve `emergencia()`: solo la vía exacta
+ * de términos de emergencia, sin embedding ni semántica; no cubre emergencias que el banco no nombre con un término.
  */
 import type { Enrutador } from '../configuracion/esquema.js';
 import type { Calibracion } from '../banco/calibracion.js';
 import { verificarCalibracion } from '../banco/calibracion.js';
-import type { EstadoEnrutador, IndiceEnrutador } from '../banco/enrutador.js';
+import { buscarEmergencia } from '../banco/enrutador.js';
+import type { DecisionDerivacion, EstadoEnrutador, IndiceEnrutador } from '../banco/enrutador.js';
 import { consultarEmbedding } from '../banco/embebedor-memo.js';
 import { enrutarConSemantica } from '../banco/enrutador-semantico.js';
 import type { ContextoSemantico, ResultadoEnrutamiento } from '../banco/enrutador-semantico.js';
@@ -96,6 +96,14 @@ export class EnrutadorKuaa {
         dimension: this.semantica.indice.dimension,
         ...(opciones.admitirSimulado === undefined ? {} : { admitirSimulado: opciones.admitirSimulado }),
       }).semanticaApta;
+  }
+
+  /**
+   * D10: coincidencia exacta con un término de emergencia del banco, para un mensaje que la compuerta de entrada bloqueó.
+   * Sin embedding, sin semántica, sin calibración (por eso la calibración no apta no la afecta) y sin `carrilFijo`.
+   */
+  emergencia(texto: string): DecisionDerivacion | null {
+    return buscarEmergencia(texto, this.indice);
   }
 
   /**
