@@ -1,0 +1,184 @@
+# =============================================================================
+# CI/CD de Kuaa: verificar y desplegar SOLO a staging (plantilla del spin-off)
+#
+# Adaptado de ci-node-cloudrun.yml (staging). Se copia al repo de Interseguros como
+# .github/workflows/ci-kuaa-staging.yml. Este workflow NO despliega a producción: no hay
+# job, secreto ni variable de producción aquí. Producción es otro bloque (S8) con su
+# propio workflow, tag vX.Y.Z y aprobación humana del Environment `production`.
+#
+# Flujo: verificar (tipos, lint, pruebas) → construir imagen (por digest) → desplegar la
+# revisión SIN tráfico (no_traffic) con una etiqueta → prueba de humo contra la URL de la
+# etiqueta → solo si pasa, mover el 100 % del tráfico. Si la prueba falla, el tráfico
+# sigue en la revisión anterior y el job falla.
+# Prueba de humo: GET /salud = 200 con "ok":true y POST /v1/kuaa/mensaje SIN clave = 401.
+#
+# Qué NO garantiza: no escanea la imagen ni la firma (el estándar completo lo hace en
+# ci-node-cloudrun.yml; si Interseguros lo exige, se agrega ese tramo); la prueba de humo no
+# llama al modelo ni valida la calidad de las respuestas; no se ha ejecutado contra una
+# cuenta real (solo se validó la sintaxis con actionlint).
+#
+# Requiere (cargados por una persona o con su autorización; valores de infra/crear-staging.sh):
+#   secretos   GCP_WIF_PROVIDER, GCP_SA_DEPLOY_STAGING
+#   variables  GCP_PROJECT_ID_STAGING, GCP_REGION, ARTIFACT_REGISTRY_REPO, CLOUD_RUN_SERVICE,
+#              CLOUD_RUN_SA_STAGING, CLOUD_RUN_SECRETS, CLOUD_RUN_MAX_INSTANCES (3)
+# =============================================================================
+name: CI Kuaa (staging)
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-kuaa-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: ${{ vars.NODE_VERSION || '22' }}
+  IMAGEN: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID_STAGING }}/${{ vars.ARTIFACT_REGISTRY_REPO }}/${{ vars.CLOUD_RUN_SERVICE }}
+
+jobs:
+  verificar:
+    name: verificar
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Habilitar corepack (pnpm)
+        run: corepack enable
+
+      - name: Node.js con caché
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: Tipos, lint y pruebas
+        run: pnpm verificar
+
+  desplegar-staging:
+    name: desplegar-staging
+    needs: verificar
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: staging
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write # WIF
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Autenticar en GCP (WIF)
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_DEPLOY_STAGING }}
+          token_format: access_token
+
+      - name: Login en Artifact Registry
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
+        with:
+          registry: ${{ vars.GCP_REGION }}-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      - name: Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - name: Metadatos de imagen
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ${{ env.IMAGEN }}
+          tags: |
+            type=sha,format=long,prefix=
+
+      - name: Build y push
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+          build-args: |
+            APP_VERSION=${{ github.sha }}
+
+      - name: Desplegar revisión sin tráfico (etiqueta candidata)
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@2028e2d7d30a78c6910e0632e48dd561b064884d # v3
+        with:
+          service: ${{ vars.CLOUD_RUN_SERVICE }}
+          region: ${{ vars.GCP_REGION }}
+          project_id: ${{ vars.GCP_PROJECT_ID_STAGING }}
+          image: ${{ env.IMAGEN }}@${{ steps.build.outputs.digest }}
+          secrets: ${{ vars.CLOUD_RUN_SECRETS }}
+          env_vars: |
+            APP_VERSION=${{ github.sha }}
+          no_traffic: true
+          tag: candidata
+          flags: >-
+            --service-account=${{ vars.CLOUD_RUN_SA_STAGING }}
+            --max-instances=${{ vars.CLOUD_RUN_MAX_INSTANCES || 3 }}
+
+      - name: Instalar gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
+
+      - name: Prueba de humo contra la revisión candidata
+        env:
+          SERVICIO: ${{ vars.CLOUD_RUN_SERVICE }}
+          REGION: ${{ vars.GCP_REGION }}
+          PROYECTO: ${{ vars.GCP_PROJECT_ID_STAGING }}
+        run: |
+          set -euo pipefail
+          url="$(gcloud run services describe "$SERVICIO" --region "$REGION" --project "$PROYECTO" --format json |
+            jq -r '.status.traffic[] | select(.tag == "candidata") | .url')"
+          if [[ ! "$url" =~ ^https://[A-Za-z0-9.-]+$ ]]; then
+            echo "::error::No se obtuvo la URL de la etiqueta candidata."; exit 1
+          fi
+          # Cloud Run puede tardar unos segundos en atender la etiqueta recién creada.
+          codigo=000
+          for _ in 1 2 3 4 5 6; do
+            codigo="$(curl -sS --max-time 30 -o /tmp/salud.json -w '%{http_code}' "${url}/salud" || true)"
+            [[ "$codigo" == "200" ]] && break
+            sleep 10
+          done
+          [[ "$codigo" == "200" ]] || { echo "::error::/salud respondió ${codigo}"; exit 1; }
+          grep -q '"ok":true' /tmp/salud.json || { echo '::error::/salud sin "ok":true'; exit 1; }
+          sin_clave="$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' -X POST \
+            -H 'content-type: application/json' --data '{}' "${url}/v1/kuaa/mensaje" || true)"
+          [[ "$sin_clave" == "401" ]] || { echo "::error::POST /v1/kuaa/mensaje sin clave respondió ${sin_clave}; debía ser 401"; exit 1; }
+          echo "### Prueba de humo OK en la revisión candidata" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Mover el tráfico a la revisión probada
+        env:
+          SERVICIO: ${{ vars.CLOUD_RUN_SERVICE }}
+          REGION: ${{ vars.GCP_REGION }}
+          PROYECTO: ${{ vars.GCP_PROJECT_ID_STAGING }}
+        run: |
+          gcloud run services update-traffic "$SERVICIO" --region "$REGION" --project "$PROYECTO" --to-latest
+          echo "### Staging desplegado: ${GITHUB_SHA}" >> "$GITHUB_STEP_SUMMARY"

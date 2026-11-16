@@ -1,0 +1,70 @@
+# =============================================================================
+# MONITOREO DE STAGING — sonda (red A) con latido (plantilla del spin-off)
+#
+# Se copia a .github/workflows/monitoreo.yml del repo de Interseguros junto con
+# monitoreo/sondear.sh y monitoreo/reporte.sh. Corre en servidores de GitHub cada 30 minutos
+# (no 15: si el repo es privado el plan Free da 2.000 min/mes; verificar con la documentación
+# vigente y ajustar el cron), sin depender de la laptop de nadie ni de una sesión de Claude.
+#   - sonda OK     → ping al chequeo de Healthchecks.io.
+#   - sonda FALLA  → ping /fail (alerta inmediata).
+#   - la sonda no corre → Healthchecks no recibe ping y alerta por silencio (el latido).
+# La red B (otro proveedor, p. ej. Better Stack) la configura una persona aparte.
+#
+# Qué NO garantiza: no llama al modelo (/salud no toca Vertex AI), no mide la calidad de las
+# respuestas ni WhatsApp; GitHub puede retrasar u omitir un cron; y GitHub desactiva los cron
+# tras 60 días sin actividad del repo (el latido avisa). Si el repo es público, el UUID de
+# Healthchecks va como SECRETO, nunca como variable.
+#
+# Requiere:  variable URL_STAGING (https://host, sin ruta)  ·  secreto HEALTHCHECKS_PING_SONDA
+# =============================================================================
+name: Monitoreo de staging
+
+on:
+  schedule:
+    - cron: '7,37 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: monitoreo-staging
+  cancel-in-progress: false
+
+jobs:
+  sonda:
+    name: Sondear staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Sondear
+        env:
+          URL_STAGING: ${{ vars.URL_STAGING }}
+        run: bash monitoreo/sondear.sh
+
+      - name: Latido · sonda OK
+        if: success()
+        env:
+          PING: ${{ secrets.HEALTHCHECKS_PING_SONDA }}
+        run: |
+          if [ -z "$PING" ]; then
+            echo "::warning::Falta el secreto HEALTHCHECKS_PING_SONDA: la sonda corrió pero no avisó al latido."
+            exit 0
+          fi
+          curl --silent --show-error --fail --max-time 10 --retry 3 "https://hc-ping.com/${PING}" >/dev/null
+
+      - name: Latido · sonda FALLA
+        if: failure()
+        env:
+          PING: ${{ secrets.HEALTHCHECKS_PING_SONDA }}
+        run: |
+          if [ -z "$PING" ]; then
+            echo "::warning::Falta el secreto HEALTHCHECKS_PING_SONDA: la sonda falló y no se pudo avisar al latido."
+            exit 0
+          fi
+          curl --silent --show-error --fail --max-time 10 --retry 3 "https://hc-ping.com/${PING}/fail" >/dev/null
