@@ -68,6 +68,17 @@ export const esquemaEntorno = z.object({
   CHATBOTRAG_BUCKET_PAQUETE: z.string().regex(/^[a-z0-9][a-z0-9._-]{2,62}$/).optional(),
   /** Versión X.Y.Z del paquete dentro del bucket. Solo con perfil `pruebas`. */
   CHATBOTRAG_VERSION_PAQUETE: z.string().regex(/^[0-9]+\.[0-9]+\.[0-9]+$/).optional(),
+  /**
+   * Vía del paquete VALIDADO (S2-A): `apagado` (por omisión) o `activo`. Ausente o vacío = `apagado`; cualquier otro valor es
+   * un error de entorno. Con `activo` exige bucket, versión y huella del manifiesto, solo con perfil `produccion`.
+   */
+  CHATBOTRAG_PAQUETE_VALIDADO: z.string().optional(),
+  /** Bucket privado con el paquete validado. Solo con `CHATBOTRAG_PAQUETE_VALIDADO=activo`. */
+  CHATBOTRAG_BUCKET_PAQUETE_VALIDADO: z.string().regex(/^[a-z0-9][a-z0-9._-]{2,62}$/).optional(),
+  /** Versión X.Y.Z del paquete validado dentro del bucket. */
+  CHATBOTRAG_VERSION_PAQUETE_VALIDADO: z.string().regex(/^[0-9]+\.[0-9]+\.[0-9]+$/).optional(),
+  /** SHA-256 esperado del manifiesto del paquete validado (ancla de integridad; no es secreto). */
+  CHATBOTRAG_SHA256_MANIFIESTO_VALIDADO: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   /** Bucket privado con el banco aprobado y su calibración (H4c). Exige `CHATBOTRAG_BANCOS`. */
   CHATBOTRAG_BUCKET_BANCO: z.string().regex(/^[a-z0-9][a-z0-9._-]{2,62}$/).optional(),
   /** JSON `{"<agenteId>":{"version":"X.Y.Z","sha256":"<hex64>","sha256Calibracion":"<hex64>"}}`. No es secreto. */
@@ -90,6 +101,8 @@ export interface Entorno extends z.infer<typeof esquemaEntorno> {
   perfilConocimiento: 'produccion' | 'pruebas';
   /** Modo efectivo del enrutador híbrido (H4d). */
   enrutador: 'apagado' | 'activo' | 'activo_fijo';
+  /** Paquete validado (S2-A): `null` con la vía apagada. */
+  paqueteValidado: { bucket: string; version: string; sha256Manifiesto: string } | null;
   /** Bancos declarados por agente (H4c); vacío si no hay `CHATBOTRAG_BANCOS`. */
   bancos: Record<string, DeclaracionBancoEntorno>;
 }
@@ -158,11 +171,30 @@ export function leerEntorno(fuente: NodeJS.ProcessEnv = process.env): Entorno {
   // Combinaciones incoherentes: fallan el arranque en vez de adivinar la intención.
   if (perfilConocimiento === 'pruebas' && (!bucket || !version)) throw new ErrorEntorno(['CHATBOTRAG_PERFIL_CONOCIMIENTO=pruebas exige CHATBOTRAG_BUCKET_PAQUETE y CHATBOTRAG_VERSION_PAQUETE']);
   if (perfilConocimiento === 'produccion' && (bucket || version)) throw new ErrorEntorno(['CHATBOTRAG_BUCKET_PAQUETE y CHATBOTRAG_VERSION_PAQUETE solo se admiten con CHATBOTRAG_PERFIL_CONOCIMIENTO=pruebas']);
+  // Vía del paquete validado (S2-A): apagada por omisión. No se exige APP_ENV: es la vía de producción.
+  const crudoValidado = r.data.CHATBOTRAG_PAQUETE_VALIDADO?.trim();
+  if (crudoValidado !== undefined && crudoValidado !== '' && crudoValidado !== 'apagado' && crudoValidado !== 'activo') {
+    throw new ErrorEntorno(['CHATBOTRAG_PAQUETE_VALIDADO debe ser «apagado» o «activo»']);
+  }
+  const bucketValidado = r.data.CHATBOTRAG_BUCKET_PAQUETE_VALIDADO;
+  const versionValidada = r.data.CHATBOTRAG_VERSION_PAQUETE_VALIDADO;
+  const huellaValidada = r.data.CHATBOTRAG_SHA256_MANIFIESTO_VALIDADO;
+  let paqueteValidado: Entorno['paqueteValidado'] = null;
+  if (crudoValidado === 'activo') {
+    if (!bucketValidado || !versionValidada || !huellaValidada) {
+      throw new ErrorEntorno(['CHATBOTRAG_PAQUETE_VALIDADO=activo exige CHATBOTRAG_BUCKET_PAQUETE_VALIDADO, CHATBOTRAG_VERSION_PAQUETE_VALIDADO y CHATBOTRAG_SHA256_MANIFIESTO_VALIDADO']);
+    }
+    if (perfilConocimiento === 'pruebas') throw new ErrorEntorno(['CHATBOTRAG_PAQUETE_VALIDADO=activo solo con perfil produccion']);
+    if (r.data.CHATBOTRAG_INDICE === 'pgvector') throw new ErrorEntorno(['CHATBOTRAG_PAQUETE_VALIDADO=activo no admite CHATBOTRAG_INDICE=pgvector']);
+    paqueteValidado = { bucket: bucketValidado, version: versionValidada, sha256Manifiesto: huellaValidada };
+  } else if (bucketValidado !== undefined || versionValidada !== undefined || huellaValidada !== undefined) {
+    throw new ErrorEntorno(['las variables del paquete validado solo se admiten con CHATBOTRAG_PAQUETE_VALIDADO=activo']);
+  }
   const crudoEnrutador = r.data.CHATBOTRAG_ENRUTADOR?.trim();
   if (crudoEnrutador !== undefined && crudoEnrutador !== '' && crudoEnrutador !== 'apagado' && crudoEnrutador !== 'activo' && crudoEnrutador !== 'activo_fijo') {
     throw new ErrorEntorno(['CHATBOTRAG_ENRUTADOR debe ser «apagado», «activo» o «activo_fijo»']);
   }
   const enrutador: 'apagado' | 'activo' | 'activo_fijo' = crudoEnrutador === 'activo' || crudoEnrutador === 'activo_fijo' ? crudoEnrutador : 'apagado';
   const bancos = leerBancos(r.data.CHATBOTRAG_BANCOS, r.data.CHATBOTRAG_BUCKET_BANCO);
-  return { ...r.data, clientes: clientes.data, perfilConocimiento, enrutador, bancos };
+  return { ...r.data, clientes: clientes.data, perfilConocimiento, paqueteValidado, enrutador, bancos };
 }

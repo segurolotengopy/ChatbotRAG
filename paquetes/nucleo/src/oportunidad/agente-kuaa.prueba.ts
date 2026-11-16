@@ -898,3 +898,37 @@ describe('índice que falla (forma real de kuaa.json: base vacía y respaldo en 
     expect((await memoria.leer(MEMORIA, 10)).length).toBe(2);
   });
 });
+
+describe('perfil produccion con paquete validado', () => {
+  async function armarValidado(marcado: boolean) {
+    const config: ConfiguracionAgente = cargarConfiguracionDesdeJson(JSON_KUAA);
+    const indice = new IndiceEnMemoria(null);
+    const base = coleccionDe(config, null);
+    await indice.indexar([
+      { id: 'v1', coleccion: coleccionPaquete(base), fuenteId: 'paq', fuenteTitulo: 'Paquete', fuenteVersion: '1.0.0', orden: 0, texto: 'El proceso del paquete CENTINELA-VALIDADO tiene pasos sintéticos.', ...(marcado ? { validacion: 'no_validado' as const, versionPaquete: '1.0.0' } : {}) },
+    ]);
+    const proveedor = new ProveedorGuionado(() => salidaJson());
+    const bitacora = new BitacoraEnMemoria();
+    const agente = new AgenteKuaa({ config, proveedor, indice, memoria: new MemoriaEnProceso(), herramientas: new RegistroHerramientas(null), bitacora }, { perfilConocimiento: 'produccion', versionPaqueteValidado: '1.0.0' });
+    return { agente, proveedor, bitacora };
+  }
+
+  it('con versionPaqueteValidado consulta la colección del paquete sin marcar', async () => {
+    const { agente, proveedor, bitacora } = await armarValidado(false);
+    const r = await resp(agente, entrada({ mensaje: 'proceso pasos sintéticos paquete CENTINELA-VALIDADO' }));
+    const sistema = proveedor.peticiones[0]!.sistema;
+    expect(sistema).toContain('CENTINELA-VALIDADO');
+    expect(sistema).not.toContain('NO VALIDADO');
+    expect(sistema).not.toContain(FRASE_PAQUETE_NO_VALIDADO);
+    expect(r.avisos.some((a) => a.startsWith('respaldo_no_validado'))).toBe(false);
+    expect(bitacora.eventos.map((e) => e.tipo)).not.toContain('respuesta_no_validada');
+  });
+
+  it('un fragmento marcado sigue descartándose', async () => {
+    const { agente, proveedor, bitacora } = await armarValidado(true);
+    const r = await resp(agente, entrada({ mensaje: 'proceso pasos sintéticos paquete CENTINELA-VALIDADO' }));
+    expect(proveedor.peticiones.every((p) => !p.sistema.includes('CENTINELA-VALIDADO'))).toBe(true);
+    expect(r.avisos).toContain('fragmento_no_validado_descartado');
+    expect(bitacora.eventos.map((e) => e.tipo)).not.toContain('respuesta_no_validada');
+  });
+});

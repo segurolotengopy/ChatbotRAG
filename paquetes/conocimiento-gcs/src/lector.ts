@@ -63,9 +63,12 @@ export class LectorPaqueteGcs implements LectorPaquete {
   private manifiesto: ManifiestoPaquete | null = null;
   private readonly cliente: ClienteObjetos;
   private readonly version: string;
+  private readonly sha256Manifiesto: string | undefined;
 
-  constructor(opciones: { bucket: string; version: string; cliente?: ClienteObjetos }) {
+  /** `sha256Manifiesto` (opcional): ancla de integridad del manifiesto; si viene y no coincide, falla con `INTEGRIDAD`. */
+  constructor(opciones: { bucket: string; version: string; cliente?: ClienteObjetos; sha256Manifiesto?: string }) {
     this.version = opciones.version;
+    this.sha256Manifiesto = opciones.sha256Manifiesto;
     this.cliente = opciones.cliente ?? crearClienteGcs(opciones.bucket);
   }
 
@@ -80,6 +83,8 @@ export class LectorPaqueteGcs implements LectorPaquete {
     } catch (e) {
       throw traducir(e);
     }
+    // Ancla externa: la huella del contenido CRUDO se contrasta antes de interpretarlo.
+    if (this.sha256Manifiesto !== undefined && createHash('sha256').update(crudo).digest('hex') !== this.sha256Manifiesto) throw new ErrorPaqueteGcs('INTEGRIDAD');
     let analizado: unknown;
     try {
       analizado = JSON.parse(crudo.toString('utf8'));

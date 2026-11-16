@@ -29,6 +29,7 @@ import {
   cargarConfiguracionDesdeJson,
   cargarCorpus,
   cargarPaqueteKuaa,
+  cargarPaqueteValidado,
   coleccionPaquete,
   coleccionDe,
   type LectorPaquete,
@@ -64,6 +65,8 @@ export interface AgenteArmado {
   perfilConocimiento: 'produccion' | 'pruebas';
   /** Versión del paquete no validado cargado; `null` si no se cargó (siempre `null` con `produccion`). */
   versionPaquete: string | null;
+  /** Versión del paquete VALIDADO cargado (S2-A); `null` con la vía apagada. */
+  versionPaqueteValidado: string | null;
   /**
    * Resultado de la carga del banco desde el bucket (H4c), o `null` si el agente no tiene banco declarado. El agente solo lo
    * usa si `CHATBOTRAG_ENRUTADOR` lo enciende (H4d). `indice` es `null` si el banco no se pudo cargar.
@@ -114,6 +117,12 @@ function crearLectorPaqueteGcs(entorno: Entorno): LectorPaquete {
   return new LectorPaqueteGcs({ bucket: entorno.CHATBOTRAG_BUCKET_PAQUETE ?? '', version: entorno.CHATBOTRAG_VERSION_PAQUETE ?? '' });
 }
 
+function crearLectorPaqueteValidadoGcs(entorno: Entorno): LectorPaquete {
+  // `leerEntorno` garantiza que, con la vía activa, `paqueteValidado` existe.
+  const v = entorno.paqueteValidado;
+  return new LectorPaqueteGcs({ bucket: v?.bucket ?? '', version: v?.version ?? '', sha256Manifiesto: v?.sha256Manifiesto ?? '' });
+}
+
 /** Tiempo máximo por defecto de la carga del banco de un agente: una llamada a GCS colgada no debe colgar el arranque. */
 const TIEMPO_BANCO_MS = 10_000;
 
@@ -157,7 +166,7 @@ function crearLectorBancoGcs(entorno: Entorno): LectorBanco {
 
 export async function armarAgentes(
   entorno: Entorno,
-  opciones: { bitacora?: Bitacora; fabricas?: FabricasNube; ejecutorExterno?: EjecutorHerramientas | null; pool?: ReturnType<typeof crearPool>; lectorPaquete?: (entorno: Entorno) => LectorPaquete; lectorBanco?: (entorno: Entorno) => LectorBanco; tiempoBancoMs?: number; esperar?: (ms: number) => Promise<void> } = {},
+  opciones: { bitacora?: Bitacora; fabricas?: FabricasNube; ejecutorExterno?: EjecutorHerramientas | null; pool?: ReturnType<typeof crearPool>; lectorPaquete?: (entorno: Entorno) => LectorPaquete; lectorPaqueteValidado?: (entorno: Entorno) => LectorPaquete; lectorBanco?: (entorno: Entorno) => LectorBanco; tiempoBancoMs?: number; esperar?: (ms: number) => Promise<void> } = {},
 ): Promise<Map<string, AgenteArmado>> {
   const bitacora = opciones.bitacora ?? new BitacoraConsola();
   const fabricas = opciones.fabricas ?? FABRICAS_REALES;
@@ -168,6 +177,7 @@ export async function armarAgentes(
   const pool = entorno.CHATBOTRAG_INDICE === 'pgvector' ? (opciones.pool ?? crearPool({ connectionString: entorno.PGVECTOR_URL })) : null;
   const lector = { leer: (ruta: string) => readFile(join(dir, 'corpus', ruta), 'utf8') };
   const agentes = new Map<string, AgenteArmado>();
+  let paqueteValidadoCargado = false;
 
   // Primera pasada: se leen y validan TODAS las configuraciones y se comprueba que cada agente de CHATBOTRAG_BANCOS exista,
   // antes de gastar una sola lectura del bucket o de emitir un evento en un arranque que va a fallar.
@@ -229,6 +239,24 @@ export async function armarAgentes(
       }
     }
 
+    // Paquete VALIDADO (S2-A): el try/catch existe solo para traducir el fallo a un código y SIEMPRE relanza. Es la vía de producción: si no carga, el servicio no arranca
+    // (no hay «sin respaldo» silencioso). Del error solo sale el código, jamás el detalle ni el nombre del bucket.
+    let versionPaqueteValidado: string | null = null;
+    // Con la vía activa se exige la carga en TODOS los agentes kuaa: uno sin paquete respondería sin el contenido validado.
+    if (entorno.paqueteValidado && config.tipoAgente === 'kuaa' && !config.conocimiento.paquete.habilitado) {
+      throw new Error(`Paquete validado activo, pero el agente kuaa «${config.id}» no tiene el paquete habilitado`);
+    }
+    if (entorno.paqueteValidado && config.tipoAgente === 'kuaa' && config.conocimiento.paquete.habilitado) {
+      try {
+        const lectorValidado = (opciones.lectorPaqueteValidado ?? crearLectorPaqueteValidadoGcs)(entorno);
+        const r = await cargarPaqueteValidado(lectorValidado, indice, coleccionDe(config, null), { agenteId: config.id, versionEsperada: entorno.paqueteValidado.version, tamano: config.conocimiento.tamanoFragmento, solapamiento: config.conocimiento.solapamiento }, bitacora);
+        versionPaqueteValidado = r.version;
+        paqueteValidadoCargado = true;
+      } catch (e) {
+        throw new Error(`Paquete validado no cargado (${e instanceof ErrorPaqueteGcs ? e.codigo : 'ERROR'})`);
+      }
+    }
+
     // Banco aprobado (H4c): solo si hay declaración para este agente. Nunca lanza ni cambia al agente.
     let enrutadorBanco: ResultadoBancoGcs | null = null;
     let opcionesEnrutador: OpcionesEnrutadorKuaa | undefined;
@@ -278,9 +306,10 @@ export async function armarAgentes(
       bitacora,
     };
     const agente = new Agente(dependencias);
-    const agenteKuaa = config.tipoAgente === 'kuaa' ? new AgenteKuaa(dependencias, { perfilConocimiento: entorno.perfilConocimiento, versionPaquete, enrutador: opcionesEnrutador }) : undefined;
-    agentes.set(config.id, { config, agente, ...(agenteKuaa ? { agenteKuaa } : {}), memoria, indice, proveedor: nube.proveedor.nombre, perfilConocimiento: entorno.perfilConocimiento, versionPaquete, enrutadorBanco });
-    bitacora.registrar({ tipo: 'configuracion_cargada', agenteId: config.id, perfilId: null, conversacionHash: '-', canal: '-', detalle: `archivo=${archivo} proveedor=${nube.proveedor.nombre} indice=${indice.nombre} perfiles=${Object.keys(config.perfiles).length} perfil_conocimiento=${entorno.perfilConocimiento} paquete=${versionPaquete ?? 'ninguno'} fragmentos_paquete=${fragmentosPaquete}` });
+    const agenteKuaa = config.tipoAgente === 'kuaa' ? new AgenteKuaa(dependencias, { perfilConocimiento: entorno.perfilConocimiento, versionPaquete, versionPaqueteValidado, enrutador: opcionesEnrutador }) : undefined;
+    agentes.set(config.id, { config, agente, ...(agenteKuaa ? { agenteKuaa } : {}), memoria, indice, proveedor: nube.proveedor.nombre, perfilConocimiento: entorno.perfilConocimiento, versionPaquete, versionPaqueteValidado, enrutadorBanco });
+    bitacora.registrar({ tipo: 'configuracion_cargada', agenteId: config.id, perfilId: null, conversacionHash: '-', canal: '-', detalle: `archivo=${archivo} proveedor=${nube.proveedor.nombre} indice=${indice.nombre} perfiles=${Object.keys(config.perfiles).length} perfil_conocimiento=${entorno.perfilConocimiento} paquete=${versionPaquete ?? 'ninguno'} fragmentos_paquete=${fragmentosPaquete}${entorno.paqueteValidado ? ` paquete_validado=${versionPaqueteValidado ?? 'ninguno'}` : ''}` });
   }
+  if (entorno.paqueteValidado && !paqueteValidadoCargado) throw new Error('Paquete validado activo, pero ningún agente kuaa con paquete habilitado lo cargó');
   return agentes;
 }

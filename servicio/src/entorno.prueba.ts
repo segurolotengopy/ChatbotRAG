@@ -125,3 +125,42 @@ describe('interruptor del enrutador (CHATBOTRAG_ENRUTADOR)', () => {
     expect(() => leerEntorno(base({ CHATBOTRAG_ENRUTADOR: valor }))).toThrow(ErrorEntorno);
   });
 });
+
+describe('vía del paquete validado (CHATBOTRAG_PAQUETE_VALIDADO)', () => {
+  const VAL = { CHATBOTRAG_BUCKET_PAQUETE_VALIDADO: 'bucket-validado', CHATBOTRAG_VERSION_PAQUETE_VALIDADO: '1.0.0', CHATBOTRAG_SHA256_MANIFIESTO_VALIDADO: 'a'.repeat(64) };
+
+  it('sin la variable la vía validada está apagada', () => {
+    expect(leerEntorno(base()).paqueteValidado).toBeNull();
+    expect(leerEntorno(base({ CHATBOTRAG_PAQUETE_VALIDADO: 'apagado' })).paqueteValidado).toBeNull();
+    expect(leerEntorno(base({ CHATBOTRAG_PAQUETE_VALIDADO: '' })).paqueteValidado).toBeNull();
+  });
+
+  it('activo exige bucket, versión y huella', () => {
+    expect(leerEntorno(base({ CHATBOTRAG_PAQUETE_VALIDADO: 'activo', ...VAL })).paqueteValidado).toEqual({ bucket: 'bucket-validado', version: '1.0.0', sha256Manifiesto: 'a'.repeat(64) });
+    for (const falta of Object.keys(VAL)) {
+      const resto = Object.fromEntries(Object.entries(VAL).filter(([k]) => k !== falta));
+      expect(() => leerEntorno(base({ CHATBOTRAG_PAQUETE_VALIDADO: 'activo', ...resto }))).toThrow(ErrorEntorno);
+    }
+  });
+
+  it('variables sin activo son error', () => {
+    expect(() => leerEntorno(base({ ...VAL }))).toThrow(ErrorEntorno);
+    expect(() => leerEntorno(base({ CHATBOTRAG_PAQUETE_VALIDADO: 'apagado', ...VAL }))).toThrow(ErrorEntorno);
+  });
+
+  it('activo con perfil pruebas es error', () => {
+    expect(() => leerEntorno(base({ ...AMB, CHATBOTRAG_PAQUETE_VALIDADO: 'activo', ...VAL, CHATBOTRAG_PERFIL_CONOCIMIENTO: 'pruebas', CHATBOTRAG_BUCKET_PAQUETE: 'bucket-sintetico', CHATBOTRAG_VERSION_PAQUETE: '1.0.0' }))).toThrow(/solo con perfil produccion/);
+  });
+
+  it('activo con APP_ENV=production es válido', () => {
+    expect(leerEntorno(base({ APP_ENV: 'production', CHATBOTRAG_PAQUETE_VALIDADO: 'activo', ...VAL })).paqueteValidado?.version).toBe('1.0.0');
+  });
+
+  it('activo con pgvector es error', () => {
+    expect(() => leerEntorno(base({ CHATBOTRAG_PAQUETE_VALIDADO: 'activo', ...VAL, CHATBOTRAG_INDICE: 'pgvector', PGVECTOR_URL: 'postgres://u:p@localhost:5432/d' }))).toThrow(ErrorEntorno);
+  });
+
+  it.each(['ACTIVO', 'encendido', 'true', 'si'])('valores no reconocidos son error («%s»)', (valor) => {
+    expect(() => leerEntorno(base({ CHATBOTRAG_PAQUETE_VALIDADO: valor, ...VAL }))).toThrow(ErrorEntorno);
+  });
+});
