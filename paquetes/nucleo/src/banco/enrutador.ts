@@ -130,13 +130,13 @@ export function prepararEnrutador(banco: BancoRespuestas, bancoSha256: string | 
  * consecutivas del mensaje (de los tamaños que existen en el banco) contra el mapa de términos: el costo crece
  * con el largo del mensaje y no con la cantidad de términos.
  */
-function buscarTermino(nt: string, indice: IndiceEnrutador): TerminoIndexado | null {
+function buscarTermino(nt: string, indice: IndiceEnrutador, admite: (t: TerminoIndexado) => boolean = () => true): TerminoIndexado | null {
   const palabras = nt.split(' ');
   let mejor: TerminoIndexado | null = null;
   for (const largo of indice.longitudes) {
     for (let i = 0; i + largo <= palabras.length; i++) {
       const t = indice.terminos.get(largo === 1 ? (palabras[i] ?? '') : palabras.slice(i, i + largo).join(' '));
-      if (t && (mejor === null || t.orden < mejor.orden)) mejor = t;
+      if (t && admite(t) && (mejor === null || t.orden < mejor.orden)) mejor = t;
     }
   }
   return mejor;
@@ -196,6 +196,25 @@ export function enrutar(texto: string, indice: IndiceEnrutador, config: Enrutado
   }
 
   return { carril: 'ia', motivo: 'sin_coincidencia', entradaCandidata: null };
+}
+
+/**
+ * D10: busca SOLO los términos de derivación con motivo `emergencia`, sin mirar preguntas, respuestas ni semántica. Existe
+ * para que una emergencia gane sobre una entrada que la compuerta bloquea (la salud, una cédula): quien lo llama ya decidió
+ * que el mensaje NO sigue su curso normal, así que aquí no se decide nada más. Es pura y no cambia el contrato de `enrutar`.
+ * Devuelve la decisión de derivación (origen `termino_emergencia`) o `null`. No garantiza nada que `enrutar` no garantice
+ * (sinónimos, errores ortográficos, homóglifos) y solo ve el término que el índice conserva: si un mismo término figura en dos
+ * derivaciones, el índice guarda la primera, y si esa no es de emergencia, este no lo ve.
+ */
+export function buscarEmergencia(texto: string, indice: IndiceEnrutador): DecisionDerivacion | null {
+  const dentro = normalizarParaTerminos(texto);
+  const separado = normalizarParaTerminosSeparado(texto);
+  const esEmergencia = (t: TerminoIndexado): boolean => indice.banco.derivaciones[t.derivacion]?.motivo === 'emergencia';
+  const a = dentro === '' ? null : buscarTermino(dentro, indice, esEmergencia);
+  const b = separado === '' || separado === dentro ? null : buscarTermino(separado, indice, esEmergencia);
+  const t = a !== null && b !== null ? (a.orden <= b.orden ? a : b) : (a ?? b);
+  const d = t === null ? undefined : indice.banco.derivaciones[t.derivacion];
+  return d ? decidirDerivacion(d, 'termino_emergencia') : null;
 }
 
 /** Avisos para la bitácora: solo ids y enumerados. Jamás un término ni texto de la persona. */

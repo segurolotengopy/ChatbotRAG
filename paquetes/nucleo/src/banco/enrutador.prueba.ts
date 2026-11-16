@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { BitacoraEnMemoria } from '../bitacora/bitacora-consola.js';
 import { cargarBanco } from './cargar.js';
-import { CARRILES, MOTIVOS_IA, ORIGENES_DERIVACION, avisosDecision, enrutar, prepararEnrutador } from './enrutador.js';
+import { CARRILES, MOTIVOS_IA, ORIGENES_DERIVACION, avisosDecision, buscarEmergencia, enrutar, prepararEnrutador } from './enrutador.js';
 import type { DecisionEnrutador, EstadoEnrutador } from './enrutador.js';
 import type { BancoRespuestas } from './esquema.js';
 
@@ -352,5 +352,33 @@ describe('estructura', () => {
   it('el archivo no construye expresiones regulares, no usa red ni entorno, fecha ni azar', () => {
     const fuente = readFileSync(new URL('./enrutador.ts', import.meta.url), 'utf8');
     for (const prohibido of ['RegExp(', 'fetch', 'process.env', 'Date', 'Math.random']) expect(fuente).not.toContain(prohibido);
+  });
+});
+
+describe('buscarEmergencia (D10)', () => {
+  const banco = enLinea({
+    derivaciones: [
+      { id: 'd-uno', motivo: 'siniestro_particular', terminos: ['termino de siniestro'], texto: 'Texto uno.', aprobado_por: 'Rol Legal' },
+      { id: 'd-dos', motivo: 'emergencia', terminos: ['termino de emergencia'], texto: 'Texto dos.', aprobado_por: 'Rol Legal' },
+    ],
+  });
+  const indice = prepararEnrutador(banco);
+
+  it('devuelve la derivación de emergencia con origen termino_emergencia, también con puntuación e invisibles', () => {
+    expect(buscarEmergencia('¡Ayuda: termino de emergencia!', indice)).toEqual({ carril: 'derivacion', motivo: 'emergencia', origen: 'termino_emergencia', entradaId: 'd-dos' });
+    expect(buscarEmergencia('termino de\u200Bemergencia', indice)?.entradaId).toBe('d-dos');
+    expect(buscarEmergencia('termino\u200B de emergencia', indice)?.entradaId).toBe('d-dos');
+  });
+  it('ignora los términos de otros motivos, las preguntas y las coincidencias parciales', () => {
+    expect(buscarEmergencia('termino de siniestro', indice)).toBeNull();
+    expect(buscarEmergencia('pregunta uno', indice)).toBeNull();
+    expect(buscarEmergencia('termino de emergencias', indice)).toBeNull();
+    expect(buscarEmergencia('', indice)).toBeNull();
+  });
+  it('no cambia el contrato de enrutar ni muta el banco', () => {
+    const antes = JSON.stringify(banco);
+    expect(enrutar('termino de siniestro', indice, ON, SIN_ATENCION)).toMatchObject({ carril: 'derivacion', origen: 'termino_derivacion' });
+    buscarEmergencia('termino de emergencia', indice);
+    expect(JSON.stringify(banco)).toBe(antes);
   });
 });

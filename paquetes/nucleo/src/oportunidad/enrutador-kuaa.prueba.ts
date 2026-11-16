@@ -46,7 +46,7 @@ const RECHAZABLES: ReadonlyArray<readonly [string, string, string]> = [
 ];
 const PLANTILLA_PREMIO = '(ejemplo) El plan {{nombre_plan}} cuesta {{premio_plan}} al año.';
 
-function bancoJson(opciones: { conTextoPendiente?: boolean } = {}): string {
+function bancoJson(opciones: { conTextoPendiente?: boolean; sinTerminosEmergencia?: boolean; textoEmergencia?: string } = {}): string {
   const aprobado = 'ejemplo sintetico';
   return JSON.stringify({
     formato: 1,
@@ -62,7 +62,13 @@ function bancoJson(opciones: { conTextoPendiente?: boolean } = {}): string {
       { id: 'r-critica-enlace', tema: 'cobertura', preguntas: ['pregunta sintetica critica enlace'], plantilla: '(ejemplo) Visite https://ejemplo.invalid/critico para más datos.', aprobado_por: aprobado, riesgo: 'critico' },
     ],
     derivaciones: [
-      { id: 'd-emergencia', motivo: 'emergencia', terminos: ['termino emergencia ejemplo'], texto: TEXTO_EMERGENCIA, aprobado_por: aprobado },
+      {
+        id: 'd-emergencia',
+        motivo: 'emergencia',
+        ...(opciones.sinTerminosEmergencia ? { preguntas: ['pregunta sintetica de emergencia'] } : { terminos: ['termino emergencia ejemplo', 'suicidar', 'sangrado fuerte', 'ayuda urgente'] }),
+        texto: opciones.textoEmergencia ?? TEXTO_EMERGENCIA,
+        aprobado_por: aprobado,
+      },
       { id: 'd-siniestro', motivo: 'siniestro_particular', preguntas: ['pregunta sintetica de siniestro'], texto: TEXTO_SINIESTRO, aprobado_por: aprobado },
     ],
     textos_derivacion: [
@@ -165,12 +171,18 @@ interface Montaje {
   admitirSimulado?: boolean;
   topeEmbeddingMs?: number;
   conTextoPendiente?: boolean;
+  sinTerminosEmergencia?: boolean;
+  textoEmergencia?: string;
 }
 
 async function montar(m: Montaje = {}) {
   const base: ConfiguracionAgente = cargarConfiguracionDesdeJson(JSON_KUAA);
   const config: ConfiguracionAgente = { ...base, enrutador: { activo: m.activoEnConfig ?? true, carrilFijo: m.carrilFijo ?? false } };
-  const cargado = cargarBanco(bancoJson(m.conTextoPendiente === undefined ? {} : { conTextoPendiente: m.conTextoPendiente }), { admitirSintetico: true });
+  const cargado = cargarBanco(bancoJson({
+      ...(m.conTextoPendiente === undefined ? {} : { conTextoPendiente: m.conTextoPendiente }),
+      ...(m.sinTerminosEmergencia === undefined ? {} : { sinTerminosEmergencia: m.sinTerminosEmergencia }),
+      ...(m.textoEmergencia === undefined ? {} : { textoEmergencia: m.textoEmergencia }),
+    }), { admitirSintetico: true });
   const embebedor = new EmbebedorPorTabla();
   const memo = new EmbebedorConMemoria(embebedor);
   let indiceSemantico: IndiceSemantico | null = null;
@@ -400,23 +412,106 @@ describe('bitácora sin texto', () => {
   });
 });
 
-describe('límite documentado: la entrada bloqueada va primero', () => {
-  it.each(['me quiero suicidar, tengo depresión', 'tengo cáncer y estoy muy mal, ayuda urgente', 'estoy embarazada y tuve un sangrado fuerte'])(
-    'un mensaje de emergencia que menciona salud («%s») recibe entradaBloqueada hoy: D10 pendiente de decisión de Andres (comportamiento previo)',
+const MENSAJES_SALUD = ['me quiero suicidar, tengo depresión', 'tengo cáncer y estoy muy mal, ayuda urgente', 'estoy embarazada y tuve un sangrado fuerte'];
+
+describe('D10: una emergencia gana sobre la regla de entrada', () => {
+  it.each([...MENSAJES_SALUD, 'termino emergencia ejemplo, mi cédula es 4567890'])(
+    'un mensaje bloqueado con término de emergencia («%s») deriva: texto del banco, propuesta, sin modelo, sin embedding, sin memoria y sin texto en la bitácora',
     async (mensaje) => {
-      const { agente, proveedor, bitacora, config } = await montar();
-      const { salida } = await agente.responder(entrada(mensaje), 'cliente-a');
-      expect(salida.texto).toBe(config.mensajes.entradaBloqueada);
+      const { agente, proveedor, bitacora, memoria, embebedor, config } = await montar();
+      const { salida, avisos } = await agente.responder(entrada(mensaje), 'cliente-a');
+      expect(salida).toMatchObject({ texto: TEXTO_EMERGENCIA, botones: [], propuestas: ['atencion_humana_solicitada'] });
+      expect(salida.texto).not.toBe(config.mensajes.entradaBloqueada);
       expect(proveedor.peticiones).toHaveLength(0);
-      expect(enrutadorEventos(bitacora)).toHaveLength(0);
+      expect(embebedor.lotes).toHaveLength(0);
+      expect(await memoria.leer(claveMemoriaKuaa('cliente-a', 'op-sintetica-1'), 10)).toEqual([]);
+      expect(avisos).toContain('derivacion:emergencia');
+      expect(avisos.some((a) => a.startsWith('entrada:'))).toBe(true);
+      expect(bitacora.eventos.map((e) => e.tipo)).toEqual(['entrada_bloqueada', 'enrutador', 'mensaje_atendido']);
+      expect(bitacora.eventos.at(-1)).toMatchObject({ tipo: 'mensaje_atendido', iteraciones: 0, tokensEntrada: 0, tokensSalida: 0, fragmentos: [] });
+      expect(bitacora.eventos.at(-1)?.avisos).toEqual(expect.arrayContaining(['carril:derivacion', 'derivacion:emergencia']));
+      expect(bitacora.eventos[0]?.avisos).toContain('derivacion:emergencia');
+      expect(enrutadorEventos(bitacora)[0]).toMatchObject({ carril: 'derivacion', via: 'exacta', motivo: 'emergencia' });
+      expect(enrutadorEventos(bitacora)[0]?.avisos).toContain('origen:termino_emergencia');
+      const todo = JSON.stringify(bitacora.eventos);
+      for (const prohibido of ['suicid', 'cáncer', 'embarazada', 'sangrado', '4567890', 'ayuda urgente', TEXTO_EMERGENCIA]) expect(todo).not.toContain(prohibido);
     },
   );
-  it('un mensaje que la compuerta de entrada bloquea no llega al enrutador (D10 no existe en el contrato de enrutar)', async () => {
+
+  it('con plataforma, el cierre agrega solo la versión y la bitácora sigue sin texto', async () => {
+    const { agente, bitacora } = await montar();
+    await agente.responder(entrada('me quiero suicidar, tengo depresión', { plataforma: PLATAFORMA }), 'cliente-a');
+    expect(bitacora.eventos.at(-1)?.avisos).toContain('plataforma:v0.4');
+    const todo = JSON.stringify(bitacora.eventos);
+    for (const prohibido of ['suicid', 'depresión', 'Vida con cobertura', TEXTO_EMERGENCIA]) expect(todo).not.toContain(prohibido);
+  });
+
+  it('sin término de emergencia («tengo cáncer, ¿qué cubre?») sigue recibiendo entradaBloqueada, sin evento del enrutador', async () => {
     const { agente, proveedor, bitacora, config } = await montar();
-    const { salida } = await agente.responder(entrada('termino emergencia ejemplo, mi cédula es 4567890'), 'cliente-a');
+    const { salida } = await agente.responder(entrada('tengo cáncer, ¿qué cubre?'), 'cliente-a');
     expect(salida.texto).toBe(config.mensajes.entradaBloqueada);
     expect(proveedor.peticiones).toHaveLength(0);
     expect(enrutadorEventos(bitacora)).toHaveLength(0);
+    expect(bitacora.eventos.map((e) => e.tipo)).toEqual(['entrada_bloqueada']);
+  });
+
+  it('un término de otra derivación (no de emergencia) no gana sobre la entrada bloqueada', async () => {
+    const { agente, config } = await montar();
+    const { salida } = await agente.responder(entrada('pregunta sintetica de siniestro, tengo cáncer'), 'cliente-a');
+    expect(salida.texto).toBe(config.mensajes.entradaBloqueada);
+  });
+
+  it.each([
+    ['enrutador apagado por variable (sin opciones)', { modo: null } as Montaje],
+    ['configuración con enrutador.activo en falso', { activoEnConfig: false } as Montaje],
+  ])('%s: idéntico al comportamiento previo (entradaBloqueada, mismos eventos)', async (_n, apagado) => {
+    const { agente, proveedor, bitacora, memoria, embebedor, config } = await montar(apagado);
+    for (const mensaje of MENSAJES_SALUD) {
+      const { salida, avisos } = await agente.responder(entrada(mensaje), 'cliente-a');
+      expect(salida.texto).toBe(config.mensajes.entradaBloqueada);
+      expect(avisos.every((a) => a.startsWith('entrada:'))).toBe(true);
+    }
+    expect(proveedor.peticiones).toHaveLength(0);
+    expect(embebedor.lotes).toHaveLength(0);
+    expect(await memoria.leer(claveMemoriaKuaa('cliente-a', 'op-sintetica-1'), 10)).toEqual([]);
+    expect(bitacora.eventos.every((e) => e.tipo === 'entrada_bloqueada')).toBe(true);
+    expect(bitacora.eventos.flatMap((e) => e.avisos ?? [])).not.toContain('derivacion:emergencia');
+  });
+
+  it('un banco sin términos de emergencia: idéntico al comportamiento previo', async () => {
+    const { agente, bitacora, config } = await montar({ sinTerminosEmergencia: true });
+    for (const mensaje of MENSAJES_SALUD) {
+      const { salida } = await agente.responder(entrada(mensaje), 'cliente-a');
+      expect(salida.texto).toBe(config.mensajes.entradaBloqueada);
+    }
+    expect(enrutadorEventos(bitacora)).toHaveLength(0);
+  });
+
+  it('D5: el texto de emergencia que una compuerta rechaza sale como mensaje general de derivación con la propuesta, nunca entradaBloqueada', async () => {
+    const { agente, bitacora, config } = await montar({ textoEmergencia: '(ejemplo) Texto con marca [DERIVAR] del modelo.' });
+    const { salida, avisos } = await agente.responder(entrada('me quiero suicidar, tengo depresión'), 'cliente-a');
+    expect(salida).toMatchObject({ texto: config.mensajes.derivacion, propuestas: ['atencion_humana_solicitada'] });
+    expect(salida.texto).not.toBe(config.mensajes.entradaBloqueada);
+    expect(avisos).toContain('texto_fijo_rechazado:verificacion_adicional');
+    expect(enrutadorEventos(bitacora)[0]).toMatchObject({ carril: 'derivacion', via: 'exacta' });
+    expect(enrutadorEventos(bitacora)[0]?.avisos).toContain('texto_fijo_rechazado:verificacion_adicional');
+  });
+
+  it.each([
+    ['sin calibración', { calibracion: 'ninguna' } as Montaje],
+    ['calibración no apta', { calibracion: { valido: false, motivos_invalidez: ['minimos_insuficientes'] } } as Montaje],
+    ['solo derivaciones (carril fijo apagado)', { modo: 'activo', carrilFijo: false } as Montaje],
+  ])('%s no afecta: la vía es exacta', async (_n, cambios) => {
+    const { agente, embebedor } = await montar(cambios);
+    const { salida } = await agente.responder(entrada('me quiero suicidar, tengo depresión'), 'cliente-a');
+    expect(salida.texto).toBe(TEXTO_EMERGENCIA);
+    expect(embebedor.lotes).toHaveLength(0);
+  });
+
+  it('un mensaje sin bloqueo sigue el recorrido normal del enrutador (D10 no cambia ese camino)', async () => {
+    const { agente, bitacora } = await montar();
+    await agente.responder(entrada('termino emergencia ejemplo'), 'cliente-a');
+    expect(bitacora.eventos.map((e) => e.tipo)).toEqual(['enrutador', 'mensaje_atendido']);
   });
 });
 

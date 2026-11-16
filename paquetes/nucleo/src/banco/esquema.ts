@@ -203,5 +203,17 @@ export const BancoRespuestas = z
     };
     banco.respuestas.forEach((e, i) => sinRepetir(e.preguntas, ['respuestas', i, 'preguntas']));
     banco.derivaciones.forEach((e, i) => sinRepetir(e.preguntas, ['derivaciones', i, 'preguntas']));
+
+    // Términos repetidos ENTRE derivaciones (normalizados como los busca el enrutador): el índice conserva el primero, así que
+    // un término de emergencia repetido tras el de otro motivo quedaría oculto y D10 no lo vería. Se rechaza el banco.
+    const terminos = new Set<string>();
+    banco.derivaciones.forEach((e, i) =>
+      e.terminos.forEach((t, j) => {
+        const n = normalizarParaTerminos(t);
+        if (n === '') return;
+        if (terminos.has(n)) ctx.addIssue({ code: 'custom', message: 'término repetido entre derivaciones', path: ['derivaciones', i, 'terminos', j] });
+        terminos.add(n);
+      }),
+    );
   });
 export type BancoRespuestas = z.infer<typeof BancoRespuestas>;
