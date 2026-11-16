@@ -1,0 +1,37 @@
+// Reglas del repositorio. La más importante es la frontera de nube: nada fuera de
+// `paquetes/proveedor-*` y `paquetes/conocimiento-*` puede importar un SDK de Google
+// o Amazon. Es la misma regla del repositorio de origen, y por la misma razón: el
+// núcleo tiene que poder cambiar de nube sin tocar una línea.
+import js from '@eslint/js';
+import tseslint from 'typescript-eslint';
+
+const SDKS_DE_NUBE = [
+  { name: '@google/genai', message: 'Los SDK de nube viven en paquetes/proveedor-*.' },
+  { name: '@google-cloud/vertexai', message: 'Los SDK de nube viven en paquetes/proveedor-*.' },
+  { name: '@aws-sdk/client-bedrock-runtime', message: 'Los SDK de nube viven en paquetes/proveedor-*.' },
+  { name: 'pg', message: 'Este servicio no accede a PostgreSQL.' },
+  { name: '@google-cloud/storage', message: 'El acceso a Cloud Storage vive en paquetes/conocimiento-gcs.' },
+];
+
+export default tseslint.config(
+  { ignores: ['**/dist/**', '**/node_modules/**', 'coverage/**'] },
+  js.configs.recommended,
+  { files: ['**/*.mjs', '**/*.js'], languageOptions: { globals: { console: 'readonly', process: 'readonly' } } },
+  ...tseslint.configs.recommended,
+  {
+    files: ['**/*.ts', '**/*.mts'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/consistent-type-imports': 'error',
+      'no-restricted-imports': ['error', { paths: SDKS_DE_NUBE }],
+    },
+  },
+  {
+    files: ['paquetes/proveedor-*/src/**/*.ts', 'paquetes/conocimiento-*/src/**/*.ts'],
+    rules: { 'no-restricted-imports': 'off' },
+  },
+  {
+    files: ['paquetes/nucleo/src/**/*.ts'],
+    rules: { 'no-restricted-globals': ['error', { name: 'fetch', message: 'El núcleo no habla con la red.' }] },
+  },
+);

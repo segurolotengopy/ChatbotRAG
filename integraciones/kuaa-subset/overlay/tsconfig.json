@@ -1,0 +1,17 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "paquetes/nucleo"
+    },
+    {
+      "path": "paquetes/proveedor-vertex"
+    },
+    {
+      "path": "paquetes/conocimiento-gcs"
+    },
+    {
+      "path": "servicio"
+    }
+  ]
+}

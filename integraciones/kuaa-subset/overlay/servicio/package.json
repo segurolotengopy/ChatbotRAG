@@ -1,0 +1,24 @@
+{
+  "name": "servicio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Servicio HTTP de Kuaa (Fastify) para Cloud Run / contenedores: expone el agente Kuaa configurado por JSON.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/principal.js",
+  "scripts": {
+    "construir": "tsc -b tsconfig.json",
+    "tipos": "tsc -b tsconfig.json",
+    "dev": "CHATBOTRAG_PROVEEDOR_FORZADO=simulado CHATBOTRAG_CLIENTES='[{\"id\":\"local\",\"agenteId\":\"kuaa-segurolotengo\",\"claveSha256\":\"0636948085431299e37be258a2ff0381e2ae41bec3d58d422bc7829af150302f\"}]' node --import tsx src/principal.ts",
+    "iniciar": "node dist/principal.js"
+  },
+  "dependencies": {
+    "@chatbotrag/conocimiento-gcs": "workspace:*",
+    "@chatbotrag/nucleo": "workspace:*",
+    "@chatbotrag/proveedor-vertex": "workspace:*",
+    "@fastify/cors": "^11.3.0",
+    "@fastify/rate-limit": "^11.2.0",
+    "fastify": "^5.12.5",
+    "zod": "^4.6.7"
+  }
+}

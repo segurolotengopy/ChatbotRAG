@@ -1,0 +1,32 @@
+# Manifiesto del estándar DevSecOps del subset de Kuaa (plantilla).
+# Cada marcador `<...>` lo completa el propietario del repositorio nuevo ANTES del primer despliegue:
+# no hay valores reales de ningún proyecto de origen. El subset no trae excepciones de seguridad: las
+# del repositorio de origen eran de su propietario y vencen por su cuenta; las de este repositorio las
+# aprueba y registra su propio propietario (con `vence`, máximo 90 días).
+version: 1
+proyecto: <PROYECTO>
+modo: <MODO>            # A | B | B0
+cobertura_minima: 70
+componentes:
+  - nombre: <PROYECTO>
+    ruta: ./
+    stack: node
+    proveedor: cloudrun
+    ambientes:
+      staging:
+        proyecto: <PROYECTO_GCP_STAGING>
+        url: <URL_STAGING>          # se lee del primer despliegue (gcloud run services describe)
+        region: <REGION>
+        servicio: <SERVICIO>
+        repositorio: <REPOSITORIO_ARTIFACT_REGISTRY>
+      production:
+        proyecto: <PROYECTO_GCP_PRODUCCION>
+        url: <URL_PRODUCCION>       # se lee del primer despliegue a producción
+        region: <REGION>
+        servicio: <SERVICIO>
+        repositorio: <REPOSITORIO_ARTIFACT_REGISTRY>
+seguridad:
+  dast: true
+  zap_reglas: .github/zap-rules.tsv
+  bloquear_en: [CRITICAL, HIGH]   # se puede endurecer (añadir MEDIUM), nunca relajar
+  excepciones: []
