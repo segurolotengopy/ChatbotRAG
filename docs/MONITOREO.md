@@ -7,9 +7,11 @@ Política del 2026-10-11: ningún proceso operativo depende de la laptop del pro
 | Pieza | Dónde vive | Qué hace |
 |---|---|---|
 | Sonda (red A) | GitHub Actions, `monitoreo-staging.yml`, cada 15 min (minutos 7, 22, 37 y 52) | `scripts/sondear-staging.sh`: `/salud` y `/health` en 200 con `"ok":true`, HSTS y CSP presentes, `GET /v1/agente` sin clave en 401, latencia |
-| Latido | Healthchecks.io, chequeo `sonda-15min` (período 15 min, gracia 30 min) | Alerta por correo si la sonda falla (`/fail`) o **deja de llegar** |
+| Latido | Healthchecks.io, chequeo `sonda-15min` (período 15 min, gracia 8 h: el cron de GitHub corre cada 4 a 7 h en la práctica) | Alerta por correo si la sonda falla (`/fail`) o **deja de llegar** |
 | Sonda (red B) | Better Stack Uptime, cada 3 min a `/salud` | Segunda red, otro proveedor; alerta por correo |
 | Reporte diario | GitHub Actions, `monitoreo-staging-reporte.yml`, 11:41 UTC | Comenta en el issue «Monitoreo staging» cuántas veces corrió la sonda; ping al chequeo `reporte-diario` (período 1 día, gracia 4 h) |
+
+> Desde 2026-11-17 la gracia del latido es de 8 h: la detección por silencio de la sonda tarda hasta 8 h; la segunda red (Better Stack, cada 3 min) cubre la caída del servicio. Para volver a 30 min, cambie `28800` en `scripts/configurar-monitoreo.sh` y reaplique.
 
 **Incidente** = fallan la red A y la red B dentro de unos 10 minutos. Si falla una sola, es **sospecha**: puede ser la sonda.
 
