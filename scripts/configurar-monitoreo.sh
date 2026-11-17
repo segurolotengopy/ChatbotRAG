@@ -29,7 +29,7 @@
 #                    la documentación oficial nombra también incidents.betterstack.com)
 #
 # Qué hace `aplicar`, de forma idempotente (volver a correrlo no duplica nada):
-#   1. Healthchecks: chequeos «sonda-15min» (período 15 min, gracia 30 min) y
+#   1. Healthchecks: chequeos «sonda-15min» (período 15 min, gracia 8 h) y
 #      «reporte-diario» (período 1 día, gracia 4 h), con las integraciones de la cuenta.
 #   2. GitHub: variable URL_STAGING y secretos HEALTHCHECKS_PING_SONDA y
 #      HEALTHCHECKS_PING_REPORTE.
@@ -138,7 +138,7 @@ crear_chequeo() { # $1 nombre, $2 período s, $3 gracia s, $4 secreto de GitHub
   rm -f "$TMP/cuerpo"
   echo "Chequeo «$1» listo y secreto $4 cargado en $REPO."
 }
-crear_chequeo 'sonda-15min' 900 1800 HEALTHCHECKS_PING_SONDA
+crear_chequeo 'sonda-15min' 900 28800 HEALTHCHECKS_PING_SONDA
 crear_chequeo 'reporte-diario' 86400 14400 HEALTHCHECKS_PING_REPORTE
 
 if [[ $SIN_GITHUB -eq 1 ]]; then
