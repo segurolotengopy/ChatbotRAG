@@ -14,7 +14,7 @@
 #
 # Qué NO garantiza: no llama al modelo ni prueba la calidad de las respuestas; cubre
 # solo staging (producción aún no existe); y GitHub puede retrasar u omitir un cron
-# en horas de carga, por eso los minutos no son redondos y el latido tolera 30 min.
+# en horas de carga, por eso los minutos no son redondos y el latido tolera 8 h (medido el 2026-11-08: el cron corre cada 4 a 7 h).
 # El repositorio es público: el UUID de Healthchecks va como SECRETO, nunca como
 # variable.
 #

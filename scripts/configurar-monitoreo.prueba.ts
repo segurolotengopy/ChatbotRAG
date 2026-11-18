@@ -149,7 +149,7 @@ describe('configurar-monitoreo: aplicar', () => {
     expect(r.codigo).toBe(0);
     const posts = r.llamadas.filter((l) => l.startsWith('POST '));
     expect(posts).toHaveLength(3);
-    expect(r.datos.join('\n')).toContain('"name":"sonda-15min","tags":"chatbotrag staging","timeout":900,"grace":1800');
+    expect(r.datos.join('\n')).toContain('"name":"sonda-15min","tags":"chatbotrag staging","timeout":900,"grace":28800');
     expect(r.datos.join('\n')).toContain('"timeout":86400,"grace":14400');
     expect(r.datos.join('\n')).toContain('"monitor_type":"keyword"');
     expect(r.datos.join('\n')).toContain('"check_frequency":180');
