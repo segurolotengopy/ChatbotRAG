@@ -30,8 +30,7 @@
  * temporal configurado. El sistema no se queda mudo ni inventa: falla hacia el
  * mensaje seguro.
  */
-import { createHash } from 'node:crypto';
-import { ID_PAGINA, type ConfiguracionAgente, type ConfiguracionEfectiva } from '../configuracion/esquema.js';
+import { ID_PAGINA, type ConfiguracionEfectiva } from '../configuracion/esquema.js';
 import { estaOperativo } from '../configuracion/derivados.js';
 import { resolverConfiguracion } from '../configuracion/perfiles.js';
 import { coleccionDe } from '../conocimiento/cargar-corpus.js';
@@ -42,11 +41,11 @@ import { esIdConversacionValido, sanearTexto } from '../compuertas/saneo.js';
 import { normalizar } from '../compuertas/vocabulario.js';
 import { definicionPara } from '../herramientas/internas.js';
 import { armarPrompt, mensajeSinRespaldo } from '../prompt/armar.js';
-import type { Bitacora } from '../puertos/bitacora.js';
-import type { EjecutorHerramientas } from '../puertos/herramienta.js';
-import type { FragmentoRecuperado, IndiceConocimiento } from '../puertos/indice-conocimiento.js';
-import type { MemoriaConversacion } from '../puertos/memoria.js';
-import type { LlamadaHerramienta, MensajeLLM, ProveedorLLM } from '../puertos/proveedor-llm.js';
+import type { FragmentoRecuperado } from '../puertos/indice-conocimiento.js';
+import type { LlamadaHerramienta, MensajeLLM } from '../puertos/proveedor-llm.js';
+import { ErrorPeticion, hashConversacion, type DependenciasAgente } from './peticion.js';
+
+export { ErrorPeticion, hashConversacion, type DependenciasAgente } from './peticion.js';
 
 /**
  * RELACIÓN CON LA PÁGINA. Con página válida el manual entra al respaldo, pero eso no debe
@@ -60,16 +59,6 @@ export const RE_DEICTICO_PAGINA = /\b(esta pantalla|esta pagina|aca|aqui|este pa
 
 /** Fragmentos del manual que se piden al índice; si hay más, se avisa `pagina_recortada`. */
 const LIMITE_FRAGMENTOS_PAGINA = 20;
-
-export interface DependenciasAgente {
-  config: ConfiguracionAgente;
-  proveedor: ProveedorLLM;
-  indice: IndiceConocimiento | null;
-  memoria: MemoriaConversacion;
-  herramientas: EjecutorHerramientas;
-  bitacora: Bitacora;
-  reloj?: () => Date;
-}
 
 export interface MensajeEntrante {
   conversacionId: string;
@@ -99,20 +88,6 @@ export interface RespuestaAgente {
   recomendacion: { id: string; texto: string } | null;
   /** Diagnóstico: iteraciones del bucle y tokens. Sin texto. */
   uso: { iteraciones: number; tokensEntrada: number; tokensSalida: number; latenciaMs: number };
-}
-
-export class ErrorPeticion extends Error {
-  constructor(
-    public readonly codigo: 'CONVERSACION_INVALIDA' | 'TEXTO_VACIO' | 'TEXTO_LARGO' | 'PERFIL_DESCONOCIDO',
-    mensaje: string,
-  ) {
-    super(mensaje);
-    this.name = 'ErrorPeticion';
-  }
-}
-
-export function hashConversacion(id: string): string {
-  return createHash('sha256').update(id).digest('hex').slice(0, 16);
 }
 
 export class Agente {

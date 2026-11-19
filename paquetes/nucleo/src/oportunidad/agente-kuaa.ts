@@ -38,7 +38,7 @@ import { esCortesia } from '../compuertas/cortesia.js';
 import { evaluarEntrada } from '../compuertas/entrada.js';
 import { aplicarCompuertasSalida, extraerMarcas } from '../compuertas/salida.js';
 import { sanearTexto } from '../compuertas/saneo.js';
-import { ErrorPeticion, hashConversacion, type DependenciasAgente } from '../orquestador/agente.js';
+import { ErrorPeticion, hashConversacion, type DependenciasAgente } from '../orquestador/peticion.js';
 import type { EventoBitacora } from '../puertos/bitacora.js';
 import { causaDeError, type CausaErrorProveedor } from '../puertos/proveedor-llm.js';
 import { armarTextoConD5, PROPUESTA_DERIVACION_GENERAL } from '../banco/texto-fijo.js';
@@ -120,7 +120,8 @@ export class AgenteKuaa {
    * `perfilConocimiento` es el perfil del entorno; por omisión `produccion`. Con él, un fragmento marcado
    * `no_validado` que llegara a la recuperación se DESCARTA antes de armar el prompt (defensa en profundidad:
    * el cargador ya no debería haberlo indexado). Con `pruebas` y `versionPaquete`, además de la colección base se
-   * consulta la del paquete (`coleccionPaquete`) y se mezclan por puntaje.
+   * consulta la del paquete (`coleccionPaquete`) y se mezclan por puntaje. Con perfil `produccion` y
+   * `versionPaqueteValidado` (paquete validado, S2-A) también se consulta la colección del paquete, sin marcas.
    */
   private readonly enrutador: EnrutadorKuaa | null;
 
@@ -131,7 +132,7 @@ export class AgenteKuaa {
    */
   constructor(
     private readonly deps: DependenciasAgente,
-    private readonly opciones: { perfilConocimiento?: PerfilValidacion; versionPaquete?: string | null; enrutador?: OpcionesEnrutadorKuaa | undefined } = {},
+    private readonly opciones: { perfilConocimiento?: PerfilValidacion; versionPaquete?: string | null; versionPaqueteValidado?: string | null; enrutador?: OpcionesEnrutadorKuaa | undefined } = {},
   ) {
     this.reloj = deps.reloj ?? (() => new Date());
     this.enrutador = opciones.enrutador && deps.config.enrutador.activo ? new EnrutadorKuaa(opciones.enrutador, deps.config.enrutador) : null;
@@ -196,7 +197,7 @@ export class AgenteKuaa {
         const corte = avisoCorteIndice(causa);
         if (corte) return { salida: salidaFallback(config, etapa, causa), avisos: [...avisos, corte] };
       }
-      if (this.opciones.perfilConocimiento === 'pruebas' && this.opciones.versionPaquete) {
+      if ((this.opciones.perfilConocimiento === 'pruebas' && this.opciones.versionPaquete) || (this.opciones.perfilConocimiento !== 'pruebas' && this.opciones.versionPaqueteValidado)) {
         try {
           const delPaquete = await this.deps.indice.buscar(texto, { coleccion: coleccionPaquete(coleccionDe(this.deps.config, null)), topK: config.conocimiento.topK, umbral: config.conocimiento.umbral });
           fragmentos = [...fragmentos, ...delPaquete].sort((a, b) => b.puntaje - a.puntaje).slice(0, config.conocimiento.topK);

@@ -180,3 +180,18 @@ describe('crearClienteGcs', () => {
     gcs.fallo = 0;
   });
 });
+
+describe('LectorPaqueteGcs con huella del manifiesto', () => {
+  it('con sha256Manifiesto, otra huella falla con INTEGRIDAD', async () => {
+    const c = cliente({ '1.0.0/manifiesto.json': manifiesto() });
+    const l = new LectorPaqueteGcs({ bucket: 'b', version: '1.0.0', cliente: c, sha256Manifiesto: sha('otro-contenido') });
+    expect(await codigoDe(l.leerManifiesto())).toBe('INTEGRIDAD');
+  });
+
+  it('con la huella correcta lee igual', async () => {
+    const c = cliente({ '1.0.0/manifiesto.json': manifiesto(), '1.0.0/a.json': contenido });
+    const l = new LectorPaqueteGcs({ bucket: 'b', version: '1.0.0', cliente: c, sha256Manifiesto: sha(manifiesto()) });
+    expect((await l.leerManifiesto()).version).toBe('1.0.0');
+    expect(await l.leer('a.json')).toBe(contenido);
+  });
+});

@@ -20,6 +20,16 @@
  * y no abortan la carga; un manifiesto inválido o de otra versión sí la aborta. Los eventos de bitácora
  * llevan solo conteos y códigos, jamás contenido.
  *
+ * PAQUETE VALIDADO (`cargarPaqueteValidado`, S2-A): es la vía de producción para el contenido que Rodrigo ya validó.
+ * No cambia el sentido de `cargarPaqueteKuaa`: es una función aparte, con perfil `produccion` fijo. Solo admite
+ * archivos `.json`: un `.md` o un JSON ilegible ABORTAN la carga (error con la ruta, jamás el texto), porque un
+ * paquete validado con un archivo ajeno o dañado no es el que Rodrigo aprobó. Un registro individual no habilitado
+ * sigue contando como rechazado (y va al contador de la bitácora). Un registro entra solo
+ * si pasa `separarRegistrosHabilitados(…, 'produccion')`, su `version_paquete` coincide con la del manifiesto y NO
+ * trae `validacion`. Los fragmentos se indexan SIN marcas (`validacion` ni `versionPaquete`) en la colección del
+ * paquete; así el agente los trata como conocimiento habilitado. Cero fragmentos es un error («paquete validado
+ * vacío»): un paquete vacío no debe pasar por una carga correcta. Se indexa una sola vez, tras validar todo.
+ *
  * Qué NO garantiza: la veracidad ni la titularidad del contenido; ni la integridad de los archivos (la
  * verifica el lector, con el SHA-256 del manifiesto).
  */
@@ -165,4 +175,64 @@ export async function cargarPaqueteKuaa(
     detalle: `paquete=${version} perfil=${perfil} coleccion=${destino} fragmentos=${fragmentosTotal} rechazados=${rechazados}`,
   });
   return { fragmentos: fragmentosTotal, rechazados, version };
+}
+
+
+/**
+ * Carga el paquete VALIDADO (perfil `produccion`) en `<coleccion>--paquete`, sin marcas. Lanza si el manifiesto es
+ * inválido o de otra versión, o si no queda ningún fragmento. La bitácora lleva solo conteos y la versión.
+ */
+export async function cargarPaqueteValidado(
+  lector: LectorPaquete,
+  indice: IndiceConocimiento,
+  coleccion: string,
+  opciones: OpcionesCargaPaquete,
+  bitacora?: Bitacora,
+): Promise<ResumenPaquete> {
+  const manifiesto = esquemaManifiestoPaquete.parse(await lector.leerManifiesto());
+  if (manifiesto.version !== opciones.versionEsperada) throw new Error('la versión del manifiesto no es la esperada');
+  const version = manifiesto.version;
+  const destino = coleccionPaquete(coleccion);
+  const fragmentos: Fragmento[] = [];
+
+  let rechazados = 0;
+  for (const archivo of manifiesto.archivos) {
+    // Solo `.json`: un documento de texto no trae la bandera de habilitación. Aborta, no se omite.
+    if (!archivo.ruta.endsWith('.json')) throw new Error(`paquete validado: archivo no admitido (${archivo.ruta})`);
+    const base = archivo.ruta.replace(/\.json$/, '');
+    const texto = await lector.leer(archivo.ruta);
+    let registros: unknown[] | null;
+    try {
+      registros = aRegistros(JSON.parse(texto) as unknown);
+    } catch {
+      registros = null;
+    }
+    if (registros === null) throw new Error(`paquete validado: JSON ilegible (${archivo.ruta})`);
+    const separacion = separarRegistrosHabilitados(registros, 'produccion');
+    rechazados += separacion.rechazados.length;
+    // Defecto de origen: sin `version_paquete` o de otra versión, o con `validacion`, no entra.
+    const aceptados = separacion.habilitados.filter((r) => r['version_paquete'] === version && r['validacion'] === undefined);
+    rechazados += separacion.habilitados.length - aceptados.length;
+    aceptados.forEach((r, i) => {
+      const partes = trocear({ fuenteId: `${base}#${i}`, titulo: base, version, coleccion: destino, texto: JSON.stringify(sinControl(r)) }, { tamano: opciones.tamano, solapamiento: opciones.solapamiento });
+      for (const f of partes) fragmentos.push({ ...f });
+    });
+  }
+
+  // Segunda barrera: jamás se indexa un fragmento con marcas.
+  if (fragmentos.some((f) => f.validacion !== undefined || f.versionPaquete !== undefined)) {
+    throw new Error('un fragmento marcado llegó al paquete validado; carga abortada');
+  }
+  if (fragmentos.length === 0) throw new Error('paquete validado vacío');
+  await indice.indexar(fragmentos);
+
+  bitacora?.registrar({
+    tipo: 'corpus_indexado',
+    agenteId: opciones.agenteId,
+    perfilId: null,
+    conversacionHash: '-',
+    canal: '-',
+    detalle: `paquete_validado=${version} coleccion=${destino} fragmentos=${fragmentos.length} rechazados=${rechazados}`,
+  });
+  return { fragmentos: fragmentos.length, rechazados, version };
 }

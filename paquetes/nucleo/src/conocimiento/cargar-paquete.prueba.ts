@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { BitacoraEnMemoria } from '../bitacora/bitacora-consola.js';
 import type { Fragmento, FragmentoRecuperado, IndiceConocimiento } from '../puertos/indice-conocimiento.js';
-import { cargarPaqueteKuaa, coleccionPaquete, type LectorPaquete } from './cargar-paquete.js';
+import { cargarPaqueteKuaa, cargarPaqueteValidado, coleccionPaquete, type LectorPaquete } from './cargar-paquete.js';
 
 class IndiceEspia implements IndiceConocimiento {
   readonly nombre = 'espia';
@@ -144,5 +144,71 @@ describe('cargarPaqueteKuaa', () => {
     await cargarPaqueteKuaa(l, 'pruebas', indice, 'kuaa', OPC, bitacora);
     expect(JSON.stringify(bitacora.eventos)).not.toContain('TEXTO-SECRETO-SINTETICO');
     expect(bitacora.eventos[0]!.detalle).toBe('paquete=1.0.0 perfil=pruebas coleccion=kuaa--paquete fragmentos=1 rechazados=0');
+  });
+});
+
+describe('cargarPaqueteValidado', () => {
+  const HAB = { habilitado_produccion: true, version_paquete: '1.0.0' };
+  const regH = (n: string, extra: Record<string, unknown> = {}) => ({ id: n, pregunta: `pregunta ${n}`, ...HAB, ...extra });
+
+  it('cargarPaqueteValidado indexa solo habilitados de la versión del manifiesto y sin marcas', async () => {
+    const indice = new IndiceEspia();
+    const bitacora = new BitacoraEnMemoria();
+    const l = lector({ 'a.json': JSON.stringify([regH('1'), regH('2')]), 'b.json': JSON.stringify({ registros: [regH('3')] }) });
+    const r = await cargarPaqueteValidado(l, indice, 'kuaa', OPC, bitacora);
+    expect(r).toEqual({ fragmentos: 3, rechazados: 0, version: '1.0.0' });
+    expect(indice.llamadas).toBe(1);
+    for (const f of indice.indexados) {
+      expect(f.coleccion).toBe(coleccionPaquete('kuaa'));
+      expect(f.validacion).toBeUndefined();
+      expect(f.versionPaquete).toBeUndefined();
+    }
+    expect(bitacora.eventos[0]!.detalle).toBe('paquete_validado=1.0.0 coleccion=kuaa--paquete fragmentos=3 rechazados=0');
+  });
+
+  it('rechaza no_validado, versión ausente o ajena y validacion presente', async () => {
+    const indice = new IndiceEspia();
+    const l = lector({
+      'a.json': JSON.stringify([
+        regH('ok'),
+        reg('no-validado'),
+        { id: 'sin-version', habilitado_produccion: true },
+        regH('ajena', { version_paquete: '9.9.9' }),
+        regH('con-validacion', { validacion: 'validado' }),
+      ]),
+    });
+    const r = await cargarPaqueteValidado(l, indice, 'kuaa', OPC);
+    expect(r.fragmentos).toBe(1);
+    // no_validado (1) + sin versión (1) + ajena (1) + con validacion (1).
+    expect(r.rechazados).toBe(4);
+    expect(indice.indexados).toHaveLength(1);
+  });
+
+  it('un .md o un JSON ilegible abortan la carga sin indexar ni filtrar el texto', async () => {
+    const indice = new IndiceEspia();
+    await expect(cargarPaqueteValidado(lector({ 'a.json': JSON.stringify([regH('1')]), 'manual.md': 'TEXTO-SECRETO' }), indice, 'kuaa', OPC)).rejects.toThrow(/manual\.md/);
+    await expect(cargarPaqueteValidado(lector({ 'a.json': JSON.stringify([regH('1')]), 'roto.json': 'TEXTO-SECRETO {' }), indice, 'kuaa', OPC)).rejects.not.toThrow(/TEXTO-SECRETO/);
+    await expect(cargarPaqueteValidado(lector({ 'roto.json': '{' }), indice, 'kuaa', OPC)).rejects.toThrow(/roto\.json/);
+    expect(indice.llamadas).toBe(0);
+  });
+
+  it('un paquete validado vacío aborta', async () => {
+    const indice = new IndiceEspia();
+    await expect(cargarPaqueteValidado(lector({ 'a.json': JSON.stringify([reg('1')]) }), indice, 'kuaa', OPC)).rejects.toThrow('paquete validado vacío');
+    expect(indice.llamadas).toBe(0);
+  });
+
+  it('versión del manifiesto distinta aborta', async () => {
+    const indice = new IndiceEspia();
+    await expect(cargarPaqueteValidado(lector({ 'a.json': JSON.stringify([regH('1')]) }, '2.0.0'), indice, 'kuaa', OPC)).rejects.toThrow('la versión del manifiesto no es la esperada');
+    expect(indice.llamadas).toBe(0);
+  });
+
+  it('el texto indexado no contiene campos de control', async () => {
+    const indice = new IndiceEspia();
+    await cargarPaqueteValidado(lector({ 'a.json': JSON.stringify([regH('1')]) }), indice, 'kuaa', OPC);
+    const texto = indice.indexados.map((f) => f.texto).join('\n');
+    expect(texto).toContain('pregunta 1');
+    for (const c of ['habilitado_produccion', 'validacion', 'version_paquete']) expect(texto).not.toContain(c);
   });
 });
