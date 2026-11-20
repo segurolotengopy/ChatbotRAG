@@ -74,28 +74,27 @@ const ISSUE = [{ number: 7, title: 'Monitoreo staging' }];
 describe('reporte diario del monitoreo', () => {
   it('cuenta exitosas, fallidas, otras y faltantes, y las comenta en el issue', async () => {
     const corridas = [
-      ...ok(90),
       { conclusion: 'failure', status: 'completed' },
       { conclusion: 'timed_out', status: 'completed' },
       { conclusion: 'cancelled', status: 'completed' },
     ];
     const r = await ejecutar({ corridas, issues: ISSUE });
     expect(r.codigo).toBe(0);
-    expect(r.comentario).toContain('| 96 | 93 | 90 | 2 | 1 | 3 |');
+    expect(r.comentario).toContain('| 4 | 3 | 0 | 2 | 1 | 1 |');
   });
 
-  it('con las 96 corridas no hay faltantes', async () => {
-    const r = await ejecutar({ corridas: ok(96), issues: ISSUE });
-    expect(r.comentario).toContain('| 96 | 96 | 96 | 0 | 0 | 0 |');
+  it('con las 4 corridas no hay faltantes', async () => {
+    const r = await ejecutar({ corridas: ok(4), issues: ISSUE });
+    expect(r.comentario).toContain('| 4 | 4 | 4 | 0 | 0 | 0 |');
   });
 
   it('más corridas que las esperadas no da faltantes negativos', async () => {
-    const r = await ejecutar({ corridas: ok(100), issues: ISSUE });
-    expect(r.comentario).toContain('| 96 | 100 | 100 | 0 | 0 | 0 |');
+    const r = await ejecutar({ corridas: ok(6), issues: ISSUE });
+    expect(r.comentario).toContain('| 4 | 6 | 6 | 0 | 0 | 0 |');
   });
 
   it('sin el issue FALLA y no publica nada ni avisa al latido', async () => {
-    const r = await ejecutar({ corridas: ok(96), issues: [{ number: 3, title: 'Otro asunto' }], ping: 'uuid-de-prueba' });
+    const r = await ejecutar({ corridas: ok(4), issues: [{ number: 3, title: 'Otro asunto' }], ping: 'uuid-de-prueba' });
     expect(r.codigo).toBe(1);
     expect(r.salida).toContain('Una persona debe crearlo');
     expect(r.comentario).toBeNull();
@@ -103,14 +102,14 @@ describe('reporte diario del monitoreo', () => {
   });
 
   it('con el secreto avisa al latido solo después de publicar', async () => {
-    const r = await ejecutar({ corridas: ok(96), issues: ISSUE, ping: 'uuid-de-prueba' });
+    const r = await ejecutar({ corridas: ok(4), issues: ISSUE, ping: 'uuid-de-prueba' });
     expect(r.codigo).toBe(0);
     expect(r.comentario).not.toBeNull();
     expect(r.pings).toContain('https://hc-ping.com/uuid-de-prueba');
   });
 
   it('sin el secreto publica igual y deja un aviso visible', async () => {
-    const r = await ejecutar({ corridas: ok(96), issues: ISSUE });
+    const r = await ejecutar({ corridas: ok(4), issues: ISSUE });
     expect(r.codigo).toBe(0);
     expect(r.salida).toContain('Falta el secreto HEALTHCHECKS_PING_REPORTE');
     expect(r.pings).toBe('');

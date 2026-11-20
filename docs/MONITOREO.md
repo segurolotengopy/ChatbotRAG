@@ -6,12 +6,13 @@ Política del 2026-10-11: ningún proceso operativo depende de la laptop del pro
 
 | Pieza | Dónde vive | Qué hace |
 |---|---|---|
-| Sonda (red A) | GitHub Actions, `monitoreo-staging.yml`, cada 15 min (minutos 7, 22, 37 y 52) | `scripts/sondear-staging.sh`: `/salud` y `/health` en 200 con `"ok":true`, HSTS y CSP presentes, `GET /v1/agente` sin clave en 401, latencia |
-| Latido | Healthchecks.io, chequeo `sonda-15min` (período 15 min, gracia 8 h: el cron de GitHub corre cada 4 a 7 h en la práctica) | Alerta por correo si la sonda falla (`/fail`) o **deja de llegar** |
-| Sonda (red B) | Better Stack Uptime, cada 3 min a `/salud` | Segunda red, otro proveedor; alerta por correo |
-| Reporte diario | GitHub Actions, `monitoreo-staging-reporte.yml`, 11:41 UTC | Comenta en el issue «Monitoreo staging» cuántas veces corrió la sonda; ping al chequeo `reporte-diario` (período 1 día, gracia 4 h) |
+| Sonda de seguridad | GitHub Actions, `monitoreo-staging.yml`, cada 6 h (01:17, 07:17, 13:17 y 19:17 UTC) | `scripts/sondear-staging.sh`: `/salud` y `/health` en 200 con `"ok":true`, HSTS y CSP presentes, `GET /v1/agente` sin clave en 401, latencia |
+| Latido | Healthchecks.io, chequeo `sonda-15min` (el nombre se conservó por el UUID y ya no describe su período: 6 h, gracia 12 h; parámetros `PERIODO_SONDA` y `GRACIA_SONDA` de `scripts/configurar-monitoreo.sh`) | Alerta por correo si la sonda falla (`/fail`) o **deja de llegar** |
+| Vigilante 1 | Better Stack Uptime, cada 3 min a `/salud` (palabra clave `"ok":true`) | Disponibilidad, ajeno a GitHub; alerta por correo |
+| Vigilante 2 | UptimeRobot (plan gratuito), cada 5 min a `/salud` con palabra clave `"ok":true`, creado el 2026-11-20 desde la consola, sin clave de API y sin página de estado (términos §3 permiten uso comercial, consultados el 2026-11-20) | Disponibilidad, segundo proveedor ajeno a GitHub; alerta por correo |
+| Reporte diario | GitHub Actions, `monitoreo-staging-reporte.yml`, 11:41 UTC | Comenta en el issue «Monitoreo staging» cuántas veces corrió la sonda (4 esperadas por día); ping al chequeo `reporte-diario` (período 1 día, gracia 4 h) |
 
-> Desde 2026-11-17 la gracia del latido es de 8 h: la detección por silencio de la sonda tarda hasta 8 h; la segunda red (Better Stack, cada 3 min) cubre la caída del servicio. Para volver a 30 min, cambie `28800` en `scripts/configurar-monitoreo.sh` y reaplique.
+> Desde 2026-11-20 la disponibilidad la vigilan Better Stack (3 min) y UptimeRobot (5 min), ajenos a GitHub, porque el cron de GitHub dejó huecos de hasta 9 h 18 min y daba alarmas falsas del latido. La sonda de GitHub queda para lo que ellos no miden (HSTS, CSP y el 401 de `/v1/agente`), cada 6 h: peor caso real ~15 h hasta la siguiente corrida y silencio total detectado a las 18 h. **Reversión:** `PERIODO_SONDA=900 GRACIA_SONDA=28800 scripts/configurar-monitoreo.sh aplicar`, cron `7,22,37,52 * * * *` y `ESPERADAS=96`; borrar el monitor de UptimeRobot.
 
 **Incidente** = fallan la red A y la red B dentro de unos 10 minutos. Si falla una sola, es **sospecha**: puede ser la sonda.
 
@@ -35,7 +36,7 @@ Las claves nunca pasan por el chat ni por la línea de comandos: `scripts/config
 1. Cuentas en Healthchecks.io y Better Stack (las crea Andres).
 2. Andres crea en la web una clave de API de Healthchecks **con escritura** (Settings → API Access) y un token de API de Better Stack Uptime (Settings → API tokens): ningún script puede generarlas. Luego corre `scripts/guardar-claves-monitoreo.sh`, que las pide con entrada oculta, las verifica contra el servicio y las guarda con modo 600 en `~/.config/chatbotrag/` (`healthchecks-api-key` y `betterstack-api-token`).
 3. `scripts/configurar-monitoreo.sh plan` (solo lee: lista los chequeos y monitores existentes, sin secretos). Se revisa qué hay de prueba para borrar.
-4. `scripts/configurar-monitoreo.sh aplicar --borrar-hc NOMBRE --borrar-bs ID`, con `URL_STAGING` y `GH_CONFIG_DIR` de la cuenta propietaria del repositorio. Crea los chequeos `sonda-15min` y `reporte-diario`, la variable `URL_STAGING`, los secretos `HEALTHCHECKS_PING_SONDA` y `HEALTHCHECKS_PING_REPORTE` (el repositorio es público: los UUID son secretos, nunca variables) y el monitor de Better Stack; borra solo lo que se nombra. Es idempotente. Cargar secretos exige que Andres agregue antes una regla puntual de permiso para `gh secret set` y la retire después.
+4. `scripts/configurar-monitoreo.sh aplicar --borrar-hc NOMBRE --borrar-bs ID`, con `URL_STAGING` y `GH_CONFIG_DIR` de la cuenta propietaria del repositorio. Crea los chequeos `sonda-15min` (período y gracia por parámetro) y `reporte-diario`, la variable `URL_STAGING`, los secretos `HEALTHCHECKS_PING_SONDA` y `HEALTHCHECKS_PING_REPORTE` (el repositorio es público: los UUID son secretos, nunca variables) y el monitor de Better Stack; borra solo lo que se nombra. Es idempotente. Cargar secretos exige que Andres agregue antes una regla puntual de permiso para `gh secret set` y la retire después.
 5. Crear el issue abierto «Monitoreo staging» (el reporte falla a propósito si no existe).
 6. Activar el informe semanal por correo en Healthchecks. Disparar ambos workflows con `workflow_dispatch` y verificar el ping y el comentario.
 7. Prueba de caída: apuntar una corrida manual a una URL inexistente y confirmar el correo. Prueba de silencio: desactivar la sonda un momento y confirmar que Healthchecks avisa; reactivarla.

@@ -25,11 +25,14 @@
 #   REPO             owner/repo de GitHub (por omisión segurolotengopy/ChatbotRAG)
 #   GH_CONFIG_DIR    configuración de `gh` de la cuenta PROPIETARIA del repositorio
 #                    (cargar secretos exige ser administrador)
+#   PERIODO_SONDA, GRACIA_SONDA  período y gracia en segundos del chequeo «sonda-15min»
+#                    (por omisión 21600 y 43200; para volver a la sonda cada 15 min: 900 y 28800)
 #   BS_HOST          host de la API de Better Stack (por omisión https://uptime.betterstack.com;
 #                    la documentación oficial nombra también incidents.betterstack.com)
 #
 # Qué hace `aplicar`, de forma idempotente (volver a correrlo no duplica nada):
-#   1. Healthchecks: chequeos «sonda-15min» (período 15 min, gracia 8 h) y
+#   1. Healthchecks: chequeos «sonda-15min» (el nombre se conservó por el UUID; hoy es
+#      la sonda de seguridad: período PERIODO_SONDA, 6 h, y gracia GRACIA_SONDA, 12 h) y
 #      «reporte-diario» (período 1 día, gracia 4 h), con las integraciones de la cuenta.
 #   2. GitHub: variable URL_STAGING y secretos HEALTHCHECKS_PING_SONDA y
 #      HEALTHCHECKS_PING_REPORTE.
@@ -62,6 +65,11 @@ REPO="${REPO:-segurolotengopy/ChatbotRAG}"
 HC_API_KEY_FILE="${HC_API_KEY_FILE:-$HOME/.config/chatbotrag/healthchecks-api-key}"
 BS_API_TOKEN_FILE="${BS_API_TOKEN_FILE:-$HOME/.config/chatbotrag/betterstack-api-token}"
 URL_STAGING="${URL_STAGING:-}"
+PERIODO_SONDA="${PERIODO_SONDA:-21600}"
+GRACIA_SONDA="${GRACIA_SONDA:-43200}"
+for v in PERIODO_SONDA GRACIA_SONDA; do
+  [[ "${!v}" =~ ^[0-9]+$ ]] || { echo "$v debe ser un entero de segundos." >&2; exit 2; }
+done
 
 if [[ ! "$URL_STAGING" =~ ^https://[A-Za-z0-9.-]+$ ]]; then
   echo "URL_STAGING ausente o con forma inválida (https://host, sin ruta)." >&2
@@ -138,7 +146,7 @@ crear_chequeo() { # $1 nombre, $2 período s, $3 gracia s, $4 secreto de GitHub
   rm -f "$TMP/cuerpo"
   echo "Chequeo «$1» listo y secreto $4 cargado en $REPO."
 }
-crear_chequeo 'sonda-15min' 900 28800 HEALTHCHECKS_PING_SONDA
+crear_chequeo 'sonda-15min' "$PERIODO_SONDA" "$GRACIA_SONDA" HEALTHCHECKS_PING_SONDA
 crear_chequeo 'reporte-diario' 86400 14400 HEALTHCHECKS_PING_REPORTE
 
 if [[ $SIN_GITHUB -eq 1 ]]; then
