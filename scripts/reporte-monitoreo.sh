@@ -15,11 +15,11 @@
 # siempre una caída. Tampoco crea el issue: si no existe, falla a propósito en lugar
 # de publicar algo sin que una persona lo haya pedido.
 #
-# Entrada: GH_TOKEN, GITHUB_REPOSITORY, y opcionalmente WORKFLOW (monitoreo-staging.yml),
+# Entrada: GH_TOKEN, GITHUB_REPOSITORY, y opcionalmente WORKFLOW (monitoreo-sonda-seguridad.yml),
 # TITULO_ISSUE («Monitoreo staging»), ESPERADAS (4), PING (UUID del latido; secreto).
 set -euo pipefail
 
-WORKFLOW="${WORKFLOW:-monitoreo-staging.yml}"
+WORKFLOW="${WORKFLOW:-monitoreo-sonda-seguridad.yml}"
 TITULO_ISSUE="${TITULO_ISSUE:-Monitoreo staging}"
 ESPERADAS="${ESPERADAS:-4}"
 : "${GITHUB_REPOSITORY:?falta GITHUB_REPOSITORY}"
