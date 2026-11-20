@@ -1,7 +1,7 @@
 # =============================================================================
 # MONITOREO DE STAGING — sonda (red A) con latido
 #
-# Corre en los servidores de GitHub cada 15 minutos, sin depender de la laptop de
+# Corre en los servidores de GitHub cada 6 horas, sin depender de la laptop de
 # nadie ni de una sesión de Claude (política del 2026-10-11). Mide el servicio con
 # scripts/sondear-staging.sh y avisa a Healthchecks.io:
 #   - sonda OK     → ping al chequeo «sonda-15min».
@@ -14,7 +14,9 @@
 #
 # Qué NO garantiza: no llama al modelo ni prueba la calidad de las respuestas; cubre
 # solo staging (producción aún no existe); y GitHub puede retrasar u omitir un cron
-# en horas de carga, por eso los minutos no son redondos y el latido tolera 8 h (medido el 2026-11-08: el cron corre cada 4 a 7 h).
+# en horas de carga, por eso los minutos no son redondos y el latido tolera 12 h tras un período de 6 h (medido el 2026-11-20: GitHub dejó huecos de hasta 9 h 18 min incluso con cron cada 15 min).
+# Desde 2026-11-20 esta sonda es la de SEGURIDAD (HSTS, CSP, 401), no la de disponibilidad: ésa la dan
+# Better Stack (3 min) y UptimeRobot (5 min), ajenos a GitHub (docs/MONITOREO.md).
 # El repositorio es público: el UUID de Healthchecks va como SECRETO, nunca como
 # variable.
 #
@@ -26,7 +28,7 @@ name: Monitoreo de staging
 
 on:
   schedule:
-    - cron: '7,22,37,52 * * * *'
+    - cron: '17 1,7,13,19 * * *'
   workflow_dispatch:
 
 permissions:

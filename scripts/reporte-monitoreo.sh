@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # REPORTE DIARIO DEL MONITOREO DE STAGING
 #
-# Cuenta cuántas veces corrió la sonda en las últimas 24 horas frente a las 96
-# esperadas (cada 15 minutos) y cuántas pasaron o fallaron, y lo comenta en un issue
+# Cuenta cuántas veces corrió la sonda en las últimas 24 horas frente a las 4
+# esperadas (cada 6 horas) y cuántas pasaron o fallaron, y lo comenta en un issue
 # fijo. Es la prueba periódica de que el monitor sigue vivo: si el reporte deja de
 # llegar, el chequeo «reporte-diario» de Healthchecks.io avisa por correo (el silencio
 # total también es una alerta).
@@ -16,12 +16,12 @@
 # de publicar algo sin que una persona lo haya pedido.
 #
 # Entrada: GH_TOKEN, GITHUB_REPOSITORY, y opcionalmente WORKFLOW (monitoreo-staging.yml),
-# TITULO_ISSUE («Monitoreo staging»), ESPERADAS (96), PING (UUID del latido; secreto).
+# TITULO_ISSUE («Monitoreo staging»), ESPERADAS (4), PING (UUID del latido; secreto).
 set -euo pipefail
 
 WORKFLOW="${WORKFLOW:-monitoreo-staging.yml}"
 TITULO_ISSUE="${TITULO_ISSUE:-Monitoreo staging}"
-ESPERADAS="${ESPERADAS:-96}"
+ESPERADAS="${ESPERADAS:-4}"
 : "${GITHUB_REPOSITORY:?falta GITHUB_REPOSITORY}"
 
 desde="$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)"

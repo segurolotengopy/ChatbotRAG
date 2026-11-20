@@ -34,6 +34,7 @@ interface Opciones {
   modoClaveHc?: number;
   codigoListaHc?: number;
   url?: string;
+  extraEnv?: Record<string, string>;
 }
 
 interface Resultado {
@@ -111,6 +112,7 @@ if [ "$1 $2" = "secret set" ]; then echo "$3 <= $(cat)" >> "${dir}/gh-stdin.txt"
           HC_API_KEY_FILE: join(dir, 'hc-clave'),
           BS_API_TOKEN_FILE: join(dir, 'bs-token'),
           URL_STAGING: o.url ?? 'https://chatbotrag-ejemplo.a.run.app',
+          ...(o.extraEnv ?? {}),
           REPO: 'org/repo',
         },
       },
@@ -144,12 +146,18 @@ describe('configurar-monitoreo: plan', () => {
 });
 
 describe('configurar-monitoreo: aplicar', () => {
+  it('PERIODO_SONDA y GRACIA_SONDA cambian el período y la gracia (vuelta a 15 min: 900 y 28800)', async () => {
+    const r = await ejecutar(['aplicar'], { extraEnv: { PERIODO_SONDA: '900', GRACIA_SONDA: '28800' } });
+    expect(r.codigo).toBe(0);
+    expect(r.datos.join('\n')).toContain('"name":"sonda-15min","tags":"chatbotrag staging","timeout":900,"grace":28800');
+  });
+
   it('crea los dos chequeos y el monitor, carga variable y secretos, y no imprime ningún secreto', async () => {
     const r = await ejecutar(['aplicar']);
     expect(r.codigo).toBe(0);
     const posts = r.llamadas.filter((l) => l.startsWith('POST '));
     expect(posts).toHaveLength(3);
-    expect(r.datos.join('\n')).toContain('"name":"sonda-15min","tags":"chatbotrag staging","timeout":900,"grace":28800');
+    expect(r.datos.join('\n')).toContain('"name":"sonda-15min","tags":"chatbotrag staging","timeout":21600,"grace":43200');
     expect(r.datos.join('\n')).toContain('"timeout":86400,"grace":14400');
     expect(r.datos.join('\n')).toContain('"monitor_type":"keyword"');
     expect(r.datos.join('\n')).toContain('"check_frequency":180');
