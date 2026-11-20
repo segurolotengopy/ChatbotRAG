@@ -1,6 +1,6 @@
 # =============================================================================
 # _reusable-sonda-seguridad.yml — Sonda de seguridad programada (reusable)
-# Versión: 1.1 | Fecha: 2026-11-20
+# Versión: 1.2 | Fecha: 2026-11-20
 # -----------------------------------------------------------------------------
 # Propósito: comprobar desde fuera, con bash y curl, que un ambiente ya
 # desplegado sigue sano y sigue protegido:
@@ -24,9 +24,10 @@
 # SECRETO DEL LATIDO: el job declara `environment: monitoreo` (Environment sin
 # revisores y limitado a la rama main) y lee de él HEALTHCHECKS_PING_SONDA_STAGING
 # y HEALTHCHECKS_PING_SONDA_PROD. Un job que llama a un reusable no puede declarar
-# `environment`, por eso va aquí y no en la plantilla. Si el plan del repositorio
-# no ofrece Environments, ver el anexo 16 §4 (secreto de repositorio de uso
-# exclusivo de este workflow, pasado con `secrets:` desde la plantilla).
+# `environment`, por eso va aquí y no en la plantilla. El llamador DEBE pasar el
+# secreto por nombre (`secrets:` mapeado, nunca `inherit`): sin eso llega vacío
+# aunque exista en el Environment (docs de GitHub; medido el 2026-11-20). Sin
+# Environments, ver el anexo 16 §4 (secreto de repositorio de uso exclusivo).
 # El host y las rutas aparecen en la cabecera `env` del paso dentro de los logs de
 # Actions, visibles para quien pueda leer los logs del repositorio; los mensajes
 # del paso, en cambio, no los repiten.
@@ -81,10 +82,10 @@ on:
         default: 3
     secrets:
       HEALTHCHECKS_PING_SONDA_STAGING:
-        description: Solo sin Environments; con `environment` se lee de él. UUID del chequeo de staging (clase S2)
+        description: UUID del chequeo de staging (clase S2); el llamador lo pasa por nombre y GitHub lo resuelve en el Environment monitoreo
         required: false
       HEALTHCHECKS_PING_SONDA_PROD:
-        description: Solo sin Environments; con `environment` se lee de él. UUID del chequeo de producción (clase S2)
+        description: UUID del chequeo de producción (clase S2); el llamador lo pasa por nombre y GitHub lo resuelve en el Environment monitoreo
         required: false
 
 permissions: {}
