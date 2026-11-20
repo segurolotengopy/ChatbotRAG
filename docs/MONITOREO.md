@@ -6,7 +6,7 @@ Política del 2026-10-11: ningún proceso operativo depende de la laptop del pro
 
 | Pieza | Dónde vive | Qué hace |
 |---|---|---|
-| Sonda de seguridad | GitHub Actions, `monitoreo-staging.yml`, cada 6 h (01:17, 07:17, 13:17 y 19:17 UTC) | `scripts/sondear-staging.sh`: `/salud` y `/health` en 200 con `"ok":true`, HSTS y CSP presentes, `GET /v1/agente` sin clave en 401, latencia |
+| Sonda de seguridad | GitHub Actions, `monitoreo-sonda-seguridad.yml` (llama al reusable `_reusable-sonda-seguridad.yml` del estándar, anexo 16; secreto del latido en el Environment `monitoreo`), cada 6 h (00:17, 06:17, 12:17 y 18:17 UTC) | El reusable: salud en 200 con `"ok":true`, HSTS (max-age ≥ 180 días) y CSP en la portada `/`, `GET /v1/agente` sin clave en 401 |
 | Latido | Healthchecks.io, chequeo `sonda-15min` (el nombre se conservó por el UUID y ya no describe su período: 6 h, gracia 12 h; parámetros `PERIODO_SONDA` y `GRACIA_SONDA` de `scripts/configurar-monitoreo.sh`) | Alerta por correo si la sonda falla (`/fail`) o **deja de llegar** |
 | Vigilante 1 | Better Stack Uptime, cada 3 min a `/salud` (palabra clave `"ok":true`) | Disponibilidad, ajeno a GitHub; alerta por correo |
 | Vigilante 2 | UptimeRobot (plan gratuito), cada 5 min a `/salud` con palabra clave `"ok":true`, creado el 2026-11-20 desde la consola, sin clave de API y sin página de estado (términos §3 permiten uso comercial, consultados el 2026-11-20) | Disponibilidad, segundo proveedor ajeno a GitHub; alerta por correo |

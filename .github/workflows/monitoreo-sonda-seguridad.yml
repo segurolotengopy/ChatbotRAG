@@ -1,0 +1,74 @@
+# =============================================================================
+# monitoreo-sonda-seguridad.yml — Sonda de seguridad cada 6 h (plantilla)
+# Versión: 1.1 | Fecha: 2026-11-20
+# -----------------------------------------------------------------------------
+# Llama al reusable _reusable-sonda-seguridad.yml para staging y producción.
+# Se copia A MANO a `.github/workflows/`, junto con el reusable (bootstrap-repo.sh
+# no lo siembra). Anexo: 01-seguridad/16-monitoreo-externo.md (MO-07).
+#
+# VARIABLES (repositorio): STAGING_URL, PROD_URL y HEALTH_PATH (las del estándar);
+#   SONDA_RUTA_PROTEGIDA    ruta que debe negar el acceso sin credenciales; vacía, no se comprueba
+#   SONDA_CODIGO_PROTEGIDA  401 (por omisión) o 403
+#   SONDA_CUERPO_ESPERADO   texto que debe contener la respuesta de salud; vacío, no se comprueba
+#   SONDA_EXIGIR_HSTS, SONDA_EXIGIR_CSP   `false` renuncia a esa cabecera (una API JSON sin CSP);
+#                           cualquier otro valor, o vacío, la exige. Se mide en la portada `/`.
+#
+# SECRETO DEL LATIDO: HEALTHCHECKS_PING_SONDA_STAGING y HEALTHCHECKS_PING_SONDA_PROD
+# (UUID de ping, clase S2) viven en el Environment `monitoreo` (sin revisores,
+# limitado a la rama main). Un job que llama a un reusable no admite `environment`
+# (actionlint lo rechaza), así que el `environment: monitoreo` está en el job del
+# reusable y desde aquí no se pasa ningún secreto. Sin Environments en el plan del
+# repositorio: quite `environment:` del reusable, guarde ambos secretos en el
+# repositorio (solo para este workflow) y agregue a cada job de abajo
+#   secrets:
+#     HEALTHCHECKS_PING_SONDA_STAGING: ${{ secrets.HEALTHCHECKS_PING_SONDA_STAGING }}
+# (y el de producción en su job). Nunca `secrets: inherit`.
+#
+# En Healthchecks cada chequeo lleva período de 6 h y gracia de 12 h.
+# El host y la ruta protegida aparecen en la cabecera `env` del paso dentro de
+# los logs de Actions: los ve quien pueda leer los logs del repositorio, sea
+# público o privado.
+# =============================================================================
+name: Monitoreo · sonda de seguridad
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: monitoreo-sonda-seguridad
+  cancel-in-progress: false
+
+jobs:
+  sonda-staging:
+    name: Sonda de staging
+    if: vars.STAGING_URL != ''
+    permissions: {}
+    uses: ./.github/workflows/_reusable-sonda-seguridad.yml
+    with:
+      ambiente: staging
+      url_base: ${{ vars.STAGING_URL }}
+      ruta_salud: ${{ vars.HEALTH_PATH || '/health' }}
+      cuerpo_esperado: ${{ vars.SONDA_CUERPO_ESPERADO }}
+      ruta_protegida: ${{ vars.SONDA_RUTA_PROTEGIDA }}
+      codigo_protegida: ${{ vars.SONDA_CODIGO_PROTEGIDA || '401' }}
+      exigir_hsts: ${{ vars.SONDA_EXIGIR_HSTS != 'false' }}
+      exigir_csp: ${{ vars.SONDA_EXIGIR_CSP != 'false' }}
+
+  sonda-produccion:
+    name: Sonda de producción
+    if: vars.PROD_URL != ''
+    permissions: {}
+    uses: ./.github/workflows/_reusable-sonda-seguridad.yml
+    with:
+      ambiente: production
+      url_base: ${{ vars.PROD_URL }}
+      ruta_salud: ${{ vars.HEALTH_PATH || '/health' }}
+      cuerpo_esperado: ${{ vars.SONDA_CUERPO_ESPERADO }}
+      ruta_protegida: ${{ vars.SONDA_RUTA_PROTEGIDA }}
+      codigo_protegida: ${{ vars.SONDA_CODIGO_PROTEGIDA || '401' }}
+      exigir_hsts: ${{ vars.SONDA_EXIGIR_HSTS != 'false' }}
+      exigir_csp: ${{ vars.SONDA_EXIGIR_CSP != 'false' }}

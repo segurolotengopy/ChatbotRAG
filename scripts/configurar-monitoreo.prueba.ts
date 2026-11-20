@@ -163,9 +163,13 @@ describe('configurar-monitoreo: aplicar', () => {
     expect(r.datos.join('\n')).toContain('"check_frequency":180');
     expect(r.datos.join('\n')).toContain('https://chatbotrag-ejemplo.a.run.app/salud');
     // El UUID llegó a gh por la entrada estándar, no por argumentos.
-    expect(r.entradasGh).toEqual(['HEALTHCHECKS_PING_SONDA <= UUID-NUEVO-sonda-15min', 'HEALTHCHECKS_PING_REPORTE <= UUID-NUEVO-reporte-diario']);
+    expect(r.entradasGh).toEqual(['HEALTHCHECKS_PING_SONDA_STAGING <= UUID-NUEVO-sonda-15min', 'HEALTHCHECKS_PING_REPORTE <= UUID-NUEVO-reporte-diario']);
     expect(r.gh.join('\n')).not.toContain('UUID-NUEVO');
-    expect(r.gh.some((g) => g.startsWith('variable set URL_STAGING') && g.includes('--repo org/repo'))).toBe(true);
+    expect(r.gh.some((g) => g.startsWith('variable set STAGING_URL') && g.includes('--repo org/repo'))).toBe(true);
+    expect(r.gh.some((g) => g.startsWith('variable set SONDA_RUTA_PROTEGIDA') && g.includes('/v1/agente'))).toBe(true);
+    // El latido de la sonda va al Environment «monitoreo»; el del reporte, al repositorio.
+    expect(r.gh.some((g) => g.startsWith('secret set HEALTHCHECKS_PING_SONDA_STAGING') && g.includes('--env monitoreo'))).toBe(true);
+    expect(r.gh.some((g) => g.startsWith('secret set HEALTHCHECKS_PING_REPORTE') && !g.includes('--env'))).toBe(true);
     sinSecretos(r.salida);
   });
 

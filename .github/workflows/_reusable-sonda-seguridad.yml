@@ -1,0 +1,266 @@
+# =============================================================================
+# _reusable-sonda-seguridad.yml — Sonda de seguridad programada (reusable)
+# Versión: 1.1 | Fecha: 2026-11-20
+# -----------------------------------------------------------------------------
+# Propósito: comprobar desde fuera, con bash y curl, que un ambiente ya
+# desplegado sigue sano y sigue protegido:
+#   1. la ruta de salud responde 200 (y, si se pide, con un texto esperado);
+#   2. la portada (`url_base/`) lleva HSTS (max-age >= 15552000) y CSP, cada una
+#      exigible por separado: es el mismo recurso que mide el humo de
+#      `_reusable-dast.yml`, así la sonda es de verdad su respaldo;
+#   3. una ruta protegida niega el acceso sin credenciales (401 o 403).
+# Avisa su resultado a un chequeo de Healthchecks.io (latido) sin mostrar nunca
+# el UUID. Anexo: 01-seguridad/16-monitoreo-externo.md (MO-03, MO-07).
+#
+# Redirecciones: /health y la ruta protegida NO las siguen (deben responder
+# directamente: un 3xx en salud es una falla, MO-03). La portada SÍ las sigue
+# (hasta 3 y solo por https), igual que el humo, que usa -L; a diferencia del
+# humo, solo cuentan las cabeceras de la ÚLTIMA respuesta, no las de un salto.
+#
+# Lo que NO garantiza: no llama a modelos ni a APIs de pago (solo GET a las
+# rutas indicadas); mira desde UNA sola red (la de GitHub); el cron de GitHub
+# puede omitirse (huecos de más de 9 h medidos), por eso existe el latido.
+#
+# SECRETO DEL LATIDO: el job declara `environment: monitoreo` (Environment sin
+# revisores y limitado a la rama main) y lee de él HEALTHCHECKS_PING_SONDA_STAGING
+# y HEALTHCHECKS_PING_SONDA_PROD. Un job que llama a un reusable no puede declarar
+# `environment`, por eso va aquí y no en la plantilla. Si el plan del repositorio
+# no ofrece Environments, ver el anexo 16 §4 (secreto de repositorio de uso
+# exclusivo de este workflow, pasado con `secrets:` desde la plantilla).
+# El host y las rutas aparecen en la cabecera `env` del paso dentro de los logs de
+# Actions, visibles para quien pueda leer los logs del repositorio; los mensajes
+# del paso, en cambio, no los repiten.
+#
+# Cómo se invoca (la plantilla monitoreo-sonda-seguridad.yml ya lo hace):
+#   sonda-produccion:
+#     uses: ./.github/workflows/_reusable-sonda-seguridad.yml
+#     with:
+#       url_base: ${{ vars.PROD_URL }}
+#       ambiente: production
+# =============================================================================
+name: Sonda de seguridad (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      url_base:
+        description: URL base del ambiente (https://host, sin ruta ni puerto)
+        type: string
+        required: true
+      ambiente:
+        description: Ambiente vigilado (staging o production); elige el secreto del latido
+        type: string
+        required: true
+      ruta_salud:
+        description: Path de la ruta de salud (solo código 200 y cuerpo esperado)
+        type: string
+        default: '/health'
+      cuerpo_esperado:
+        description: Texto que debe contener la respuesta de salud (vacío, no se comprueba)
+        type: string
+        default: ''
+      ruta_protegida:
+        description: Path que debe negar el acceso sin credenciales (vacío, no se comprueba)
+        type: string
+        default: ''
+      codigo_protegida:
+        description: Código que debe devolver la ruta protegida (401 o 403)
+        type: string
+        default: '401'
+      exigir_hsts:
+        description: Fallar si falta Strict-Transport-Security (max-age >= 15552000) en la portada
+        type: boolean
+        default: true
+      exigir_csp:
+        description: Fallar si falta Content-Security-Policy en la portada
+        type: boolean
+        default: true
+      reintentos:
+        description: Pasadas máximas antes de dar la sonda por fallida (1 a 5, 30 s entre una y otra)
+        type: number
+        default: 3
+    secrets:
+      HEALTHCHECKS_PING_SONDA_STAGING:
+        description: Solo sin Environments; con `environment` se lee de él. UUID del chequeo de staging (clase S2)
+        required: false
+      HEALTHCHECKS_PING_SONDA_PROD:
+        description: Solo sin Environments; con `environment` se lee de él. UUID del chequeo de producción (clase S2)
+        required: false
+
+permissions: {}
+
+jobs:
+  sonda:
+    name: Sonda de seguridad
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions: {}
+    environment: monitoreo
+    steps:
+      - name: Latido · inicio
+        env:
+          AMBIENTE: ${{ inputs.ambiente }}
+          PING_STAGING: ${{ secrets.HEALTHCHECKS_PING_SONDA_STAGING }}
+          PING_PROD: ${{ secrets.HEALTHCHECKS_PING_SONDA_PROD }}
+        run: |
+          PING="$PING_STAGING"
+          if [[ "$AMBIENTE" == production ]]; then PING="$PING_PROD"; fi
+          if [[ -z "$PING" ]]; then
+            echo "::warning::Sin secreto de latido para este ambiente: no se avisa al latido."
+            exit 0
+          fi
+          uuid='^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$'
+          if [[ ! "$PING" =~ $uuid ]]; then
+            echo "::warning::El secreto del latido no tiene forma de UUID (no se muestra su valor)."
+            exit 0
+          fi
+          curl --silent --proto '=https' --fail --max-time 10 --retry 3 --output /dev/null "https://hc-ping.com/${PING}/start" 2>/dev/null || echo "::warning::No se pudo avisar el inicio al latido."
+
+      - name: Sondear
+        env:
+          AMBIENTE: ${{ inputs.ambiente }}
+          URL_BASE: ${{ inputs.url_base }}
+          RUTA_SALUD: ${{ inputs.ruta_salud }}
+          CUERPO_ESPERADO: ${{ inputs.cuerpo_esperado }}
+          RUTA_PROTEGIDA: ${{ inputs.ruta_protegida }}
+          CODIGO_PROTEGIDA: ${{ inputs.codigo_protegida }}
+          EXIGIR_HSTS: ${{ inputs.exigir_hsts }}
+          EXIGIR_CSP: ${{ inputs.exigir_csp }}
+          REINTENTOS: ${{ inputs.reintentos }}
+        run: |
+          set -euo pipefail
+          # Los mensajes de este paso no repiten el host ni las rutas: solo etiquetas
+          # y códigos (la cabecera env sí los muestra a quien lea los logs).
+          URL_BASE="${URL_BASE%/}"
+          re_url='^https://([A-Za-z0-9-]+\.)+[A-Za-z]{2,}$'
+          re_ruta='^/[A-Za-z0-9._~/-]*$'
+          if [[ ! "$AMBIENTE" =~ ^(staging|production)$ ]]; then
+            echo "::error::ambiente debe ser staging o production."; exit 2
+          fi
+          if [[ ! "$URL_BASE" =~ $re_url ]]; then
+            echo "::error::url_base debe ser https://nombre.de.dominio, sin IP, ruta, puerto ni parámetros."; exit 2
+          fi
+          if [[ ! "$RUTA_SALUD" =~ $re_ruta ]]; then
+            echo "::error::ruta_salud no es una ruta válida."; exit 2
+          fi
+          if [[ -n "$RUTA_PROTEGIDA" && ! "$RUTA_PROTEGIDA" =~ $re_ruta ]]; then
+            echo "::error::ruta_protegida no es una ruta válida."; exit 2
+          fi
+          if [[ ! "$CODIGO_PROTEGIDA" =~ ^(401|403)$ ]]; then
+            echo "::error::codigo_protegida solo admite 401 o 403."; exit 2
+          fi
+          if [[ ! "$REINTENTOS" =~ ^[1-5]$ ]]; then
+            echo "::error::reintentos debe estar entre 1 y 5."; exit 2
+          fi
+          if [[ "$RUTA_SALUD" == *z && "$URL_BASE" == *.run.app ]]; then
+            echo "::error::Cloud Run reserva en *.run.app las rutas que terminan en «z»: la petición no llega al contenedor. Use /health (variable HEALTH_PATH)."; exit 2
+          fi
+
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+
+          # $1 = ruta; $2 = "seguir" para seguir redirecciones (solo la portada).
+          pedir() {
+            local codigo extra=()
+            if [[ "${2:-}" == seguir ]]; then extra=(-L --max-redirs 3 --proto-redir '=https'); fi
+            : > "$tmp/h"; : > "$tmp/b"
+            codigo="$(curl --silent --proto '=https' --max-time 20 --max-filesize 1048576 "${extra[@]}" -D "$tmp/h" -o "$tmp/b" -w '%{http_code}' "${URL_BASE}$1" 2>/dev/null || true)"
+            if [[ -z "$codigo" ]]; then codigo=000; fi
+            printf '%s' "$codigo"
+          }
+
+          pasada() {
+            local codigo max
+            fallas=()
+            codigo="$(pedir "$RUTA_SALUD")"
+            if [[ "$codigo" != 200 ]]; then
+              fallas+=("salud: HTTP $codigo")
+            elif [[ -n "$CUERPO_ESPERADO" ]] && ! grep -qF -- "$CUERPO_ESPERADO" "$tmp/b"; then
+              fallas+=("salud: el cuerpo no contiene el texto esperado")
+            fi
+            # Portada: con -L el archivo de cabeceras junta todas las respuestas;
+            # solo cuenta la última (separadas por línea en blanco).
+            codigo="$(pedir "/" seguir)"
+            if [[ "$codigo" == 000 ]]; then
+              fallas+=("portada: HTTP 000")
+            fi
+            tr -d '\r' < "$tmp/h" | awk -v RS= '{ultima=$0} END{print ultima}' > "$tmp/ultima"
+            max="$(grep -i '^strict-transport-security:' "$tmp/ultima" | grep -oiE 'max-age=[0-9]{1,9}' | head -n 1 | cut -d= -f2 || true)"
+            if [[ "$EXIGIR_HSTS" == true ]]; then
+              if [[ -z "$max" ]]; then
+                fallas+=("portada: falta Strict-Transport-Security con max-age")
+              elif [[ "$max" -lt 15552000 ]]; then
+                fallas+=("portada: Strict-Transport-Security con max-age=$max (mínimo 15552000)")
+              fi
+            fi
+            if [[ "$EXIGIR_CSP" == true ]] && ! grep -qi '^content-security-policy:' "$tmp/ultima"; then
+              fallas+=("portada: falta Content-Security-Policy")
+            fi
+            if [[ -n "$RUTA_PROTEGIDA" ]]; then
+              codigo="$(pedir "$RUTA_PROTEGIDA")"
+              if [[ "$codigo" != "$CODIGO_PROTEGIDA" ]]; then
+                fallas+=("protegida: HTTP $codigo, se esperaba $CODIGO_PROTEGIDA")
+              fi
+            fi
+          }
+
+          intento=1
+          while :; do
+            pasada
+            if [[ ${#fallas[@]} -eq 0 || "$intento" -ge "$REINTENTOS" ]]; then break; fi
+            intento=$((intento + 1))
+            sleep 30
+          done
+
+          resumen="${GITHUB_STEP_SUMMARY:-/dev/null}"
+          if [[ ${#fallas[@]} -eq 0 ]]; then
+            echo "Sonda de seguridad: OK (intento $intento de $REINTENTOS)" >> "$resumen"
+            echo "Sonda de seguridad: OK (intento $intento de $REINTENTOS)"
+            exit 0
+          fi
+          echo "Sonda de seguridad: FALLA (intento $intento de $REINTENTOS)" >> "$resumen"
+          for f in "${fallas[@]}"; do
+            echo "- $f" >> "$resumen"
+            echo "::error::Sonda de seguridad: $f"
+          done
+          exit 1
+
+      - name: Latido · sonda OK
+        if: success()
+        env:
+          AMBIENTE: ${{ inputs.ambiente }}
+          PING_STAGING: ${{ secrets.HEALTHCHECKS_PING_SONDA_STAGING }}
+          PING_PROD: ${{ secrets.HEALTHCHECKS_PING_SONDA_PROD }}
+        run: |
+          PING="$PING_STAGING"
+          if [[ "$AMBIENTE" == production ]]; then PING="$PING_PROD"; fi
+          if [[ -z "$PING" ]]; then
+            echo "::warning::Sin secreto de latido para este ambiente: no se avisa al latido."
+            exit 0
+          fi
+          uuid='^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$'
+          if [[ ! "$PING" =~ $uuid ]]; then
+            echo "::warning::El secreto del latido no tiene forma de UUID (no se muestra su valor)."
+            exit 0
+          fi
+          curl --silent --proto '=https' --fail --max-time 10 --retry 3 --output /dev/null "https://hc-ping.com/${PING}" 2>/dev/null || echo "::warning::No se pudo avisar el éxito al latido."
+
+      - name: Latido · sonda FALLA
+        if: failure()
+        env:
+          AMBIENTE: ${{ inputs.ambiente }}
+          PING_STAGING: ${{ secrets.HEALTHCHECKS_PING_SONDA_STAGING }}
+          PING_PROD: ${{ secrets.HEALTHCHECKS_PING_SONDA_PROD }}
+        run: |
+          PING="$PING_STAGING"
+          if [[ "$AMBIENTE" == production ]]; then PING="$PING_PROD"; fi
+          if [[ -z "$PING" ]]; then
+            echo "::warning::Sin secreto de latido para este ambiente: no se avisa al latido."
+            exit 0
+          fi
+          uuid='^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$'
+          if [[ ! "$PING" =~ $uuid ]]; then
+            echo "::warning::El secreto del latido no tiene forma de UUID (no se muestra su valor)."
+            exit 0
+          fi
+          curl --silent --proto '=https' --fail --max-time 10 --retry 3 --output /dev/null "https://hc-ping.com/${PING}/fail" 2>/dev/null || echo "::warning::No se pudo avisar la falla al latido."

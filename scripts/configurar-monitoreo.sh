@@ -34,7 +34,7 @@
 #   1. Healthchecks: chequeos «sonda-15min» (el nombre se conservó por el UUID; hoy es
 #      la sonda de seguridad: período PERIODO_SONDA, 6 h, y gracia GRACIA_SONDA, 12 h) y
 #      «reporte-diario» (período 1 día, gracia 4 h), con las integraciones de la cuenta.
-#   2. GitHub: variable URL_STAGING y secretos HEALTHCHECKS_PING_SONDA y
+#   2. GitHub: variables STAGING_URL, SONDA_RUTA_PROTEGIDA y SONDA_CUERPO_ESPERADO, secreto HEALTHCHECKS_PING_SONDA_STAGING (Environment «monitoreo») y
 #      HEALTHCHECKS_PING_REPORTE.
 #   3. Better Stack: monitor de palabra clave a /salud (200 y "ok":true) cada 3 min, con alerta por correo.
 #   4. Borra SOLO lo que se nombre con --borrar-hc / --borrar-bs (los de prueba).
@@ -123,7 +123,7 @@ cp "$TMP/cuerpo" "$TMP/bs-lista.json"
 if [[ "$MODO" == "plan" ]]; then
   echo "== Plan (nada se escribió) =="
   echo "- Healthchecks: crear/actualizar «sonda-15min» y «reporte-diario»."
-  echo "- GitHub ($REPO): variable URL_STAGING y secretos HEALTHCHECKS_PING_SONDA y HEALTHCHECKS_PING_REPORTE."
+  echo "- GitHub ($REPO): variables STAGING_URL, SONDA_RUTA_PROTEGIDA y SONDA_CUERPO_ESPERADO, secreto HEALTHCHECKS_PING_SONDA_STAGING (Environment «monitoreo») y HEALTHCHECKS_PING_REPORTE."
   echo "- Better Stack: monitor «ChatbotRAG staging /salud» ($URL_STAGING/salud) cada 3 min."
   for n in "${BORRAR_HC[@]}"; do echo "- Healthchecks: borrar el chequeo «$n»."; done
   for i in "${BORRAR_BS[@]}"; do echo "- Better Stack: borrar el monitor id $i."; done
@@ -131,7 +131,7 @@ if [[ "$MODO" == "plan" ]]; then
 fi
 
 # ---------- Escritura ----------
-crear_chequeo() { # $1 nombre, $2 período s, $3 gracia s, $4 secreto de GitHub
+crear_chequeo() { # $1 nombre, $2 período s, $3 gracia s, $4 secreto de GitHub, $5 Environment (opcional)
   local json
   json="$(jq -nc --arg n "$1" --argjson t "$2" --argjson g "$3" \
     '{name:$n, tags:"chatbotrag staging", timeout:$t, grace:$g, channels:"*", unique:["name"]}')"
@@ -142,18 +142,24 @@ crear_chequeo() { # $1 nombre, $2 período s, $3 gracia s, $4 secreto de GitHub
     echo "Chequeo «$1» listo; el secreto $4 NO se cargó (--sin-github)."
     return 0
   fi
-  jq -r '.uuid' "$TMP/cuerpo" | tr -d '\n' | gh secret set "$4" --repo "$REPO" >/dev/null
+  local destino=()
+  [[ -n "${5:-}" ]] && destino=(--env "$5")
+  jq -r '.uuid' "$TMP/cuerpo" | tr -d '\n' | gh secret set "$4" --repo "$REPO" "${destino[@]}" >/dev/null
   rm -f "$TMP/cuerpo"
   echo "Chequeo «$1» listo y secreto $4 cargado en $REPO."
 }
-crear_chequeo 'sonda-15min' "$PERIODO_SONDA" "$GRACIA_SONDA" HEALTHCHECKS_PING_SONDA
+# El latido de la sonda vive en el Environment «monitoreo» (anexo 16 del estándar); el Environment
+# debe existir antes de cargar el secreto.
+crear_chequeo 'sonda-15min' "$PERIODO_SONDA" "$GRACIA_SONDA" HEALTHCHECKS_PING_SONDA_STAGING monitoreo
 crear_chequeo 'reporte-diario' 86400 14400 HEALTHCHECKS_PING_REPORTE
 
 if [[ $SIN_GITHUB -eq 1 ]]; then
-  echo "Variable URL_STAGING NO cargada (--sin-github)."
+  echo "Variables de la sonda NO cargadas (--sin-github)."
 else
-  gh variable set URL_STAGING --repo "$REPO" --body "$URL_STAGING" >/dev/null
-  echo "Variable URL_STAGING cargada en $REPO."
+  gh variable set STAGING_URL --repo "$REPO" --body "$URL_STAGING" >/dev/null
+  gh variable set SONDA_RUTA_PROTEGIDA --repo "$REPO" --body "/v1/agente" >/dev/null
+  gh variable set SONDA_CUERPO_ESPERADO --repo "$REPO" --body '"ok":true' >/dev/null
+  echo "Variables STAGING_URL, SONDA_RUTA_PROTEGIDA y SONDA_CUERPO_ESPERADO cargadas en $REPO."
 fi
 
 NOMBRE_BS='ChatbotRAG staging /salud'
