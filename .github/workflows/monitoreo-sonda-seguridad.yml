@@ -1,6 +1,6 @@
 # =============================================================================
 # monitoreo-sonda-seguridad.yml — Sonda de seguridad cada 6 h (plantilla)
-# Versión: 1.1 | Fecha: 2026-11-20
+# Versión: 1.2 | Fecha: 2026-11-20
 # -----------------------------------------------------------------------------
 # Llama al reusable _reusable-sonda-seguridad.yml para staging y producción.
 # Se copia A MANO a `.github/workflows/`, junto con el reusable (bootstrap-repo.sh
@@ -17,12 +17,13 @@
 # (UUID de ping, clase S2) viven en el Environment `monitoreo` (sin revisores,
 # limitado a la rama main). Un job que llama a un reusable no admite `environment`
 # (actionlint lo rechaza), así que el `environment: monitoreo` está en el job del
-# reusable y desde aquí no se pasa ningún secreto. Sin Environments en el plan del
-# repositorio: quite `environment:` del reusable, guarde ambos secretos en el
-# repositorio (solo para este workflow) y agregue a cada job de abajo
-#   secrets:
-#     HEALTHCHECKS_PING_SONDA_STAGING: ${{ secrets.HEALTHCHECKS_PING_SONDA_STAGING }}
-# (y el de producción en su job). Nunca `secrets: inherit`.
+# reusable. Aun así, cada job de abajo PASA su secreto por nombre: GitHub resuelve
+# el valor en el Environment del job llamado, pero solo si el llamador lo pasa; si
+# no, llega vacío y sin error (docs.github.com, «Reusing workflows»; medido el
+# 2026-11-20 en la primera corrida real). Cada job pasa solo el de su ambiente.
+# Sin Environments en el plan del repositorio: quite `environment:` del reusable y
+# guarde ambos secretos en el repositorio (solo para este workflow); el mapeo de
+# abajo no cambia. Nunca `secrets: inherit`.
 #
 # En Healthchecks cada chequeo lleva período de 6 h y gracia de 12 h.
 # El host y la ruta protegida aparecen en la cabecera `env` del paso dentro de
@@ -57,6 +58,8 @@ jobs:
       codigo_protegida: ${{ vars.SONDA_CODIGO_PROTEGIDA || '401' }}
       exigir_hsts: ${{ vars.SONDA_EXIGIR_HSTS != 'false' }}
       exigir_csp: ${{ vars.SONDA_EXIGIR_CSP != 'false' }}
+    secrets:
+      HEALTHCHECKS_PING_SONDA_STAGING: ${{ secrets.HEALTHCHECKS_PING_SONDA_STAGING }}
 
   sonda-produccion:
     name: Sonda de producción
@@ -72,3 +75,5 @@ jobs:
       codigo_protegida: ${{ vars.SONDA_CODIGO_PROTEGIDA || '401' }}
       exigir_hsts: ${{ vars.SONDA_EXIGIR_HSTS != 'false' }}
       exigir_csp: ${{ vars.SONDA_EXIGIR_CSP != 'false' }}
+    secrets:
+      HEALTHCHECKS_PING_SONDA_PROD: ${{ secrets.HEALTHCHECKS_PING_SONDA_PROD }}
