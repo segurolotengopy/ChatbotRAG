@@ -5,7 +5,7 @@
 
 # node:22-bookworm-slim (digest medido el 2026-10-10). El tag va de comentario:
 # el digest es obligatorio para que la imagen sea reproducible y auditable.
-FROM node@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS base
+FROM node@sha256:e18c3ccdf7d71619990b0e85639f506e2028a95410999cab24cc373cbd10e0ac AS base
 ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 RUN corepack enable && corepack prepare pnpm@11.25.0 --activate
 WORKDIR /app
@@ -28,7 +28,7 @@ COPY servicio ./servicio
 RUN pnpm construir && pnpm --filter servicio deploy --prod --legacy /salida
 
 # node:22-bookworm-slim, el mismo digest que la etapa de construcción.
-FROM node@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS ejecucion
+FROM node@sha256:e18c3ccdf7d71619990b0e85639f506e2028a95410999cab24cc373cbd10e0ac AS ejecucion
 ENV NODE_ENV=production PUERTO=8080
 WORKDIR /app
 
